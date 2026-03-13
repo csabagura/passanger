@@ -1,0 +1,21 @@
+# Package Managers
+package-lock.json
+pnpm-lock.yaml
+yarn.lock
+bun.lock
+bun.lockb
+
+# BMAD artifacts and IDE command files — not app source code, exclude from formatting
+_bmad/
+_bmad-output/
+.cursor/
+.claude/
+
+# Lighthouse CI reports
+.lighthouseci/
+
+# Playwright test results
+test-results/
+
+# Miscellaneous
+/static/

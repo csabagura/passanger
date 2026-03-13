@@ -1,0 +1,59 @@
+name: Bug Report
+description: Report a bug or unexpected behaviour
+labels: ['bug']
+body:
+  - type: checkboxes
+    id: duplicate-check
+    attributes:
+      label: Duplicate check
+      options:
+        - label: I have searched existing issues and this bug has not been reported
+          required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: A clear description of the bug
+      placeholder: What happened?
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro-steps
+    attributes:
+      label: Steps to reproduce
+      description: Minimal steps to reproduce the behaviour
+      placeholder: |
+        1. Go to '...'
+        2. Click on '...'
+        3. See error
+    validations:
+      required: true
+
+  - type: dropdown
+    id: browser
+    attributes:
+      label: Browser
+      description: Which browser(s) did you see this in?
+      multiple: true
+      options:
+        - Chrome
+        - Firefox
+        - Safari
+        - Edge
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      description: What platform are you using?
+      options:
+        - Desktop
+        - iOS
+        - Android
+    validations:
+      required: true

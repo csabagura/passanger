@@ -1,0 +1,40 @@
+node_modules
+
+# Output
+.output
+.vercel
+.netlify
+.wrangler
+/.svelte-kit
+/build
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Env
+.env
+.env.*
+!.env.example
+!.env.test
+
+# Vite
+vite.config.js.timestamp-*
+vite.config.ts.timestamp-*
+
+# Lighthouse CI
+.lighthouseci/
+
+# Playwright
+test-results/
+
+# Backup files
+*.bak
+
+# Editor/tool config
+.claude/
+.cursor/
+
+# BMAD artifacts — not app source code, exclude from lint/format tooling
+_bmad/
+_bmad-output/
