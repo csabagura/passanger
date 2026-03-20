@@ -24,6 +24,7 @@
 		entry: HistoryEntry;
 		currency: string;
 		preferredFuelUnit?: FuelUnit;
+		vehicleName?: string;
 		deleteState?: DeleteState;
 		deleteDisabled?: boolean;
 		deleteErrorText?: string;
@@ -41,6 +42,7 @@
 		entry,
 		currency,
 		preferredFuelUnit = 'L/100km',
+		vehicleName,
 		deleteState = 'idle',
 		deleteDisabled = false,
 		deleteErrorText = '',
@@ -66,6 +68,7 @@
 	const detailRows = $derived<DetailRow[]>([
 		{ label: 'Date', value: formatLocalCalendarDate(entry.entry.date) },
 		{ label: 'Entry type', value: entry.kind === 'fuel' ? 'Fuel' : entry.entry.type },
+		...(vehicleName ? [{ label: 'Vehicle', value: vehicleName }] : []),
 		{ label: 'Odometer', value: getOdometerValue(entry) },
 		{ label: 'Quantity', value: getQuantityValue(entry) },
 		{ label: 'Unit', value: getUnitValue(entry) },

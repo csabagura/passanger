@@ -2,14 +2,14 @@
 	import { page } from '$app/state';
 	import { resolve } from '$app/paths';
 	import Fuel from '@lucide/svelte/icons/fuel';
-	import Wrench from '@lucide/svelte/icons/wrench';
 	import ClipboardList from '@lucide/svelte/icons/clipboard-list';
+	import BarChart3 from '@lucide/svelte/icons/bar-chart-3';
 	import Download from '@lucide/svelte/icons/download';
 
 	const tabs = [
-		{ href: '/fuel-entry', label: 'Fuel Entry', icon: Fuel },
-		{ href: '/maintenance', label: 'Maintenance', icon: Wrench },
+		{ href: '/log', label: 'Log', icon: Fuel },
 		{ href: '/history', label: 'History', icon: ClipboardList },
+		{ href: '/analytics', label: 'Analytics', icon: BarChart3 },
 		{ href: '/export', label: 'Export', icon: Download }
 	] as const;
 
@@ -18,13 +18,7 @@
 	function handleActiveTabClick(event: MouseEvent, tab: (typeof tabs)[number]) {
 		const resolvedPath = resolve(tab.href);
 		if (currentPath === resolvedPath) {
-			// Prevent same-route SvelteKit navigation — active-tab taps are scroll-only.
-			// Without preventDefault(), the router still processes the click (pushes history,
-			// resets scroll position and focus), which undoes the scroll-to-top effect.
 			event.preventDefault();
-			// `instant` guarantees completion in 0 ms — satisfying the NFR18 <= 150 ms budget.
-			// `smooth` has no specified duration in MDN and can exceed 150 ms; `instant` is
-			// also the recommended behaviour for users who prefer reduced motion.
 			window.scrollTo({ top: 0, behavior: 'instant' });
 		}
 	}

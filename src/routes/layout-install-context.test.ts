@@ -99,6 +99,9 @@ describe('layout install prompt context', () => {
 	beforeEach(() => {
 		cleanup();
 		vi.clearAllMocks();
+		localStorage.clear();
+		// Simulate second-or-later session so existing install prompt tests continue to pass
+		localStorage.setItem('passanger_session_count', '2');
 		mockHasNoticeDismissed.mockReturnValue(false);
 		mockRequestStoragePersistence.mockResolvedValue('granted');
 		Object.defineProperty(window, 'matchMedia', {
@@ -208,5 +211,33 @@ describe('layout install prompt context', () => {
 		} finally {
 			localStorage.setItem = originalSetItem;
 		}
+	});
+
+	it('suppresses install prompt in first session even when platform is eligible', async () => {
+		// Simulate first-ever session (count = 0 → after increment = 1 → not second-or-later)
+		localStorage.setItem('passanger_session_count', '0');
+
+		await renderLayout();
+
+		const { event } = createBeforeInstallPromptEvent();
+		window.dispatchEvent(event);
+		flushSync();
+
+		expect(screen.getByTestId('install-platform').textContent).toBe('android');
+		expect(screen.getByTestId('install-can-show').textContent).toBe('false');
+	});
+
+	it('allows install prompt in second session when platform is eligible', async () => {
+		// Simulate second session (count = 1 → after increment = 2 → second-or-later)
+		localStorage.setItem('passanger_session_count', '1');
+
+		await renderLayout();
+
+		const { event } = createBeforeInstallPromptEvent();
+		window.dispatchEvent(event);
+		flushSync();
+
+		expect(screen.getByTestId('install-platform').textContent).toBe('android');
+		expect(screen.getByTestId('install-can-show').textContent).toBe('true');
 	});
 });

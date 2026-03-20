@@ -6,7 +6,7 @@ import SettingsContextProvider from './SettingsContextProvider.test.svelte';
 import type { AppSettings } from '$lib/utils/settings';
 
 vi.mock('$lib/utils/settings', () => ({
-	getSettings: () => ({ fuelUnit: 'L/100km' as const, currency: '€' as const })
+	getSettings: () => ({ fuelUnit: 'L/100km' as const, currency: '€' as const, theme: 'system' as const })
 }));
 
 afterEach(() => {
@@ -16,7 +16,7 @@ afterEach(() => {
 describe('settings context — getter-based contract (layout.svelte pattern)', () => {
 	it('getter reflects updateSettings changes at the JavaScript level', () => {
 		// Verifies the exact pattern used in +layout.svelte is self-consistent
-		let settings: AppSettings = { fuelUnit: 'L/100km', currency: '€' };
+		let settings: AppSettings = { fuelUnit: 'L/100km', currency: '€', theme: 'system' };
 
 		const ctx = {
 			get settings() {
@@ -28,7 +28,7 @@ describe('settings context — getter-based contract (layout.svelte pattern)', (
 		};
 
 		expect(ctx.settings.fuelUnit).toBe('L/100km');
-		ctx.updateSettings({ fuelUnit: 'MPG', currency: '€' });
+		ctx.updateSettings({ fuelUnit: 'MPG', currency: '€', theme: 'system' });
 		expect(ctx.settings.fuelUnit).toBe('MPG');
 		expect(ctx.settings.currency).toBe('€');
 	});
@@ -37,7 +37,7 @@ describe('settings context — getter-based contract (layout.svelte pattern)', (
 		// Verifies a consumer component can read settings via getContext('settings')
 		const ctx = {
 			get settings() {
-				return { fuelUnit: 'MPG' as const, currency: '$' as const };
+				return { fuelUnit: 'MPG' as const, currency: '$' as const, theme: 'system' as const };
 			},
 			updateSettings: vi.fn()
 		};
@@ -60,7 +60,7 @@ describe('settings context — Svelte $state reactivity (consumer propagation)',
 
 		render(SettingsContextProvider, {
 			props: {
-				initialSettings: { fuelUnit: 'L/100km', currency: '€' },
+				initialSettings: { fuelUnit: 'L/100km', currency: '€', theme: 'system' as const },
 				onContextCreated: (ctx) => {
 					capturedCtx = ctx;
 				}
@@ -72,7 +72,7 @@ describe('settings context — Svelte $state reactivity (consumer propagation)',
 		expect(screen.getByTestId('currency').textContent).toBe('€');
 
 		// Call updateSettings — triggers $state reactivity in the provider
-		capturedCtx!.updateSettings({ fuelUnit: 'MPG', currency: '$' });
+		capturedCtx!.updateSettings({ fuelUnit: 'MPG', currency: '$', theme: 'system' });
 		flushSync();
 
 		// Consumer DOM must reflect the updated settings
@@ -86,18 +86,18 @@ describe('settings context — Svelte $state reactivity (consumer propagation)',
 
 		render(SettingsContextProvider, {
 			props: {
-				initialSettings: { fuelUnit: 'L/100km', currency: '€' },
+				initialSettings: { fuelUnit: 'L/100km', currency: '€', theme: 'system' as const },
 				onContextCreated: (ctx) => {
 					capturedCtx = ctx;
 				}
 			}
 		});
 
-		capturedCtx!.updateSettings({ fuelUnit: 'MPG', currency: '€' });
+		capturedCtx!.updateSettings({ fuelUnit: 'MPG', currency: '€', theme: 'system' });
 		flushSync();
 		expect(screen.getByTestId('fuel-unit').textContent).toBe('MPG');
 
-		capturedCtx!.updateSettings({ fuelUnit: 'L/100km', currency: '$' });
+		capturedCtx!.updateSettings({ fuelUnit: 'L/100km', currency: '$', theme: 'system' });
 		flushSync();
 		expect(screen.getByTestId('fuel-unit').textContent).toBe('L/100km');
 		expect(screen.getByTestId('currency').textContent).toBe('$');

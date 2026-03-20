@@ -12,7 +12,8 @@ const mockUpdateExpense = vi.fn();
 const mockSettings = vi.hoisted(() => ({
 	value: {
 		fuelUnit: 'L/100km',
-		currency: '€'
+		currency: '€',
+		theme: 'system'
 	} as AppSettings
 }));
 
@@ -44,7 +45,8 @@ describe('MaintenanceForm', () => {
 		clearMaintenanceDraft();
 		mockSettings.value = {
 			fuelUnit: 'L/100km',
-			currency: '€'
+			currency: '€',
+			theme: 'system'
 		};
 	});
 
@@ -68,7 +70,8 @@ describe('MaintenanceForm', () => {
 	it('uses the saved currency prefix in the cost label and success feedback', async () => {
 		mockSettings.value = {
 			fuelUnit: 'L/100km',
-			currency: 'EUR '
+			currency: 'EUR ',
+			theme: 'system'
 		};
 
 		const savedExpense: Expense = {
@@ -100,7 +103,8 @@ describe('MaintenanceForm', () => {
 	it('does not derive the maintenance odometer label from the fuel-unit preference', () => {
 		mockSettings.value = {
 			fuelUnit: 'MPG',
-			currency: '€'
+			currency: '€',
+			theme: 'system'
 		};
 
 		render(MaintenanceForm, { vehicleId: 7, onSave: onSaveSpy });
@@ -370,6 +374,122 @@ describe('MaintenanceForm', () => {
 
 		expect(screen.getByText(/grouping separators/i)).toBeTruthy();
 		expect(mockSaveExpense).not.toHaveBeenCalled();
+	});
+
+	it('calls onFirstCreateSave on the first successful create save', async () => {
+		const savedExpense: Expense = {
+			id: 30,
+			vehicleId: 7,
+			date: new Date(2026, 2, 10, 12, 0, 0, 0),
+			type: 'Oil Change',
+			cost: 78,
+			notes: ''
+		};
+		mockSaveExpense.mockResolvedValue({ data: savedExpense, error: null });
+		const onFirstCreateSaveSpy = vi.fn();
+
+		render(MaintenanceForm, {
+			vehicleId: 7,
+			onSave: onSaveSpy,
+			onFirstCreateSave: onFirstCreateSaveSpy
+		});
+
+		await fireEvent.input(screen.getByLabelText(/^type$/i), {
+			target: { value: 'Oil Change' }
+		});
+		await fireEvent.input(screen.getByLabelText(/cost/i), {
+			target: { value: '78' }
+		});
+		await fireEvent.click(screen.getByRole('button', { name: /^save$/i }));
+		await Promise.resolve();
+		flushSync();
+
+		expect(onFirstCreateSaveSpy).toHaveBeenCalledOnce();
+		expect(onFirstCreateSaveSpy).toHaveBeenCalledWith(savedExpense);
+	});
+
+	it('does not call onFirstCreateSave on subsequent create saves', async () => {
+		const savedExpense1: Expense = {
+			id: 31,
+			vehicleId: 7,
+			date: new Date(2026, 2, 10, 12, 0, 0, 0),
+			type: 'Oil Change',
+			cost: 78,
+			notes: ''
+		};
+		const savedExpense2: Expense = {
+			id: 32,
+			vehicleId: 7,
+			date: new Date(2026, 2, 11, 12, 0, 0, 0),
+			type: 'Tyres',
+			cost: 320,
+			notes: ''
+		};
+		mockSaveExpense
+			.mockResolvedValueOnce({ data: savedExpense1, error: null })
+			.mockResolvedValueOnce({ data: savedExpense2, error: null });
+		const onFirstCreateSaveSpy = vi.fn();
+
+		render(MaintenanceForm, {
+			vehicleId: 7,
+			onSave: onSaveSpy,
+			onFirstCreateSave: onFirstCreateSaveSpy
+		});
+
+		// First save
+		await fireEvent.input(screen.getByLabelText(/^type$/i), {
+			target: { value: 'Oil Change' }
+		});
+		await fireEvent.input(screen.getByLabelText(/cost/i), {
+			target: { value: '78' }
+		});
+		await fireEvent.click(screen.getByRole('button', { name: /^save$/i }));
+		await Promise.resolve();
+		flushSync();
+
+		// Second save
+		await fireEvent.input(screen.getByLabelText(/^type$/i), {
+			target: { value: 'Tyres' }
+		});
+		await fireEvent.input(screen.getByLabelText(/cost/i), {
+			target: { value: '320' }
+		});
+		await fireEvent.click(screen.getByRole('button', { name: /^save$/i }));
+		await Promise.resolve();
+		flushSync();
+
+		expect(onFirstCreateSaveSpy).toHaveBeenCalledOnce();
+	});
+
+	it('does not call onFirstCreateSave in edit mode', async () => {
+		const existingExpense: Expense = {
+			id: 33,
+			vehicleId: 7,
+			date: new Date(2026, 2, 8, 12, 0, 0, 0),
+			type: 'Service',
+			cost: 120,
+			notes: ''
+		};
+		const updatedExpense: Expense = { ...existingExpense, cost: 130 };
+		mockUpdateExpense.mockResolvedValue({ data: updatedExpense, error: null });
+		const onFirstCreateSaveSpy = vi.fn();
+
+		render(MaintenanceForm, {
+			vehicleId: 7,
+			mode: 'edit',
+			initialExpense: existingExpense,
+			onSave: onSaveSpy,
+			onFirstCreateSave: onFirstCreateSaveSpy
+		});
+
+		await fireEvent.input(screen.getByLabelText(/cost/i), {
+			target: { value: '130' }
+		});
+		await fireEvent.click(screen.getByRole('button', { name: /save changes/i }));
+		await Promise.resolve();
+		flushSync();
+
+		expect(onFirstCreateSaveSpy).not.toHaveBeenCalled();
 	});
 
 	it('accepts decimal odometer values with trailing zeros', async () => {

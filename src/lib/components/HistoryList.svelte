@@ -15,6 +15,8 @@
 		monthGroups: HistoryMonthGroup[];
 		currency: string;
 		preferredFuelUnit?: FuelUnit;
+		vehicleName?: string;
+		hasVehicles?: boolean;
 		editDisabled?: boolean;
 		detailDisabled?: boolean;
 		detailOpenEntryKey?: string | null;
@@ -31,6 +33,8 @@
 		monthGroups,
 		currency,
 		preferredFuelUnit = 'L/100km',
+		vehicleName,
+		hasVehicles = true,
 		editDisabled = false,
 		detailDisabled = false,
 		detailOpenEntryKey = null,
@@ -91,18 +95,30 @@
 		class="rounded-2xl border border-dashed border-border bg-card px-4 py-6 text-center"
 	>
 		<p id="history-empty-state-title" class="text-base font-semibold text-foreground">
-			No entries yet - log your first fill-up!
+			{#if !hasVehicles}
+				Add a vehicle to get started
+			{:else if vehicleName}
+				No entries yet for {vehicleName}
+			{:else}
+				No entries yet — log your first fill-up!
+			{/if}
 		</p>
 		<p id="history-empty-state-description" class="mt-1 text-sm text-muted-foreground">
-			Your saved fuel and maintenance records will appear here in newest-first order.
+			{#if !hasVehicles}
+				Create your first vehicle in Settings, then start logging fuel and maintenance.
+			{:else if vehicleName}
+				Log a fuel fill-up or maintenance event for {vehicleName} to get started.
+			{:else}
+				Your saved fuel and maintenance records will appear here in newest-first order.
+			{/if}
 		</p>
 		<a
 			bind:this={emptyStateLink}
 			data-history-empty-state-cta="true"
-			href={resolve('/fuel-entry')}
+			href={resolve(!hasVehicles ? '/settings' : '/fuel-entry')}
 			class="mt-4 inline-flex rounded-xl bg-accent px-5 py-3 text-sm font-semibold text-accent-foreground"
 		>
-			Go to Fuel
+			{!hasVehicles ? 'Go to Settings' : 'Go to Fuel'}
 		</a>
 	</div>
 {:else}

@@ -6,11 +6,10 @@
 	import HistoryList from '$lib/components/HistoryList.svelte';
 	import MaintenanceForm from '$lib/components/MaintenanceForm.svelte';
 	import StatBar from '$lib/components/StatBar.svelte';
-	import { VEHICLE_ID_STORAGE_KEY } from '$lib/config';
 	import { deleteExpense, getAllExpenses } from '$lib/db/repositories/expenses';
 	import { deleteFuelLog, getAllFuelLogs } from '$lib/db/repositories/fuelLogs';
-	import { getAllVehicles, getVehicleById } from '$lib/db/repositories/vehicles';
 	import type { Expense, FuelLog, Vehicle } from '$lib/db/schema';
+	import type { VehiclesContext } from '$lib/utils/vehicleContext';
 	import {
 		compareHistoryEntriesNewestFirst,
 		filterHistoryEntries,
@@ -25,7 +24,6 @@
 	} from '$lib/utils/historyEntries';
 	import { readHistoryEntryFilter, writeHistoryEntryFilter } from '$lib/utils/historyFilterStorage';
 	import type { AppSettings } from '$lib/utils/settings';
-	import { readStoredVehicleId, safeRemoveItem, safeSetItem } from '$lib/utils/vehicleStorage';
 
 	const LOADING_INDICATOR_DELAY_MS = 300;
 	const MAX_TIMER_DELAY_MS = 2_147_483_647;
@@ -36,14 +34,15 @@
 		{ label: 'Maintenance', value: 'maintenance' }
 	] as const satisfies ReadonlyArray<{ label: string; value: HistoryEntryFilter }>;
 
-	let currentVehicle = $state<Vehicle | null>(null);
+	const vehiclesCtx = getContext<VehiclesContext>('vehicles');
+
+	let currentVehicle = $derived(vehiclesCtx.activeVehicle);
 	let historyEntries = $state<HistoryEntry[]>([]);
 	let selectedHistoryFilter = $state<HistoryEntryFilter>(readHistoryEntryFilter());
 	let selectedHistoryTimePeriod = $state<HistoryTimePeriod>('current-month');
 	let loading = $state(true);
 	let showLoadingState = $state(false);
 	let dbError = $state(false);
-	let loadStarted = $state(false);
 	let loadingIndicatorTimeout: ReturnType<typeof setTimeout> | null = null;
 	let historySummaryRefreshTimeout: ReturnType<typeof setTimeout> | null = null;
 	let destroyed = false;
@@ -87,11 +86,12 @@
 	const showFilteredEmptyState = $derived(
 		historyEntries.length > 0 && visibleHistoryEntries.length === 0
 	);
-	const filteredEmptyStateTitle = $derived(
-		selectedHistoryFilter === 'fuel'
-			? 'No fuel entries match this filter yet.'
-			: 'No maintenance entries match this filter yet.'
-	);
+	const filteredEmptyStateTitle = $derived.by(() => {
+		const vehicleSuffix = currentVehicle ? ` for ${currentVehicle.name}` : '';
+		return selectedHistoryFilter === 'fuel'
+			? `No fuel entries${vehicleSuffix} yet.`
+			: `No maintenance entries${vehicleSuffix} yet.`;
+	});
 	const filteredEmptyStateDescription = $derived(
 		selectedHistoryFilter === 'fuel'
 			? 'Show all entries to review your saved maintenance records.'
@@ -170,36 +170,7 @@
 		}
 	}
 
-	async function resolveCurrentVehicle(): Promise<Vehicle | null> {
-		const storedVehicleId = readStoredVehicleId();
-		if (storedVehicleId !== null) {
-			const result = await getVehicleById(storedVehicleId);
-			if (!result.error) {
-				return result.data;
-			}
-
-			if (result.error.code !== 'NOT_FOUND') {
-				throw new Error('GET_FAILED');
-			}
-
-			safeRemoveItem(VEHICLE_ID_STORAGE_KEY);
-		}
-
-		const recoveryResult = await getAllVehicles();
-		if (!recoveryResult.error && recoveryResult.data && recoveryResult.data.length > 0) {
-			const recoveredVehicle = recoveryResult.data[0];
-			safeSetItem(VEHICLE_ID_STORAGE_KEY, String(recoveredVehicle.id));
-			return recoveredVehicle;
-		}
-
-		if (recoveryResult.error) {
-			throw new Error(recoveryResult.error.code);
-		}
-
-		return null;
-	}
-
-	async function loadHistoryRoute(): Promise<void> {
+	async function loadEntriesForVehicle(vehicleId: number): Promise<void> {
 		dbError = false;
 		loading = true;
 		showLoadingState = false;
@@ -211,20 +182,9 @@
 		}, LOADING_INDICATOR_DELAY_MS);
 
 		try {
-			const vehicle = await resolveCurrentVehicle();
-			if (destroyed) {
-				return;
-			}
-
-			currentVehicle = vehicle;
-			if (!vehicle) {
-				historyEntries = [];
-				return;
-			}
-
 			const [fuelResult, expenseResult] = await Promise.all([
-				getAllFuelLogs(vehicle.id),
-				getAllExpenses(vehicle.id)
+				getAllFuelLogs(vehicleId),
+				getAllExpenses(vehicleId)
 			]);
 			if (destroyed) {
 				return;
@@ -240,7 +200,6 @@
 		} catch {
 			if (!destroyed) {
 				dbError = true;
-				currentVehicle = null;
 				historyEntries = [];
 			}
 		} finally {
@@ -562,12 +521,13 @@
 	});
 
 	$effect(() => {
-		if (loadStarted) {
-			return;
+		const vehicleId = vehiclesCtx.activeVehicle?.id;
+		if (vehicleId) {
+			void loadEntriesForVehicle(vehicleId);
+		} else {
+			historyEntries = [];
+			loading = false;
 		}
-
-		loadStarted = true;
-		void loadHistoryRoute();
 	});
 
 	onMount(() => {
@@ -771,6 +731,8 @@
 				</div>
 			{:else}
 				<HistoryList
+					vehicleName={currentVehicle?.name}
+					hasVehicles={vehiclesCtx.vehicles.length > 0}
 					monthGroups={visibleHistoryMonthGroups}
 					currency={settingsCtx.settings.currency}
 					preferredFuelUnit={settingsCtx.settings.fuelUnit}
@@ -794,6 +756,7 @@
 			entry={selectedDetailEntry}
 			currency={settingsCtx.settings.currency}
 			preferredFuelUnit={settingsCtx.settings.fuelUnit}
+			vehicleName={currentVehicle?.name}
 			deleteState={getDeleteState(selectedDetailEntry)}
 			deleteDisabled={isDeleteDisabled(selectedDetailEntry)}
 			deleteErrorText={selectedDetailDeleteErrorText}

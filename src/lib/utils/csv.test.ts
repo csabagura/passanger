@@ -1,6 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Expense, FuelLog } from '$lib/db/schema';
-import { buildCSVFilename, buildHistoryExportCSV, downloadCSV } from './csv';
+import {
+	buildCSVFilename,
+	buildHistoryExportCSV,
+	buildHistoryExportCSVWithVehicles,
+	downloadCSV
+} from './csv';
 
 function createFuelEntry(overrides: Partial<FuelLog> = {}): FuelLog {
 	return {
@@ -132,6 +137,17 @@ describe('csv utilities', () => {
 		);
 	});
 
+	it('has no vehicle column in single-vehicle buildHistoryExportCSV (backward compat)', () => {
+		const csv = buildHistoryExportCSV([
+			{ kind: 'fuel', entry: createFuelEntry() }
+		]);
+		const headerLine = csv.split('\r\n')[0];
+		expect(headerLine).toBe(
+			'date,odometer,entry type,quantity,unit,cost,calculated consumption,notes'
+		);
+		expect(headerLine).not.toContain('vehicle');
+	});
+
 	it('creates a blob URL, clicks a synthetic anchor, and revokes the URL after triggering download', async () => {
 		vi.useFakeTimers();
 
@@ -184,5 +200,72 @@ describe('csv utilities', () => {
 		} finally {
 			vi.useRealTimers();
 		}
+	});
+});
+
+describe('buildHistoryExportCSVWithVehicles', () => {
+	it('includes vehicle column as first column in header', () => {
+		const vehicleNameMap = new Map([[7, 'Old Faithful']]);
+		const csv = buildHistoryExportCSVWithVehicles(
+			[{ kind: 'fuel', entry: createFuelEntry() }],
+			vehicleNameMap
+		);
+		const lines = csv.split('\r\n');
+		expect(lines[0]).toBe(
+			'vehicle,date,odometer,entry type,quantity,unit,cost,calculated consumption,notes'
+		);
+	});
+
+	it('maps vehicleId to vehicle name in each row', () => {
+		const vehicleNameMap = new Map([
+			[7, 'Old Faithful'],
+			[12, 'City Runner']
+		]);
+		const csv = buildHistoryExportCSVWithVehicles(
+			[
+				{ kind: 'fuel', entry: createFuelEntry({ vehicleId: 7 }) },
+				{
+					kind: 'maintenance',
+					entry: createMaintenanceEntry({
+						vehicleId: 12,
+						date: new Date(2026, 2, 14, 12, 0, 0, 0)
+					})
+				}
+			],
+			vehicleNameMap
+		);
+		const lines = csv.split('\r\n');
+		expect(lines[1]).toMatch(/^City Runner,/);
+		expect(lines[2]).toMatch(/^Old Faithful,/);
+	});
+
+	it('uses Unknown for missing vehicle IDs', () => {
+		const vehicleNameMap = new Map<number, string>();
+		const csv = buildHistoryExportCSVWithVehicles(
+			[{ kind: 'fuel', entry: createFuelEntry({ vehicleId: 99 }) }],
+			vehicleNameMap
+		);
+		const lines = csv.split('\r\n');
+		expect(lines[1]).toMatch(/^Unknown,/);
+	});
+
+	it('escapes vehicle names with commas and quotes', () => {
+		const vehicleNameMap = new Map([[7, 'My "Fast" Car, v2']]);
+		const csv = buildHistoryExportCSVWithVehicles(
+			[{ kind: 'fuel', entry: createFuelEntry() }],
+			vehicleNameMap
+		);
+		const lines = csv.split('\r\n');
+		expect(lines[1]).toMatch(/^"My ""Fast"" Car, v2",/);
+	});
+
+	it('sanitizes formula-injection vehicle names', () => {
+		const vehicleNameMap = new Map([[7, '=DROP("evil")']]);
+		const csv = buildHistoryExportCSVWithVehicles(
+			[{ kind: 'fuel', entry: createFuelEntry() }],
+			vehicleNameMap
+		);
+		const lines = csv.split('\r\n');
+		expect(lines[1]).not.toMatch(/^=/);
 	});
 });

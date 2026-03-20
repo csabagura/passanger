@@ -2,9 +2,17 @@
 	import '../app.css';
 	import { setContext } from 'svelte';
 	import UpdatePrompt from '$lib/components/UpdatePrompt.svelte';
+	import AppHeader from '$lib/components/AppHeader.svelte';
 	import NavBar from '$lib/components/NavBar.svelte';
 	import StorageProtectionNotice from '$lib/components/StorageProtectionNotice.svelte';
-	import { APP_SHELL_MAIN_PADDING, APP_SHELL_MAIN_PADDING_WITH_UPDATE_PROMPT } from '$lib/config';
+	import {
+		APP_SHELL_MAIN_PADDING,
+		APP_SHELL_MAIN_PADDING_WITH_UPDATE_PROMPT,
+		VEHICLE_ID_STORAGE_KEY
+	} from '$lib/config';
+	import { getAllVehicles } from '$lib/db/repositories/vehicles';
+	import type { Vehicle } from '$lib/db/schema';
+	import { readStoredVehicleId, safeSetItem } from '$lib/utils/vehicleStorage';
 	import { getSettings } from '$lib/utils/settings';
 	import type { AppSettings } from '$lib/utils/settings';
 	import {
@@ -16,6 +24,8 @@
 	import {
 		getInstallPromptPlatform,
 		hasInstallPromptBeenDismissed,
+		incrementSessionCount,
+		isSecondOrLaterSession,
 		isStandaloneDisplayMode,
 		markInstallPromptDismissed
 	} from '$lib/utils/installPrompt';
@@ -39,6 +49,75 @@
 		}
 	});
 
+	// Vehicle context — shared active vehicle state for all pages
+	let vehicles = $state<Vehicle[]>([]);
+	let activeVehicleId = $state<number | null>(null);
+	let vehiclesLoaded = $state(false);
+	let activeVehicle = $derived(
+		activeVehicleId !== null ? (vehicles.find((v) => v.id === activeVehicleId) ?? null) : null
+	);
+
+	async function loadVehicles() {
+		const result = await getAllVehicles();
+		if (!result.error) {
+			vehicles = result.data;
+		}
+		vehiclesLoaded = true;
+	}
+
+	function switchVehicle(id: number) {
+		activeVehicleId = id;
+		safeSetItem(VEHICLE_ID_STORAGE_KEY, String(id));
+	}
+
+	async function refreshVehicles() {
+		await loadVehicles();
+	}
+
+	$effect(() => {
+		activeVehicleId = readStoredVehicleId();
+		loadVehicles();
+	});
+
+	setContext('vehicles', {
+		get vehicles() {
+			return vehicles;
+		},
+		get activeVehicle() {
+			return activeVehicle;
+		},
+		get activeVehicleId() {
+			return activeVehicleId;
+		},
+		get loaded() {
+			return vehiclesLoaded;
+		},
+		switchVehicle,
+		refreshVehicles
+	});
+
+	// Theme: toggle .dark class on <html> based on settings.theme
+	$effect(() => {
+		const theme = settings.theme;
+		const prefersDark =
+			typeof window.matchMedia === 'function'
+				? window.matchMedia('(prefers-color-scheme: dark)')
+				: null;
+
+		const shouldBeDark =
+			theme === 'dark' || (theme === 'system' && (prefersDark?.matches ?? false));
+		document.documentElement.classList.toggle('dark', shouldBeDark);
+
+		if (theme === 'system' && prefersDark) {
+			const onSystemChange = () => {
+				document.documentElement.classList.toggle('dark', prefersDark.matches);
+			};
+			prefersDark.addEventListener('change', onSystemChange);
+			return () => prefersDark.removeEventListener('change', onSystemChange);
+		}
+	});
+
+	let installPromptSessionEligible = $state(false);
 	let installPromptPlatform = $state<InstallPromptPlatform>('unsupported');
 	let installPromptStandalone = $state(false);
 	let installPromptCompleted = $state(false);
@@ -53,6 +132,10 @@
 	}
 
 	function canShowInstallPrompt(): boolean {
+		if (!installPromptSessionEligible) {
+			return false;
+		}
+
 		if (installPromptStandalone || isInstallPromptDismissed()) {
 			return false;
 		}
@@ -124,6 +207,10 @@
 
 	$effect(() => {
 		if (typeof window === 'undefined') return;
+
+		// Session tracking for install prompt timing (FR40)
+		incrementSessionCount();
+		installPromptSessionEligible = isSecondOrLaterSession();
 
 		// Read dismissal state synchronously before awaiting (so UI doesn't flash)
 		noticeDismissed = hasNoticeDismissed();
@@ -200,6 +287,7 @@
 </svelte:head>
 
 <UpdatePrompt onVisibilityChange={(visible) => (updatePromptVisible = visible)} />
+<AppHeader />
 <main class="min-h-screen" style={`padding-bottom: ${mainBottomPadding};`}>
 	{#if showNotice}
 		<StorageProtectionNotice ondismiss={handleNoticeDismiss} />

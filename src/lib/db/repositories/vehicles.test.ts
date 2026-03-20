@@ -7,8 +7,10 @@ import {
 	getVehicleById,
 	getAllVehicles,
 	updateVehicle,
-	deleteVehicle
+	deleteVehicle,
+	getVehicleCount
 } from './vehicles';
+import { MAX_VEHICLES } from '$lib/config';
 
 beforeEach(async () => {
 	await db.delete();
@@ -211,6 +213,63 @@ describe('VehicleRepository', () => {
 			const result = await updateVehicle(999, { name: 'Ghost' });
 			expect(result.data).toBeNull();
 			expect(result.error?.code).toBe('NOT_FOUND');
+		});
+	});
+
+	describe('MAX_VEHICLES enforcement', () => {
+		it('allows saving when under the limit', async () => {
+			for (let i = 0; i < MAX_VEHICLES - 1; i++) {
+				await saveVehicle({ name: `Car ${i}`, make: 'Make', model: 'Model' });
+			}
+			const result = await saveVehicle({ name: 'Last Car', make: 'Make', model: 'Model' });
+			expect(result.error).toBeNull();
+			expect(result.data).toBeTruthy();
+		});
+
+		it('returns MAX_VEHICLES error when at the limit', async () => {
+			for (let i = 0; i < MAX_VEHICLES; i++) {
+				await saveVehicle({ name: `Car ${i}`, make: 'Make', model: 'Model' });
+			}
+			const result = await saveVehicle({ name: 'Over Limit', make: 'Make', model: 'Model' });
+			expect(result.data).toBeNull();
+			expect(result.error?.code).toBe('MAX_VEHICLES');
+		});
+
+		it('allows saving again after deleting one at the limit', async () => {
+			const vehicles = [];
+			for (let i = 0; i < MAX_VEHICLES; i++) {
+				const r = await saveVehicle({ name: `Car ${i}`, make: 'Make', model: 'Model' });
+				vehicles.push(r.data!);
+			}
+			await deleteVehicle(vehicles[0].id);
+			const result = await saveVehicle({ name: 'Replacement', make: 'Make', model: 'Model' });
+			expect(result.error).toBeNull();
+			expect(result.data).toBeTruthy();
+		});
+	});
+
+	describe('getVehicleCount', () => {
+		it('returns 0 when no vehicles exist', async () => {
+			const result = await getVehicleCount();
+			expect(result.error).toBeNull();
+			expect(result.data).toBe(0);
+		});
+
+		it('returns correct count after adding vehicles', async () => {
+			await saveVehicle({ name: 'Car 1', make: 'A', model: 'B' });
+			await saveVehicle({ name: 'Car 2', make: 'A', model: 'B' });
+			const result = await getVehicleCount();
+			expect(result.error).toBeNull();
+			expect(result.data).toBe(2);
+		});
+
+		it('returns correct count after delete', async () => {
+			const r = await saveVehicle({ name: 'Car 1', make: 'A', model: 'B' });
+			await saveVehicle({ name: 'Car 2', make: 'A', model: 'B' });
+			await deleteVehicle(r.data!.id);
+			const result = await getVehicleCount();
+			expect(result.error).toBeNull();
+			expect(result.data).toBe(1);
 		});
 	});
 

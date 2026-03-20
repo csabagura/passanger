@@ -1,4 +1,4 @@
-import { INSTALL_PROMPT_DISMISSED_KEY } from '$lib/config';
+import { INSTALL_PROMPT_DISMISSED_KEY, SESSION_COUNT_STORAGE_KEY } from '$lib/config';
 
 export interface BeforeInstallPromptChoice {
 	outcome: 'accepted' | 'dismissed';
@@ -53,6 +53,23 @@ export function isStandaloneDisplayMode(target: Window = window): boolean {
 	}
 
 	return target.matchMedia('(display-mode: standalone)').matches;
+}
+
+export function getSessionCount(): number {
+	const raw = safeGetItem(SESSION_COUNT_STORAGE_KEY);
+	if (raw === null) return 0;
+	const parsed = parseInt(raw, 10);
+	return Number.isNaN(parsed) ? 0 : parsed;
+}
+
+export function incrementSessionCount(): number {
+	const next = getSessionCount() + 1;
+	safeSetItem(SESSION_COUNT_STORAGE_KEY, String(next));
+	return next;
+}
+
+export function isSecondOrLaterSession(): boolean {
+	return getSessionCount() >= 2;
 }
 
 export function getInstallPromptPlatform(target: Navigator = navigator): InstallPromptPlatform {

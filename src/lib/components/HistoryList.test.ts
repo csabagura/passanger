@@ -133,7 +133,7 @@ describe('HistoryList', () => {
 			currency: 'EUR '
 		});
 
-		expect(screen.getByText('No entries yet - log your first fill-up!')).toBeTruthy();
+		expect(screen.getByText('No entries yet — log your first fill-up!')).toBeTruthy();
 		const cta = screen.getByRole('link', { name: /go to fuel/i });
 		expect(cta.getAttribute('href')).toBe('/fuel-entry');
 	});
@@ -350,6 +350,51 @@ describe('HistoryList', () => {
 		expect(document.activeElement).not.toBe(cta);
 
 		document.body.removeChild(sentinel);
+	});
+
+	it('shows vehicle-specific empty state when vehicleName is provided', () => {
+		render(HistoryList, {
+			monthGroups: [],
+			currency: 'EUR ',
+			vehicleName: 'Old Faithful'
+		});
+
+		expect(screen.getByText('No entries yet for Old Faithful')).toBeTruthy();
+		expect(
+			screen.getByText('Log a fuel fill-up or maintenance event for Old Faithful to get started.')
+		).toBeTruthy();
+		expect(screen.getByRole('link', { name: /go to fuel/i })).toBeTruthy();
+	});
+
+	it('shows generic empty state when vehicleName is not provided', () => {
+		render(HistoryList, {
+			monthGroups: [],
+			currency: 'EUR '
+		});
+
+		expect(screen.getByText('No entries yet — log your first fill-up!')).toBeTruthy();
+		expect(
+			screen.getByText(
+				'Your saved fuel and maintenance records will appear here in newest-first order.'
+			)
+		).toBeTruthy();
+		expect(screen.queryByText(/for/)).not.toBeTruthy();
+	});
+
+	it('shows no-vehicles empty state when hasVehicles is false', () => {
+		render(HistoryList, {
+			monthGroups: [],
+			currency: 'EUR ',
+			hasVehicles: false
+		});
+
+		expect(screen.getByText('Add a vehicle to get started')).toBeTruthy();
+		expect(
+			screen.getByText(
+				'Create your first vehicle in Settings, then start logging fuel and maintenance.'
+			)
+		).toBeTruthy();
+		expect(screen.getByRole('link', { name: /go to settings/i })).toBeTruthy();
 	});
 
 	it('renders month headers with per-month subtotals above grouped entries', () => {

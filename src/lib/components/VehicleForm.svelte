@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onDestroy } from 'svelte';
-	import { saveVehicle } from '$lib/db/repositories/vehicles';
+	import { saveVehicle, updateVehicle } from '$lib/db/repositories/vehicles';
 	import type { Vehicle } from '$lib/db/schema';
 	import type { AppError } from '$lib/utils/result';
 
@@ -12,14 +12,19 @@
 
 	interface VehicleFormProps {
 		onSave: (vehicle: Vehicle) => void;
+		initialVehicle?: Vehicle;
+		onUpdate?: (vehicle: Vehicle) => void;
+		onCancel?: () => void;
 	}
 
-	let { onSave }: VehicleFormProps = $props();
+	let { onSave, initialVehicle, onUpdate, onCancel }: VehicleFormProps = $props();
 
-	let displayName = $state('');
-	let make = $state('');
-	let model = $state('');
-	let yearStr = $state('');
+	const isEditMode = $derived(!!initialVehicle);
+
+	let displayName = $state(initialVehicle?.name ?? '');
+	let make = $state(initialVehicle?.make ?? '');
+	let model = $state(initialVehicle?.model ?? '');
+	let yearStr = $state(initialVehicle?.year != null ? String(initialVehicle.year) : '');
 
 	let displayNameError = $state('');
 	let makeError = $state('');
@@ -104,19 +109,36 @@
 
 		const yearNum = yearStr.trim() !== '' ? parseInt(yearStr.trim(), 10) : undefined;
 
-		const result = await saveVehicle({
-			name: displayName.trim(),
-			make: make.trim(),
-			model: model.trim(),
-			year: yearNum
-		});
+		if (isEditMode && initialVehicle) {
+			const result = await updateVehicle(initialVehicle.id, {
+				name: displayName.trim(),
+				make: make.trim(),
+				model: model.trim(),
+				year: yearNum
+			});
 
-		if (result.error) {
-			saveState = { status: 'error', error: result.error };
-			showToast('Failed to save vehicle. Please try again.');
+			if (result.error) {
+				saveState = { status: 'error', error: result.error };
+				showToast('Failed to save vehicle. Please try again.');
+			} else {
+				saveState = { status: 'success', data: result.data };
+				onUpdate?.(result.data);
+			}
 		} else {
-			saveState = { status: 'success', data: result.data };
-			onSave(result.data);
+			const result = await saveVehicle({
+				name: displayName.trim(),
+				make: make.trim(),
+				model: model.trim(),
+				year: yearNum
+			});
+
+			if (result.error) {
+				saveState = { status: 'error', error: result.error };
+				showToast('Failed to save vehicle. Please try again.');
+			} else {
+				saveState = { status: 'success', data: result.data };
+				onSave(result.data);
+			}
 		}
 	}
 </script>
@@ -137,7 +159,9 @@
 	}}
 	class="flex flex-col gap-4 p-4"
 >
-	<h1 class="text-lg font-semibold text-foreground">Add Vehicle</h1>
+	<h1 class="text-lg font-semibold text-foreground">
+		{isEditMode ? 'Edit Vehicle' : 'Add Vehicle'}
+	</h1>
 
 	<div>
 		<label for="displayName" class="block text-sm font-medium text-foreground">Display Name</label>
@@ -238,12 +262,27 @@
 		{/if}
 	</div>
 
-	<button
-		type="submit"
-		disabled={!isFormValid || saveState.status === 'loading'}
-		aria-busy={saveState.status === 'loading'}
-		class="rounded-xl bg-accent px-4 py-3 text-sm font-semibold text-accent-foreground disabled:opacity-50"
-	>
-		{saveState.status === 'loading' ? 'Adding…' : 'Add Vehicle'}
-	</button>
+	<div class="flex gap-3">
+		{#if onCancel}
+			<button
+				type="button"
+				onclick={onCancel}
+				class="rounded-xl border border-border px-4 py-3 text-sm font-semibold text-foreground"
+			>
+				Cancel
+			</button>
+		{/if}
+		<button
+			type="submit"
+			disabled={!isFormValid || saveState.status === 'loading'}
+			aria-busy={saveState.status === 'loading'}
+			class="flex-1 rounded-xl bg-accent px-4 py-3 text-sm font-semibold text-accent-foreground disabled:opacity-50"
+		>
+			{#if saveState.status === 'loading'}
+				Saving…
+			{:else}
+				{isEditMode ? 'Save changes' : 'Save vehicle'}
+			{/if}
+		</button>
+	</div>
 </form>

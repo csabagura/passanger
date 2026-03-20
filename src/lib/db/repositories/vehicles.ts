@@ -2,6 +2,7 @@ import { db } from '../db';
 import { ok, err } from '$lib/utils/result';
 import type { Result } from '$lib/utils/result';
 import type { Vehicle, NewVehicle } from '../schema';
+import { MAX_VEHICLES } from '$lib/config';
 
 function validateNewVehicle(vehicle: NewVehicle): string | null {
 	if (!vehicle.name || vehicle.name.trim() === '') return 'Vehicle name is required';
@@ -40,6 +41,14 @@ function validatePartialVehicle(changes: Partial<NewVehicle>): string | null {
 
 export class VehicleRepository {
 	async saveVehicle(vehicle: NewVehicle): Promise<Result<Vehicle>> {
+		try {
+			const existing = await db.vehicles.count();
+			if (existing >= MAX_VEHICLES) {
+				return err('MAX_VEHICLES', `Maximum ${MAX_VEHICLES} vehicles allowed`);
+			}
+		} catch (e) {
+			return err('SAVE_FAILED', String(e));
+		}
 		const validationError = validateNewVehicle(vehicle);
 		if (validationError) return err('VALIDATION_ERROR', validationError);
 		try {
@@ -93,6 +102,15 @@ export class VehicleRepository {
 			return err('DELETE_FAILED', String(e));
 		}
 	}
+
+	async getVehicleCount(): Promise<Result<number>> {
+		try {
+			const count = await db.vehicles.count();
+			return ok(count);
+		} catch (e) {
+			return err('GET_FAILED', String(e));
+		}
+	}
 }
 
 export const vehicleRepository = new VehicleRepository();
@@ -104,3 +122,4 @@ export const getAllVehicles = () => vehicleRepository.getAllVehicles();
 export const updateVehicle = (id: number, changes: Partial<NewVehicle>) =>
 	vehicleRepository.updateVehicle(id, changes);
 export const deleteVehicle = (id: number) => vehicleRepository.deleteVehicle(id);
+export const getVehicleCount = () => vehicleRepository.getVehicleCount();

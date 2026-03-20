@@ -5,9 +5,11 @@ import VehicleForm from './VehicleForm.svelte';
 import type { Vehicle } from '$lib/db/schema';
 
 const mockSaveVehicle = vi.fn();
+const mockUpdateVehicle = vi.fn();
 
 vi.mock('$lib/db/repositories/vehicles', () => ({
-	saveVehicle: (...args: unknown[]) => mockSaveVehicle(...args)
+	saveVehicle: (...args: unknown[]) => mockSaveVehicle(...args),
+	updateVehicle: (...args: unknown[]) => mockUpdateVehicle(...args)
 }));
 
 describe('VehicleForm', () => {
@@ -349,7 +351,7 @@ describe('VehicleForm', () => {
 
 			const btn = document.querySelector('button[type="submit"]') as HTMLButtonElement;
 			expect(btn.disabled).toBe(true);
-			expect(btn.textContent?.trim()).toBe('Adding…');
+			expect(btn.textContent?.trim()).toBe('Saving…');
 
 			resolveSave({
 				data: { id: 1, name: 'My Car', make: 'Toyota', model: 'Yaris' },
@@ -507,6 +509,126 @@ describe('VehicleForm', () => {
 			await fireEvent.blur(yearInput);
 			const errorEl = document.getElementById('year-error');
 			expect(errorEl?.getAttribute('role')).toBe('alert');
+		});
+	});
+
+	describe('edit mode', () => {
+		const existingVehicle: Vehicle = {
+			id: 42,
+			name: 'My Honda',
+			make: 'Honda',
+			model: 'Civic',
+			year: 2019
+		};
+		const mockOnUpdate = vi.fn();
+		const mockOnCancel = vi.fn();
+
+		it('pre-fills all fields with initialVehicle data', () => {
+			render(VehicleForm, {
+				onSave: mockOnSave,
+				initialVehicle: existingVehicle,
+				onUpdate: mockOnUpdate,
+				onCancel: mockOnCancel
+			});
+			expect((screen.getByLabelText(/display name/i) as HTMLInputElement).value).toBe(
+				'My Honda'
+			);
+			expect((screen.getByLabelText(/^make$/i) as HTMLInputElement).value).toBe('Honda');
+			expect((screen.getByLabelText(/^model$/i) as HTMLInputElement).value).toBe('Civic');
+			expect((screen.getByLabelText(/year/i) as HTMLInputElement).value).toBe('2019');
+		});
+
+		it('shows "Edit Vehicle" heading instead of "Add Vehicle"', () => {
+			render(VehicleForm, {
+				onSave: mockOnSave,
+				initialVehicle: existingVehicle,
+				onUpdate: mockOnUpdate
+			});
+			expect(screen.getByRole('heading', { level: 1, name: /edit vehicle/i })).toBeTruthy();
+			expect(screen.queryByRole('heading', { name: /add vehicle/i })).toBeNull();
+		});
+
+		it('shows "Save changes" button text instead of "Save vehicle"', () => {
+			render(VehicleForm, {
+				onSave: mockOnSave,
+				initialVehicle: existingVehicle,
+				onUpdate: mockOnUpdate
+			});
+			const btn = document.querySelector('button[type="submit"]') as HTMLButtonElement;
+			expect(btn.textContent?.trim()).toBe('Save changes');
+		});
+
+		it('calls updateVehicle instead of saveVehicle on submit', async () => {
+			const updatedVehicle: Vehicle = { ...existingVehicle, name: 'Updated Honda' };
+			mockUpdateVehicle.mockResolvedValue({ data: updatedVehicle, error: null });
+			render(VehicleForm, {
+				onSave: mockOnSave,
+				initialVehicle: existingVehicle,
+				onUpdate: mockOnUpdate,
+				onCancel: mockOnCancel
+			});
+			await fireEvent.input(screen.getByLabelText(/display name/i), {
+				target: { value: 'Updated Honda' }
+			});
+			await fireEvent.submit(document.querySelector('form')!);
+			await new Promise((r) => setTimeout(r, 0));
+			expect(mockUpdateVehicle).toHaveBeenCalledWith(42, {
+				name: 'Updated Honda',
+				make: 'Honda',
+				model: 'Civic',
+				year: 2019
+			});
+			expect(mockSaveVehicle).not.toHaveBeenCalled();
+		});
+
+		it('calls onUpdate callback on successful edit', async () => {
+			const updatedVehicle: Vehicle = { ...existingVehicle, name: 'Updated Honda' };
+			mockUpdateVehicle.mockResolvedValue({ data: updatedVehicle, error: null });
+			render(VehicleForm, {
+				onSave: mockOnSave,
+				initialVehicle: existingVehicle,
+				onUpdate: mockOnUpdate,
+				onCancel: mockOnCancel
+			});
+			await fireEvent.input(screen.getByLabelText(/display name/i), {
+				target: { value: 'Updated Honda' }
+			});
+			await fireEvent.submit(document.querySelector('form')!);
+			await new Promise((r) => setTimeout(r, 0));
+			expect(mockOnUpdate).toHaveBeenCalledWith(updatedVehicle);
+			expect(mockOnSave).not.toHaveBeenCalled();
+		});
+
+		it('renders Cancel button that calls onCancel', async () => {
+			render(VehicleForm, {
+				onSave: mockOnSave,
+				initialVehicle: existingVehicle,
+				onUpdate: mockOnUpdate,
+				onCancel: mockOnCancel
+			});
+			const cancelBtn = screen.getByRole('button', { name: /cancel/i });
+			expect(cancelBtn).toBeTruthy();
+			await fireEvent.click(cancelBtn);
+			expect(mockOnCancel).toHaveBeenCalled();
+		});
+
+		it('does not render Cancel button when onCancel is not provided', () => {
+			render(VehicleForm, {
+				onSave: mockOnSave,
+				initialVehicle: existingVehicle,
+				onUpdate: mockOnUpdate
+			});
+			expect(screen.queryByRole('button', { name: /cancel/i })).toBeNull();
+		});
+
+		it('pre-fills without year when initialVehicle has no year', () => {
+			const noYearVehicle: Vehicle = { id: 10, name: 'Van', make: 'Ford', model: 'Transit' };
+			render(VehicleForm, {
+				onSave: mockOnSave,
+				initialVehicle: noYearVehicle,
+				onUpdate: mockOnUpdate
+			});
+			expect((screen.getByLabelText(/year/i) as HTMLInputElement).value).toBe('');
 		});
 	});
 });

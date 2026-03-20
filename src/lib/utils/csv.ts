@@ -70,6 +70,25 @@ export function buildCSVFilename(exportDate: Date = new Date()): string {
 	return `passanger-export-${toLocalDateInputValue(exportDate)}.csv`;
 }
 
+const CSV_HEADERS_WITH_VEHICLE = ['vehicle', ...CSV_HEADERS] as const;
+
+export function buildHistoryExportCSVWithVehicles(
+	entries: HistoryEntry[],
+	vehicleNameMap: Map<number, string>
+): string {
+	const rows = [
+		[...CSV_HEADERS_WITH_VEHICLE],
+		...[...entries]
+			.sort(compareHistoryEntriesNewestFirst)
+			.map((entry) => [
+				sanitizeFormulaText(vehicleNameMap.get(entry.entry.vehicleId) ?? 'Unknown'),
+				...mapHistoryEntryToCSVRow(entry)
+			])
+	];
+
+	return rows.map((row) => row.map((cell) => escapeCSVCell(cell)).join(',')).join('\r\n');
+}
+
 export function buildHistoryExportCSV(entries: HistoryEntry[]): string {
 	const rows = [
 		[...CSV_HEADERS],

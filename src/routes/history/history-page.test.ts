@@ -4,8 +4,6 @@ import { flushSync } from 'svelte';
 import { HISTORY_ENTRY_FILTER_STORAGE_KEY, RESULT_CARD_DISMISS_MS } from '$lib/config';
 import HistoryPage from './+page.svelte';
 
-const mockGetVehicleById = vi.fn();
-const mockGetAllVehicles = vi.fn();
 const mockGetAllFuelLogs = vi.fn();
 const mockGetAllExpenses = vi.fn();
 const mockDeleteFuelLog = vi.fn();
@@ -13,11 +11,6 @@ const mockDeleteExpense = vi.fn();
 const mockUpdateFuelLogsAtomic = vi.fn();
 const mockUpdateExpense = vi.fn();
 const scrollToMock = vi.fn();
-
-vi.mock('$lib/db/repositories/vehicles', () => ({
-	getVehicleById: (...args: unknown[]) => mockGetVehicleById(...args),
-	getAllVehicles: (...args: unknown[]) => mockGetAllVehicles(...args)
-}));
 
 vi.mock('$lib/db/repositories/fuelLogs', () => ({
 	getAllFuelLogs: (...args: unknown[]) => mockGetAllFuelLogs(...args),
@@ -34,6 +27,10 @@ vi.mock('$lib/db/repositories/expenses', () => ({
 }));
 
 let mockSettingsFuelUnit: 'L/100km' | 'MPG' = 'L/100km';
+let mockActiveVehicle: { id: number; name: string; make: string; model: string; year?: number } | null =
+	null;
+const mockSwitchVehicle = vi.fn();
+const mockRefreshVehicles = vi.fn().mockResolvedValue(undefined);
 
 vi.mock('svelte', async (importOriginal) => {
 	const actual = await importOriginal<typeof import('svelte')>();
@@ -46,6 +43,25 @@ vi.mock('svelte', async (importOriginal) => {
 						fuelUnit: mockSettingsFuelUnit,
 						currency: 'EUR '
 					}
+				};
+			}
+
+			if (key === 'vehicles') {
+				return {
+					get vehicles() {
+						return mockActiveVehicle ? [mockActiveVehicle] : [];
+					},
+					get activeVehicle() {
+						return mockActiveVehicle;
+					},
+					get activeVehicleId() {
+						return mockActiveVehicle?.id ?? null;
+					},
+					get loaded() {
+						return true;
+					},
+					switchVehicle: mockSwitchVehicle,
+					refreshVehicles: mockRefreshVehicles
 				};
 			}
 
@@ -211,7 +227,7 @@ describe('History page', () => {
 		document.body.style.overflow = '';
 		document.documentElement.style.overflow = '';
 		setDocumentVisibilityState('visible');
-		mockGetAllVehicles.mockResolvedValue({ data: [], error: null });
+		mockActiveVehicle = null;
 		mockGetAllFuelLogs.mockResolvedValue({ data: [], error: null });
 		mockGetAllExpenses.mockResolvedValue({ data: [], error: null });
 		mockDeleteFuelLog.mockResolvedValue({
@@ -252,12 +268,8 @@ describe('History page', () => {
 		cleanup();
 	});
 
-	it('resolves the current vehicle from storage and loads mixed history entries from repositories only', async () => {
-		localStorageMock.setItem('passanger_vehicle_id', '7');
-		mockGetVehicleById.mockResolvedValue({
-			data: testVehicle,
-			error: null
-		});
+	it('loads mixed history entries from vehicle context and repositories only', async () => {
+		mockActiveVehicle = testVehicle;
 		mockGetAllFuelLogs.mockResolvedValue({ data: [testFuelEntry], error: null });
 		mockGetAllExpenses.mockResolvedValue({ data: [testExpense], error: null });
 
@@ -278,26 +290,22 @@ describe('History page', () => {
 		expect(fetchSpy).not.toHaveBeenCalled();
 	});
 
-	it('shows the story empty state and skips repository list reads when no vehicle exists', async () => {
-		mockGetAllVehicles.mockResolvedValue({ data: [], error: null });
+	it('shows the no-vehicles empty state and skips repository list reads when no vehicle exists', async () => {
+		mockActiveVehicle = null;
 
 		render(HistoryPage);
 		await settlePage();
 
-		expect(screen.getByText('No entries yet - log your first fill-up!')).toBeTruthy();
-		expect(screen.getByRole('link', { name: /go to fuel/i }).getAttribute('href')).toBe(
-			'/fuel-entry'
+		expect(screen.getByText('Add a vehicle to get started')).toBeTruthy();
+		expect(screen.getByRole('link', { name: /go to settings/i }).getAttribute('href')).toBe(
+			'/settings'
 		);
 		expect(mockGetAllFuelLogs).not.toHaveBeenCalled();
 		expect(mockGetAllExpenses).not.toHaveBeenCalled();
 	});
 
 	it('shows the export recovery state when repository-backed history loading fails', async () => {
-		localStorageMock.setItem('passanger_vehicle_id', '7');
-		mockGetVehicleById.mockResolvedValue({
-			data: { id: 7, name: 'Old Faithful', make: 'Ford', model: 'Mustang' },
-			error: null
-		});
+		mockActiveVehicle = testVehicle;
 		mockGetAllFuelLogs.mockResolvedValue({
 			data: undefined,
 			error: { code: 'GET_FAILED', message: 'boom' }
@@ -311,24 +319,22 @@ describe('History page', () => {
 		expect(screen.getByRole('link', { name: /export my data/i }).getAttribute('href')).toBe(
 			'/export'
 		);
-		expect(screen.queryByText('No entries yet - log your first fill-up!')).toBeNull();
+		expect(screen.queryByText(/No entries yet/)).toBeNull();
 	});
 
 	it('shows the deferred loading state only after 300ms of unresolved work', async () => {
 		vi.useFakeTimers();
 
-		localStorageMock.setItem('passanger_vehicle_id', '7');
-		let resolveVehicle:
-			| ((value: {
-					data: { id: number; name: string; make: string; model: string };
-					error: null;
-			  }) => void)
+		mockActiveVehicle = testVehicle;
+		let resolveFuelLogs:
+			| ((value: { data: never[]; error: null }) => void)
 			| undefined;
-		mockGetVehicleById.mockReturnValue(
+		mockGetAllFuelLogs.mockReturnValue(
 			new Promise((resolve) => {
-				resolveVehicle = resolve;
+				resolveFuelLogs = resolve;
 			})
 		);
+		mockGetAllExpenses.mockResolvedValue({ data: [], error: null });
 
 		render(HistoryPage);
 		flushSync();
@@ -343,12 +349,7 @@ describe('History page', () => {
 		flushSync();
 		expect(screen.getByText('Loading history...')).toBeTruthy();
 
-		resolveVehicle?.({
-			data: { id: 7, name: 'Old Faithful', make: 'Ford', model: 'Mustang' },
-			error: null
-		});
-		mockGetAllFuelLogs.mockResolvedValue({ data: [], error: null });
-		mockGetAllExpenses.mockResolvedValue({ data: [], error: null });
+		resolveFuelLogs?.({ data: [], error: null });
 
 		await Promise.resolve();
 		await Promise.resolve();
@@ -356,8 +357,7 @@ describe('History page', () => {
 	});
 
 	it('clicking Delete after swipe reveal arms the inline delete confirmation', async () => {
-		localStorageMock.setItem('passanger_vehicle_id', '7');
-		mockGetVehicleById.mockResolvedValue({ data: testVehicle, error: null });
+		mockActiveVehicle = testVehicle;
 		mockGetAllFuelLogs.mockResolvedValue({ data: [testFuelEntry], error: null });
 		mockGetAllExpenses.mockResolvedValue({ data: [], error: null });
 
@@ -379,8 +379,7 @@ describe('History page', () => {
 	});
 
 	it('confirms delete: calls deleteFuelLog and removes the entry from the list', async () => {
-		localStorageMock.setItem('passanger_vehicle_id', '7');
-		mockGetVehicleById.mockResolvedValue({ data: testVehicle, error: null });
+		mockActiveVehicle = testVehicle;
 		mockGetAllFuelLogs.mockResolvedValue({ data: [testFuelEntry], error: null });
 		mockGetAllExpenses.mockResolvedValue({ data: [], error: null });
 
@@ -408,8 +407,7 @@ describe('History page', () => {
 	});
 
 	it('cancels delete: dismisses confirmation without calling deleteFuelLog', async () => {
-		localStorageMock.setItem('passanger_vehicle_id', '7');
-		mockGetVehicleById.mockResolvedValue({ data: testVehicle, error: null });
+		mockActiveVehicle = testVehicle;
 		mockGetAllFuelLogs.mockResolvedValue({ data: [testFuelEntry], error: null });
 		mockGetAllExpenses.mockResolvedValue({ data: [], error: null });
 
@@ -438,8 +436,7 @@ describe('History page', () => {
 	});
 
 	it('clicking Edit after swipe reveal shows the inline edit form heading', async () => {
-		localStorageMock.setItem('passanger_vehicle_id', '7');
-		mockGetVehicleById.mockResolvedValue({ data: testVehicle, error: null });
+		mockActiveVehicle = testVehicle;
 		mockGetAllFuelLogs.mockResolvedValue({ data: [testFuelEntry], error: null });
 		mockGetAllExpenses.mockResolvedValue({ data: [], error: null });
 
@@ -460,8 +457,7 @@ describe('History page', () => {
 	});
 
 	it('opens detail, preserves filter and time-period state on dismiss, returns focus, and does not scroll', async () => {
-		localStorageMock.setItem('passanger_vehicle_id', '7');
-		mockGetVehicleById.mockResolvedValue({ data: testVehicle, error: null });
+		mockActiveVehicle = testVehicle;
 		mockGetAllFuelLogs.mockResolvedValue({ data: [testFuelEntry], error: null });
 		mockGetAllExpenses.mockResolvedValue({ data: [testExpense], error: null });
 
@@ -502,8 +498,7 @@ describe('History page', () => {
 	});
 
 	it('hands off from detail to the existing edit flow and restores focus after cancel', async () => {
-		localStorageMock.setItem('passanger_vehicle_id', '7');
-		mockGetVehicleById.mockResolvedValue({ data: testVehicle, error: null });
+		mockActiveVehicle = testVehicle;
 		mockGetAllFuelLogs.mockResolvedValue({ data: [testFuelEntry], error: null });
 		mockGetAllExpenses.mockResolvedValue({ data: [], error: null });
 
@@ -526,8 +521,7 @@ describe('History page', () => {
 	});
 
 	it('deletes from detail, updates the stat bar immediately, and focuses the next visible entry', async () => {
-		localStorageMock.setItem('passanger_vehicle_id', '7');
-		mockGetVehicleById.mockResolvedValue({ data: testVehicle, error: null });
+		mockActiveVehicle = testVehicle;
 		mockGetAllFuelLogs.mockResolvedValue({ data: [testFuelEntry], error: null });
 		mockGetAllExpenses.mockResolvedValue({ data: [testExpense], error: null });
 
@@ -556,8 +550,7 @@ describe('History page', () => {
 	});
 
 	it('keeps a failed detail-sheet delete visible inside the sheet alert region', async () => {
-		localStorageMock.setItem('passanger_vehicle_id', '7');
-		mockGetVehicleById.mockResolvedValue({ data: testVehicle, error: null });
+		mockActiveVehicle = testVehicle;
 		mockGetAllFuelLogs.mockResolvedValue({ data: [testFuelEntry], error: null });
 		mockGetAllExpenses.mockResolvedValue({ data: [], error: null });
 		mockDeleteFuelLog.mockResolvedValue({
@@ -595,8 +588,7 @@ describe('History page', () => {
 	});
 
 	it('deletes a maintenance expense and removes it from history', async () => {
-		localStorageMock.setItem('passanger_vehicle_id', '7');
-		mockGetVehicleById.mockResolvedValue({ data: testVehicle, error: null });
+		mockActiveVehicle = testVehicle;
 		mockGetAllFuelLogs.mockResolvedValue({ data: [], error: null });
 		mockGetAllExpenses.mockResolvedValue({ data: [testExpense], error: null });
 
@@ -623,50 +615,41 @@ describe('History page', () => {
 		expect(screen.queryByRole('group', { name: /maintenance entry, Mar 10, 2026/i })).toBeNull();
 	});
 
-	it('recovers to first vehicle via getAllVehicles when stored vehicle ID is stale (NOT_FOUND)', async () => {
-		localStorageMock.setItem('passanger_vehicle_id', '99');
-		mockGetVehicleById.mockResolvedValue({
-			data: null,
-			error: { code: 'NOT_FOUND', message: 'vehicle not found' }
-		});
-		const recoveryVehicle = {
+	it('displays the active vehicle from context and loads its entries', async () => {
+		const anotherVehicle = {
 			id: 3,
 			name: 'Backup Car',
 			make: 'Toyota',
 			model: 'Corolla',
 			year: 2019
 		};
-		mockGetAllVehicles.mockResolvedValue({ data: [recoveryVehicle], error: null });
+		mockActiveVehicle = anotherVehicle;
 		mockGetAllFuelLogs.mockResolvedValue({ data: [], error: null });
 		mockGetAllExpenses.mockResolvedValue({ data: [], error: null });
 
 		render(HistoryPage);
 		await settlePage();
 
-		expect(mockGetVehicleById).toHaveBeenCalledWith(99);
-		expect(mockGetAllVehicles).toHaveBeenCalled();
-		expect(localStorageMock.getItem('passanger_vehicle_id')).toBe('3');
-		expect(screen.getByText(/Backup Car/i)).toBeTruthy();
+		expect(screen.getAllByText(/Backup Car/i).length).toBeGreaterThanOrEqual(1);
+		expect(mockGetAllFuelLogs).toHaveBeenCalledWith(3);
 	});
 
 	it('shows empty state with vehicle subtitle when vehicle exists but both repos return empty arrays', async () => {
-		localStorageMock.setItem('passanger_vehicle_id', '7');
-		mockGetVehicleById.mockResolvedValue({ data: testVehicle, error: null });
+		mockActiveVehicle = testVehicle;
 		mockGetAllFuelLogs.mockResolvedValue({ data: [], error: null });
 		mockGetAllExpenses.mockResolvedValue({ data: [], error: null });
 
 		render(HistoryPage);
 		await settlePage();
 
-		expect(screen.getByText(/Old Faithful/i)).toBeTruthy();
-		expect(screen.getByText('No entries yet - log your first fill-up!')).toBeTruthy();
+		expect(screen.getAllByText(/Old Faithful/i).length).toBeGreaterThanOrEqual(1);
+		expect(screen.getByText('No entries yet for Old Faithful')).toBeTruthy();
 		expect(screen.getByRole('link', { name: /go to fuel/i })).toBeTruthy();
 		expect(getHistoryCards()).toHaveLength(0);
 	});
 
 	it('renders the All/Fuel/Maintenance filter and updates visible entries in place', async () => {
-		localStorageMock.setItem('passanger_vehicle_id', '7');
-		mockGetVehicleById.mockResolvedValue({ data: testVehicle, error: null });
+		mockActiveVehicle = testVehicle;
 		mockGetAllFuelLogs.mockResolvedValue({ data: [testFuelEntry], error: null });
 		mockGetAllExpenses.mockResolvedValue({ data: [testExpense], error: null });
 
@@ -703,8 +686,7 @@ describe('History page', () => {
 	});
 
 	it('shows a filter-specific empty state with a reset action when no entries match', async () => {
-		localStorageMock.setItem('passanger_vehicle_id', '7');
-		mockGetVehicleById.mockResolvedValue({ data: testVehicle, error: null });
+		mockActiveVehicle = testVehicle;
 		mockGetAllFuelLogs.mockResolvedValue({ data: [testFuelEntry], error: null });
 		mockGetAllExpenses.mockResolvedValue({ data: [], error: null });
 
@@ -716,8 +698,8 @@ describe('History page', () => {
 		await fireEvent.click(screen.getByRole('radio', { name: 'Maintenance' }));
 		flushSync();
 
-		expect(screen.getByText('No maintenance entries match this filter yet.')).toBeTruthy();
-		expect(screen.queryByText('No entries yet - log your first fill-up!')).toBeNull();
+		expect(screen.getByText('No maintenance entries for Old Faithful yet.')).toBeTruthy();
+		expect(screen.queryByText(/No entries yet/)).toBeNull();
 		expect(screen.getByRole('button', { name: 'Show all entries' })).toBeTruthy();
 		expect(getHistoryCards()).toHaveLength(0);
 
@@ -730,7 +712,7 @@ describe('History page', () => {
 
 	it('defaults to This month and switches stat-bar periods without reloading route data', async () => {
 		setHistoryReferenceDate(new Date(2026, 2, 15, 12, 0, 0, 0));
-		localStorageMock.setItem('passanger_vehicle_id', '7');
+		mockActiveVehicle = testVehicle;
 		const earlierThisYearFuelEntry = {
 			...testFuelEntry,
 			id: 4,
@@ -753,7 +735,6 @@ describe('History page', () => {
 			date: new Date(2025, 2, 5, 12, 0, 0, 0),
 			cost: 250
 		};
-		mockGetVehicleById.mockResolvedValue({ data: testVehicle, error: null });
 		mockGetAllFuelLogs.mockResolvedValue({
 			data: [currentMonthFuelEntry, earlierThisYearFuelEntry],
 			error: null
@@ -805,7 +786,7 @@ describe('History page', () => {
 
 	it('keeps the history list stable while entry-type and time-period controls combine for stat-bar math', async () => {
 		setHistoryReferenceDate(new Date(2026, 2, 15, 12, 0, 0, 0));
-		localStorageMock.setItem('passanger_vehicle_id', '7');
+		mockActiveVehicle = testVehicle;
 		const earlierThisYearFuelEntry = {
 			...testFuelEntry,
 			id: 4,
@@ -830,7 +811,6 @@ describe('History page', () => {
 			...testExpense,
 			date: new Date(2026, 2, 10, 12, 0, 0, 0)
 		};
-		mockGetVehicleById.mockResolvedValue({ data: testVehicle, error: null });
 		mockGetAllFuelLogs.mockResolvedValue({
 			data: [currentMonthFuelEntry, earlierThisYearFuelEntry, previousYearFuelEntry],
 			error: null
@@ -871,7 +851,7 @@ describe('History page', () => {
 	});
 
 	it('recalculates the stat bar and month subtotals from the active entry-type filter', async () => {
-		localStorageMock.setItem('passanger_vehicle_id', '7');
+		mockActiveVehicle = testVehicle;
 		const olderFuelEntry = {
 			...testFuelEntry,
 			id: 4,
@@ -887,7 +867,6 @@ describe('History page', () => {
 			...testExpense,
 			date: createDateInRelativeMonth(0, 10)
 		};
-		mockGetVehicleById.mockResolvedValue({ data: testVehicle, error: null });
 		mockGetAllFuelLogs.mockResolvedValue({
 			data: [currentMonthFuelEntry, olderFuelEntry],
 			error: null
@@ -937,12 +916,11 @@ describe('History page', () => {
 
 	it('renders consumption labels in MPG when fuel-unit preference is MPG', async () => {
 		mockSettingsFuelUnit = 'MPG';
-		localStorageMock.setItem('passanger_vehicle_id', '7');
+		mockActiveVehicle = testVehicle;
 		const currentMonthFuelEntry = {
 			...testFuelEntry,
 			date: createDateInRelativeMonth(0, 9)
 		};
-		mockGetVehicleById.mockResolvedValue({ data: testVehicle, error: null });
 		mockGetAllFuelLogs.mockResolvedValue({ data: [currentMonthFuelEntry], error: null });
 		mockGetAllExpenses.mockResolvedValue({ data: [], error: null });
 
@@ -955,7 +933,7 @@ describe('History page', () => {
 	});
 
 	it('shows a zero current-month hero while keeping older visible month groups when the active filter removes current-month entries', async () => {
-		localStorageMock.setItem('passanger_vehicle_id', '7');
+		mockActiveVehicle = testVehicle;
 		const previousMonthFuelEntry = {
 			...testFuelEntry,
 			id: 4,
@@ -968,7 +946,6 @@ describe('History page', () => {
 			...testExpense,
 			date: createDateInRelativeMonth(0, 10)
 		};
-		mockGetVehicleById.mockResolvedValue({ data: testVehicle, error: null });
 		mockGetAllFuelLogs.mockResolvedValue({ data: [previousMonthFuelEntry], error: null });
 		mockGetAllExpenses.mockResolvedValue({ data: [currentMonthExpense], error: null });
 
@@ -1021,8 +998,7 @@ describe('History page', () => {
 
 		for (const resumeEvent of resumeEvents) {
 			vi.setSystemTime(marchRolloverStart);
-			localStorageMock.setItem('passanger_vehicle_id', '7');
-			mockGetVehicleById.mockResolvedValue({ data: testVehicle, error: null });
+			mockActiveVehicle = testVehicle;
 			mockGetAllFuelLogs.mockResolvedValue({ data: [marchFuelEntry], error: null });
 			mockGetAllExpenses.mockResolvedValue({ data: [], error: null });
 
@@ -1048,8 +1024,7 @@ describe('History page', () => {
 	});
 
 	it('restores the selected history filter from sessionStorage on remount within the same tab', async () => {
-		localStorageMock.setItem('passanger_vehicle_id', '7');
-		mockGetVehicleById.mockResolvedValue({ data: testVehicle, error: null });
+		mockActiveVehicle = testVehicle;
 		mockGetAllFuelLogs.mockResolvedValue({ data: [testFuelEntry], error: null });
 		mockGetAllExpenses.mockResolvedValue({ data: [testExpense], error: null });
 
@@ -1072,8 +1047,7 @@ describe('History page', () => {
 	});
 
 	it('falls back to All and keeps filtering interactive when sessionStorage is blocked', async () => {
-		localStorageMock.setItem('passanger_vehicle_id', '7');
-		mockGetVehicleById.mockResolvedValue({ data: testVehicle, error: null });
+		mockActiveVehicle = testVehicle;
 		mockGetAllFuelLogs.mockResolvedValue({ data: [testFuelEntry], error: null });
 		mockGetAllExpenses.mockResolvedValue({ data: [testExpense], error: null });
 		Object.defineProperty(globalThis, 'sessionStorage', {
@@ -1103,8 +1077,7 @@ describe('History page', () => {
 	});
 
 	it('saving an edited fuel entry updates the history list and dismisses the inline form', async () => {
-		localStorageMock.setItem('passanger_vehicle_id', '7');
-		mockGetVehicleById.mockResolvedValue({ data: testVehicle, error: null });
+		mockActiveVehicle = testVehicle;
 		mockGetAllFuelLogs.mockResolvedValue({ data: [testFuelEntry], error: null });
 		mockGetAllExpenses.mockResolvedValue({ data: [], error: null });
 		const updatedEntry = { ...testFuelEntry, totalCost: 99, calculatedConsumption: 8 };
@@ -1142,8 +1115,7 @@ describe('History page', () => {
 	});
 
 	it('saving an edited maintenance entry updates the history list and dismisses the inline form', async () => {
-		localStorageMock.setItem('passanger_vehicle_id', '7');
-		mockGetVehicleById.mockResolvedValue({ data: testVehicle, error: null });
+		mockActiveVehicle = testVehicle;
 		mockGetAllFuelLogs.mockResolvedValue({ data: [], error: null });
 		mockGetAllExpenses.mockResolvedValue({ data: [testExpense], error: null });
 		const updatedExpense = { ...testExpense, cost: 150 };
@@ -1181,8 +1153,7 @@ describe('History page', () => {
 	});
 
 	it('failed delete then cancel clears both inline confirmation and route error banner', async () => {
-		localStorageMock.setItem('passanger_vehicle_id', '7');
-		mockGetVehicleById.mockResolvedValue({ data: testVehicle, error: null });
+		mockActiveVehicle = testVehicle;
 		mockGetAllFuelLogs.mockResolvedValue({ data: [testFuelEntry], error: null });
 		mockGetAllExpenses.mockResolvedValue({ data: [], error: null });
 		mockDeleteFuelLog.mockResolvedValue({
@@ -1225,8 +1196,7 @@ describe('History page', () => {
 	});
 
 	it('keeps the delete error banner visible when the filter changes during a failed delete', async () => {
-		localStorageMock.setItem('passanger_vehicle_id', '7');
-		mockGetVehicleById.mockResolvedValue({ data: testVehicle, error: null });
+		mockActiveVehicle = testVehicle;
 		mockGetAllFuelLogs.mockResolvedValue({ data: [testFuelEntry], error: null });
 		mockGetAllExpenses.mockResolvedValue({ data: [testExpense], error: null });
 
@@ -1268,7 +1238,7 @@ describe('History page', () => {
 	});
 
 	it('refreshes the open fuel edit timeline after deleting a different fuel log', async () => {
-		localStorageMock.setItem('passanger_vehicle_id', '7');
+		mockActiveVehicle = testVehicle;
 		const firstLog = {
 			...testFuelEntry,
 			id: 1,
@@ -1304,7 +1274,6 @@ describe('History page', () => {
 		};
 		let currentFuelLogs = [editedLog, deletedLog, firstLog];
 
-		mockGetVehicleById.mockResolvedValue({ data: testVehicle, error: null });
 		mockGetAllFuelLogs.mockImplementation(async () => ({
 			data: [...currentFuelLogs],
 			error: null
@@ -1362,7 +1331,7 @@ describe('History page', () => {
 	});
 
 	it('moves focus to the next entry card after a successful delete', async () => {
-		localStorageMock.setItem('passanger_vehicle_id', '7');
+		mockActiveVehicle = testVehicle;
 		const newerEntry = { ...testExpense, id: 9, type: 'Insurance', cost: 120 };
 		const olderEntry = {
 			...testExpense,
@@ -1372,7 +1341,6 @@ describe('History page', () => {
 			cost: 250
 		};
 
-		mockGetVehicleById.mockResolvedValue({ data: testVehicle, error: null });
 		mockGetAllFuelLogs.mockResolvedValue({ data: [], error: null });
 		mockGetAllExpenses.mockResolvedValue({ data: [newerEntry, olderEntry], error: null });
 		mockDeleteExpense.mockResolvedValue({ data: undefined, error: null });
@@ -1396,7 +1364,7 @@ describe('History page', () => {
 	});
 
 	it('falls back to a still-visible card when the filter changes during a pending delete', async () => {
-		localStorageMock.setItem('passanger_vehicle_id', '7');
+		mockActiveVehicle = testVehicle;
 		const olderFuelEntry = {
 			...testFuelEntry,
 			id: 4,
@@ -1404,7 +1372,6 @@ describe('History page', () => {
 			totalCost: 44
 		};
 
-		mockGetVehicleById.mockResolvedValue({ data: testVehicle, error: null });
 		mockGetAllFuelLogs.mockResolvedValue({ data: [testFuelEntry, olderFuelEntry], error: null });
 		mockGetAllExpenses.mockResolvedValue({ data: [testExpense], error: null });
 
@@ -1443,10 +1410,9 @@ describe('History page', () => {
 	});
 
 	it('moves focus to the empty-state CTA when deleting the last remaining entry', async () => {
-		localStorageMock.setItem('passanger_vehicle_id', '7');
+		mockActiveVehicle = testVehicle;
 		const onlyEntry = { ...testExpense, id: 9, type: 'Insurance', cost: 120 };
 
-		mockGetVehicleById.mockResolvedValue({ data: testVehicle, error: null });
 		mockGetAllFuelLogs.mockResolvedValue({ data: [], error: null });
 		mockGetAllExpenses.mockResolvedValue({ data: [onlyEntry], error: null });
 		mockDeleteExpense.mockResolvedValue({ data: undefined, error: null });
@@ -1468,8 +1434,7 @@ describe('History page', () => {
 	});
 
 	it('sibling Edit and Delete buttons are disabled while another deletion is actively in flight', async () => {
-		localStorageMock.setItem('passanger_vehicle_id', '7');
-		mockGetVehicleById.mockResolvedValue({ data: testVehicle, error: null });
+		mockActiveVehicle = testVehicle;
 		mockGetAllFuelLogs.mockResolvedValue({ data: [testFuelEntry], error: null });
 		mockGetAllExpenses.mockResolvedValue({ data: [testExpense], error: null });
 
@@ -1528,8 +1493,7 @@ describe('History page', () => {
 			odometer: 87000,
 			totalCost: 65
 		};
-		localStorageMock.setItem('passanger_vehicle_id', '7');
-		mockGetVehicleById.mockResolvedValue({ data: testVehicle, error: null });
+		mockActiveVehicle = testVehicle;
 		mockGetAllFuelLogs.mockResolvedValue({
 			data: [testFuelEntry, secondFuelEntry],
 			error: null
@@ -1565,5 +1529,64 @@ describe('History page', () => {
 			name: /edit maintenance entry from Mar 10, 2026/i
 		});
 		expect((maintEditButton as HTMLButtonElement).disabled).toBe(true);
+	});
+
+	it('includes vehicle name in filtered empty state title', async () => {
+		mockActiveVehicle = testVehicle;
+		mockGetAllFuelLogs.mockResolvedValue({ data: [testFuelEntry], error: null });
+		mockGetAllExpenses.mockResolvedValue({ data: [], error: null });
+
+		render(HistoryPage);
+		await settlePage();
+
+		await fireEvent.click(screen.getByRole('radio', { name: 'Maintenance' }));
+		flushSync();
+
+		expect(screen.getByText('No maintenance entries for Old Faithful yet.')).toBeTruthy();
+	});
+
+	it('includes vehicle name in fuel filtered empty state title', async () => {
+		mockActiveVehicle = testVehicle;
+		mockGetAllFuelLogs.mockResolvedValue({ data: [], error: null });
+		mockGetAllExpenses.mockResolvedValue({ data: [testExpense], error: null });
+
+		render(HistoryPage);
+		await settlePage();
+
+		await fireEvent.click(screen.getByRole('radio', { name: 'Fuel' }));
+		flushSync();
+
+		expect(screen.getByText('No fuel entries for Old Faithful yet.')).toBeTruthy();
+	});
+
+	it('shows vehicle-specific empty state when active vehicle has zero entries', async () => {
+		mockActiveVehicle = testVehicle;
+		mockGetAllFuelLogs.mockResolvedValue({ data: [], error: null });
+		mockGetAllExpenses.mockResolvedValue({ data: [], error: null });
+
+		render(HistoryPage);
+		await settlePage();
+
+		expect(screen.getByText('No entries yet for Old Faithful')).toBeTruthy();
+		expect(
+			screen.getByText(
+				'Log a fuel fill-up or maintenance event for Old Faithful to get started.'
+			)
+		).toBeTruthy();
+	});
+
+	it('shows vehicle name in entry detail sheet', async () => {
+		mockActiveVehicle = testVehicle;
+		mockGetAllFuelLogs.mockResolvedValue({ data: [testFuelEntry], error: null });
+		mockGetAllExpenses.mockResolvedValue({ data: [], error: null });
+
+		render(HistoryPage);
+		await settlePage();
+
+		await openHistoryDetail(/view details for fuel entry from Mar 9, 2026/i);
+
+		const dialog = screen.getByRole('dialog', { name: 'Entry details' });
+		expect(within(dialog).getByText('Vehicle')).toBeTruthy();
+		expect(within(dialog).getByText('Old Faithful')).toBeTruthy();
 	});
 });

@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/svelte';
-import { SETTINGS_STORAGE_KEY } from '$lib/config';
 import ExportPage from './+page.svelte';
 
 const mockGetVehicleById = vi.fn();
@@ -8,21 +7,9 @@ const mockGetAllVehicles = vi.fn();
 const mockGetAllFuelLogs = vi.fn();
 const mockGetAllExpenses = vi.fn();
 const mockBuildHistoryExportCSV = vi.fn();
+const mockBuildHistoryExportCSVWithVehicles = vi.fn();
 const mockBuildCSVFilename = vi.fn();
 const mockDownloadCSV = vi.fn();
-const mockUpdateSettings = vi.fn();
-
-let settingsState: {
-	value: {
-		fuelUnit: 'L/100km' | 'MPG';
-		currency: string;
-	};
-} = {
-	value: {
-		fuelUnit: 'L/100km' as const,
-		currency: '€'
-	}
-};
 
 vi.mock('$lib/db/repositories/vehicles', () => ({
 	getVehicleById: (...args: unknown[]) => mockGetVehicleById(...args),
@@ -39,6 +26,8 @@ vi.mock('$lib/db/repositories/expenses', () => ({
 
 vi.mock('$lib/utils/csv', () => ({
 	buildHistoryExportCSV: (...args: unknown[]) => mockBuildHistoryExportCSV(...args),
+	buildHistoryExportCSVWithVehicles: (...args: unknown[]) =>
+		mockBuildHistoryExportCSVWithVehicles(...args),
 	buildCSVFilename: (...args: unknown[]) => mockBuildCSVFilename(...args),
 	downloadCSV: (...args: unknown[]) => mockDownloadCSV(...args)
 }));
@@ -62,19 +51,7 @@ const localStorageMock = (() => {
 Object.defineProperty(globalThis, 'localStorage', { value: localStorageMock, writable: true });
 
 function renderPage() {
-	const settingsContext = {
-		get settings() {
-			return settingsState.value;
-		},
-		updateSettings(nextSettings: { fuelUnit: 'L/100km' | 'MPG'; currency: string }) {
-			settingsState.value = nextSettings;
-			mockUpdateSettings(nextSettings);
-		}
-	};
-
-	return render(ExportPage, {
-		context: new Map([['settings', settingsContext]])
-	});
+	return render(ExportPage);
 }
 
 function createDeferred<T>() {
@@ -98,6 +75,7 @@ async function settlePage() {
 }
 
 const testVehicle = { id: 7, name: 'Old Faithful', make: 'Ford', model: 'Mustang', year: 2016 };
+const testVehicle2 = { id: 12, name: 'City Runner', make: 'Toyota', model: 'Corolla', year: 2020 };
 const testFuelEntry = {
 	id: 2,
 	vehicleId: 7,
@@ -118,17 +96,23 @@ const testExpense = {
 	cost: 120,
 	notes: 'Filter too'
 };
+const testFuelEntry2 = {
+	id: 10,
+	vehicleId: 12,
+	date: new Date(2026, 2, 14, 12, 0, 0, 0),
+	odometer: 34000,
+	quantity: 35,
+	unit: 'L' as const,
+	distanceUnit: 'km' as const,
+	totalCost: 60,
+	calculatedConsumption: 6.5,
+	notes: ''
+};
 
 describe('Export page', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 		localStorageMock.clear();
-		settingsState = {
-			value: {
-				fuelUnit: 'L/100km',
-				currency: '€'
-			}
-		};
 
 		mockGetVehicleById.mockResolvedValue({
 			data: null,
@@ -138,6 +122,7 @@ describe('Export page', () => {
 		mockGetAllFuelLogs.mockResolvedValue({ data: [], error: null });
 		mockGetAllExpenses.mockResolvedValue({ data: [], error: null });
 		mockBuildHistoryExportCSV.mockReturnValue('mock-csv-content');
+		mockBuildHistoryExportCSVWithVehicles.mockReturnValue('mock-csv-content-with-vehicles');
 		mockBuildCSVFilename.mockReturnValue('passanger-export-2026-03-12.csv');
 		mockDownloadCSV.mockImplementation(() => undefined);
 	});
@@ -152,7 +137,7 @@ describe('Export page', () => {
 			error: null;
 		}>();
 
-		mockGetAllVehicles.mockImplementationOnce(() => deferredVehicleRecovery.promise);
+		mockGetAllVehicles.mockImplementation(() => deferredVehicleRecovery.promise);
 
 		renderPage();
 
@@ -166,7 +151,7 @@ describe('Export page', () => {
 		await settlePage();
 	});
 
-	it('recovers the current vehicle, loads mixed entry summary state, and persists the recovered vehicle id', async () => {
+	it('recovers the current vehicle, loads entry summary state, and persists the recovered vehicle id', async () => {
 		mockGetAllVehicles.mockResolvedValue({
 			data: [testVehicle],
 			error: null
@@ -179,9 +164,8 @@ describe('Export page', () => {
 		await settlePage();
 
 		const exportButton = screen.getByRole('button', { name: 'Export CSV' });
-		expect(screen.getByRole('heading', { name: 'Export' })).toBeTruthy();
-		expect(screen.getByText(/Old Faithful/)).toBeTruthy();
-		expect(screen.getByText('2 entries ready')).toBeTruthy();
+		expect(screen.getByText(/Old Faithful · Ford/)).toBeTruthy();
+		expect(screen.getByText(/2 entries ready/)).toBeTruthy();
 		expect(screen.getByText(/Date range:/)).toBeTruthy();
 		expect(exportButton).toBeTruthy();
 		expect(exportButton.className).not.toContain('w-full');
@@ -201,8 +185,8 @@ describe('Export page', () => {
 		await settlePage();
 
 		expect(mockGetVehicleById).toHaveBeenCalledWith(99);
-		expect(mockGetAllVehicles).toHaveBeenCalledTimes(1);
-		expect(screen.getByText(/Old Faithful/)).toBeTruthy();
+		expect(mockGetAllVehicles).toHaveBeenCalled();
+		expect(screen.getByText(/Old Faithful · Ford/)).toBeTruthy();
 		expect(localStorageMock.getItem('passanger_vehicle_id')).toBe('7');
 	});
 
@@ -217,7 +201,6 @@ describe('Export page', () => {
 		await settlePage();
 
 		expect(mockGetVehicleById).toHaveBeenCalledWith(7);
-		expect(mockGetAllVehicles).not.toHaveBeenCalled();
 		expect(screen.getByRole('alert')).toBeTruthy();
 		expect(screen.getByText('Could not prepare your export. Please try again.')).toBeTruthy();
 		expect(localStorageMock.getItem('passanger_vehicle_id')).toBe('7');
@@ -229,12 +212,9 @@ describe('Export page', () => {
 			data: testVehicle,
 			error: null
 		});
-		mockGetAllFuelLogs
-			.mockResolvedValueOnce({ data: [testFuelEntry], error: null })
-			.mockResolvedValueOnce({ data: [testFuelEntry], error: null });
-		mockGetAllExpenses
-			.mockResolvedValueOnce({ data: [testExpense], error: null })
-			.mockResolvedValueOnce({ data: [testExpense], error: null });
+		mockGetAllVehicles.mockResolvedValue({ data: [testVehicle], error: null });
+		mockGetAllFuelLogs.mockResolvedValue({ data: [testFuelEntry], error: null });
+		mockGetAllExpenses.mockResolvedValue({ data: [testExpense], error: null });
 
 		renderPage();
 		await settlePage();
@@ -257,17 +237,15 @@ describe('Export page', () => {
 			'mock-csv-content',
 			'passanger-export-2026-03-12.csv'
 		);
-		expect(mockGetAllFuelLogs).toHaveBeenCalledTimes(2);
-		expect(mockGetAllExpenses).toHaveBeenCalledTimes(2);
 	});
 
-	it('shows the empty state with a Fuel CTA when there are no saved entries', async () => {
+	it('shows the empty state with a Log CTA when there are no saved entries', async () => {
 		renderPage();
 		await settlePage();
 
 		expect(screen.getByText('Nothing to export yet - log your first fill-up!')).toBeTruthy();
-		const link = screen.getByRole('link', { name: 'Go to Fuel Entry' });
-		expect(link.getAttribute('href')).toBe('/fuel-entry');
+		const link = screen.getByRole('link', { name: 'Go to Log' });
+		expect(link.getAttribute('href')).toBe('/log');
 		expect(screen.queryByRole('button', { name: 'Export CSV' })).toBeNull();
 	});
 
@@ -277,15 +255,14 @@ describe('Export page', () => {
 			data: testVehicle,
 			error: null
 		});
+		mockGetAllVehicles.mockResolvedValue({ data: [testVehicle], error: null });
 
 		renderPage();
 		await settlePage();
 
-		expect(screen.getByText(/Old Faithful/)).toBeTruthy();
+		expect(screen.getByText(/Old Faithful · Ford/)).toBeTruthy();
 		expect(screen.getByText('Nothing to export yet - log your first fill-up!')).toBeTruthy();
-		expect(screen.getByRole('link', { name: 'Go to Fuel Entry' }).getAttribute('href')).toBe(
-			'/fuel-entry'
-		);
+		expect(screen.getByRole('link', { name: 'Go to Log' }).getAttribute('href')).toBe('/log');
 		expect(screen.queryByRole('button', { name: 'Export CSV' })).toBeNull();
 	});
 
@@ -309,6 +286,7 @@ describe('Export page', () => {
 			data: testVehicle,
 			error: null
 		});
+		mockGetAllVehicles.mockResolvedValue({ data: [testVehicle], error: null });
 
 		const deferredFuelExport = createDeferred<{
 			data: Array<typeof testFuelEntry>;
@@ -340,8 +318,6 @@ describe('Export page', () => {
 
 		await fireEvent.click(exportingButton);
 
-		expect(mockGetAllFuelLogs).toHaveBeenCalledTimes(2);
-		expect(mockGetAllExpenses).toHaveBeenCalledTimes(2);
 		expect(mockBuildHistoryExportCSV).not.toHaveBeenCalled();
 
 		deferredFuelExport.resolve({ data: [testFuelEntry], error: null });
@@ -358,6 +334,7 @@ describe('Export page', () => {
 			data: testVehicle,
 			error: null
 		});
+		mockGetAllVehicles.mockResolvedValue({ data: [testVehicle], error: null });
 		mockGetAllFuelLogs
 			.mockResolvedValueOnce({ data: [testFuelEntry], error: null })
 			.mockResolvedValueOnce({
@@ -382,99 +359,176 @@ describe('Export page', () => {
 		expect(mockDownloadCSV).not.toHaveBeenCalled();
 	});
 
-	it('reveals labelled settings controls from the gear button', async () => {
-		renderPage();
-		await settlePage();
+	describe('scope selector (multi-vehicle)', () => {
+		it('shows scope selector when user has multiple vehicles', async () => {
+			localStorageMock.setItem('passanger_vehicle_id', '7');
+			mockGetVehicleById.mockResolvedValue({ data: testVehicle, error: null });
+			mockGetAllVehicles.mockResolvedValue({
+				data: [testVehicle, testVehicle2],
+				error: null
+			});
+			mockGetAllFuelLogs.mockResolvedValue({
+				data: [testFuelEntry, testFuelEntry2],
+				error: null
+			});
+			mockGetAllExpenses.mockResolvedValue({ data: [testExpense], error: null });
 
-		await fireEvent.click(screen.getByRole('button', { name: 'Open settings' }));
+			renderPage();
+			await settlePage();
 
-		expect(screen.getByRole('heading', { name: 'Settings' })).toBeTruthy();
-		expect(screen.getByRole('radio', { name: 'L/100km' })).toBeTruthy();
-		expect(screen.getByRole('radio', { name: 'MPG' })).toBeTruthy();
-		expect(screen.getByLabelText('Currency prefix')).toBeTruthy();
-		expect(screen.getByRole('link', { name: 'Export all data' }).getAttribute('href')).toBe(
-			'#export-route-primary-action'
-		);
+			expect(screen.getByRole('radiogroup', { name: /Export scope/i })).toBeTruthy();
+			expect(screen.getByRole('radio', { name: /Current vehicle/i })).toBeTruthy();
+			expect(screen.getByRole('radio', { name: /All vehicles/i })).toBeTruthy();
+		});
+
+		it('hides scope selector when user has only one vehicle', async () => {
+			localStorageMock.setItem('passanger_vehicle_id', '7');
+			mockGetVehicleById.mockResolvedValue({ data: testVehicle, error: null });
+			mockGetAllVehicles.mockResolvedValue({ data: [testVehicle], error: null });
+			mockGetAllFuelLogs.mockResolvedValue({ data: [testFuelEntry], error: null });
+			mockGetAllExpenses.mockResolvedValue({ data: [testExpense], error: null });
+
+			renderPage();
+			await settlePage();
+
+			expect(screen.queryByRole('radiogroup')).toBeNull();
+		});
+
+		it('defaults to all-vehicles scope when multiple vehicles exist', async () => {
+			localStorageMock.setItem('passanger_vehicle_id', '7');
+			mockGetVehicleById.mockResolvedValue({ data: testVehicle, error: null });
+			mockGetAllVehicles.mockResolvedValue({
+				data: [testVehicle, testVehicle2],
+				error: null
+			});
+			mockGetAllFuelLogs.mockResolvedValue({
+				data: [testFuelEntry, testFuelEntry2],
+				error: null
+			});
+			mockGetAllExpenses.mockResolvedValue({ data: [testExpense], error: null });
+
+			renderPage();
+			await settlePage();
+
+			const allVehiclesRadio = screen.getByRole('radio', {
+				name: /All vehicles/i
+			}) as HTMLInputElement;
+			expect(allVehiclesRadio.checked).toBe(true);
+			expect(screen.getByText(/All vehicles\)/)).toBeTruthy();
+		});
+
+		it('updates entry summary when switching to current-vehicle scope', async () => {
+			localStorageMock.setItem('passanger_vehicle_id', '7');
+			mockGetVehicleById.mockResolvedValue({ data: testVehicle, error: null });
+			mockGetAllVehicles.mockResolvedValue({
+				data: [testVehicle, testVehicle2],
+				error: null
+			});
+			mockGetAllFuelLogs
+				.mockResolvedValueOnce({ data: [testFuelEntry, testFuelEntry2], error: null })
+				.mockResolvedValueOnce({ data: [testFuelEntry], error: null });
+			mockGetAllExpenses
+				.mockResolvedValueOnce({ data: [testExpense], error: null })
+				.mockResolvedValueOnce({ data: [], error: null });
+
+			renderPage();
+			await settlePage();
+
+			const currentVehicleRadio = screen.getByRole('radio', { name: /Current vehicle/i });
+			await fireEvent.click(currentVehicleRadio);
+
+			await waitFor(() => {
+				expect(screen.getByText(/Old Faithful\)/)).toBeTruthy();
+			});
+		});
+
+		it('exports all vehicles data with vehicle column when all-vehicles scope selected', async () => {
+			localStorageMock.setItem('passanger_vehicle_id', '7');
+			mockGetVehicleById.mockResolvedValue({ data: testVehicle, error: null });
+			mockGetAllVehicles.mockResolvedValue({
+				data: [testVehicle, testVehicle2],
+				error: null
+			});
+			mockGetAllFuelLogs.mockResolvedValue({
+				data: [testFuelEntry, testFuelEntry2],
+				error: null
+			});
+			mockGetAllExpenses.mockResolvedValue({ data: [testExpense], error: null });
+
+			renderPage();
+			await settlePage();
+
+			await fireEvent.click(screen.getByRole('button', { name: 'Export CSV' }));
+
+			await waitFor(() => {
+				expect(mockBuildHistoryExportCSVWithVehicles).toHaveBeenCalledTimes(1);
+			});
+
+			expect(mockBuildHistoryExportCSV).not.toHaveBeenCalled();
+			expect(mockDownloadCSV).toHaveBeenCalledWith(
+				'mock-csv-content-with-vehicles',
+				'passanger-export-2026-03-12.csv'
+			);
+		});
+
+		it('exports current vehicle data without vehicle column when current-vehicle scope selected', async () => {
+			localStorageMock.setItem('passanger_vehicle_id', '7');
+			mockGetVehicleById.mockResolvedValue({ data: testVehicle, error: null });
+			mockGetAllVehicles.mockResolvedValue({
+				data: [testVehicle, testVehicle2],
+				error: null
+			});
+			mockGetAllFuelLogs
+				.mockResolvedValueOnce({ data: [testFuelEntry, testFuelEntry2], error: null })
+				.mockResolvedValueOnce({ data: [testFuelEntry], error: null })
+				.mockResolvedValueOnce({ data: [testFuelEntry], error: null });
+			mockGetAllExpenses
+				.mockResolvedValueOnce({ data: [testExpense], error: null })
+				.mockResolvedValueOnce({ data: [], error: null })
+				.mockResolvedValueOnce({ data: [], error: null });
+
+			renderPage();
+			await settlePage();
+
+			const currentVehicleRadio = screen.getByRole('radio', { name: /Current vehicle/i });
+			await fireEvent.click(currentVehicleRadio);
+			await waitFor(() => {
+				expect(screen.getByText(/Old Faithful\)/)).toBeTruthy();
+			});
+
+			await fireEvent.click(screen.getByRole('button', { name: 'Export CSV' }));
+
+			await waitFor(() => {
+				expect(mockBuildHistoryExportCSV).toHaveBeenCalledTimes(1);
+			});
+
+			expect(mockBuildHistoryExportCSVWithVehicles).not.toHaveBeenCalled();
+		});
 	});
 
-	it('saves preset settings through saveSettings and updateSettings while export remains visible', async () => {
-		mockGetAllVehicles.mockResolvedValue({
-			data: [testVehicle],
-			error: null
-		});
-		mockGetAllFuelLogs.mockResolvedValue({ data: [testFuelEntry], error: null });
-		mockGetAllExpenses.mockResolvedValue({ data: [testExpense], error: null });
+	describe('Import entry point', () => {
+		it('renders "Import data from another app" link pointing to /import', async () => {
+			localStorageMock.setItem('passanger_vehicle_id', '7');
+			mockGetVehicleById.mockResolvedValue({ data: testVehicle, error: null });
+			mockGetAllVehicles.mockResolvedValue({ data: [testVehicle], error: null });
 
-		renderPage();
-		await settlePage();
+			renderPage();
+			await settlePage();
 
-		await fireEvent.click(screen.getByRole('button', { name: 'Open settings' }));
-
-		expect(screen.getByRole('button', { name: 'Export CSV' })).toBeTruthy();
-
-		await fireEvent.click(screen.getByRole('button', { name: '$' }));
-		await fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
-
-		expect(mockUpdateSettings).toHaveBeenCalledWith({ fuelUnit: 'L/100km', currency: '$' });
-		expect(JSON.parse(localStorageMock.getItem(SETTINGS_STORAGE_KEY)!)).toEqual({
-			fuelUnit: 'L/100km',
-			currency: '$'
-		});
-		expect(screen.getByRole('status').textContent).toContain('Settings saved.');
-	});
-
-	it('saves custom currency prefixes and fuel-unit changes', async () => {
-		renderPage();
-		await settlePage();
-
-		await fireEvent.click(screen.getByRole('button', { name: 'Open settings' }));
-		await fireEvent.click(screen.getByRole('radio', { name: 'MPG' }));
-		await fireEvent.input(screen.getByLabelText('Currency prefix'), {
-			target: { value: 'EUR ' }
-		});
-		await fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
-
-		expect(mockUpdateSettings).toHaveBeenCalledWith({ fuelUnit: 'MPG', currency: 'EUR ' });
-		expect(JSON.parse(localStorageMock.getItem(SETTINGS_STORAGE_KEY)!)).toEqual({
-			fuelUnit: 'MPG',
-			currency: 'EUR '
-		});
-	});
-
-	it('surfaces blocked settings persistence instead of updating runtime state', async () => {
-		renderPage();
-		await settlePage();
-
-		const setItemSpy = vi.spyOn(localStorageMock, 'setItem').mockImplementationOnce(() => {
-			throw new DOMException('SecurityError', 'SecurityError');
+			const importLink = screen.getByRole('link', { name: /import data from another app/i });
+			expect(importLink).toBeTruthy();
+			expect(importLink.getAttribute('href')).toBe('/import');
 		});
 
-		await fireEvent.click(screen.getByRole('button', { name: 'Open settings' }));
-		await fireEvent.click(screen.getByRole('button', { name: '$' }));
-		await fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
+		it('shows import CTA even when there are no entries', async () => {
+			mockGetAllVehicles.mockResolvedValue({ data: [testVehicle], error: null });
+			localStorageMock.setItem('passanger_vehicle_id', '7');
+			mockGetVehicleById.mockResolvedValue({ data: testVehicle, error: null });
 
-		expect(mockUpdateSettings).not.toHaveBeenCalled();
-		expect(localStorageMock.getItem(SETTINGS_STORAGE_KEY)).toBeNull();
-		expect(screen.getByRole('alert').textContent).toContain(
-			'Could not save settings on this device.'
-		);
-		expect(screen.queryByRole('status')).toBeNull();
+			renderPage();
+			await settlePage();
 
-		setItemSpy.mockRestore();
-	});
-
-	it('rejects blank currency input instead of saving it', async () => {
-		renderPage();
-		await settlePage();
-
-		await fireEvent.click(screen.getByRole('button', { name: 'Open settings' }));
-		await fireEvent.input(screen.getByLabelText('Currency prefix'), {
-			target: { value: '   ' }
+			expect(screen.getByText(/switching from another app/i)).toBeTruthy();
 		});
-		await fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
-
-		expect(mockUpdateSettings).not.toHaveBeenCalled();
-		expect(screen.getByRole('alert').textContent).toContain('Enter a currency symbol or prefix.');
-		expect(localStorageMock.getItem(SETTINGS_STORAGE_KEY)).toBeNull();
 	});
 });

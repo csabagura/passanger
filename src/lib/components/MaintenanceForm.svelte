@@ -23,6 +23,7 @@
 		initialExpense?: Expense;
 		onCancel?: () => void;
 		onSuccessFeedbackComplete?: () => void;
+		onFirstCreateSave?: (expense: Expense) => void;
 	}
 
 	type SaveState =
@@ -40,8 +41,11 @@
 		mode = 'create',
 		initialExpense = undefined,
 		onCancel = () => {},
-		onSuccessFeedbackComplete = () => {}
+		onSuccessFeedbackComplete = () => {},
+		onFirstCreateSave = () => {}
 	}: Props = $props();
+
+	let hasCreatedFirstSave = $state(false);
 
 	const settingsCtx = getContext<{ settings: AppSettings }>('settings');
 
@@ -346,6 +350,10 @@
 			onSuccessFeedbackComplete();
 		}, RESULT_CARD_DISMISS_MS);
 
+		if (!isEditMode && !hasCreatedFirstSave) {
+			hasCreatedFirstSave = true;
+			onFirstCreateSave(result.data);
+		}
 		onSave(result.data);
 	}
 

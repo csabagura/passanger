@@ -268,6 +268,24 @@ describe('EntryDetailSheet', () => {
 		expect(onDeleteCancel).toHaveBeenCalledWith({ kind: 'fuel', entry: fuelEntry });
 	});
 
+	it('shows a Vehicle row in detail view when vehicleName is provided', () => {
+		render(EntryDetailSheet, {
+			entry: { kind: 'fuel', entry: createFuelEntry() },
+			currency: 'EUR ',
+			vehicleName: 'Old Faithful',
+			onClose: vi.fn()
+		});
+
+		expect(screen.getByText('Vehicle')).toBeTruthy();
+		expect(screen.getByText('Old Faithful')).toBeTruthy();
+	});
+
+	it('does not show a Vehicle row when vehicleName is not provided', () => {
+		renderSheet({ kind: 'fuel', entry: createFuelEntry() });
+
+		expect(screen.queryByText('Vehicle')).toBeNull();
+	});
+
 	it('renders delete failures inside the visible sheet alert region', () => {
 		renderSheet(
 			{ kind: 'fuel', entry: createFuelEntry() },

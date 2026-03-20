@@ -14,7 +14,8 @@ const mockUpdateFuelLogsAtomic = vi.fn();
 const mockSettings = vi.hoisted(() => ({
 	value: {
 		fuelUnit: 'L/100km',
-		currency: '€'
+		currency: '€',
+		theme: 'system'
 	} as AppSettings
 }));
 
@@ -76,7 +77,8 @@ describe('FuelEntryForm component — review fixes validation', () => {
 		onFirstCreateSaveSpy = vi.fn() as (result: FuelLog) => void;
 		mockSettings.value = {
 			fuelUnit: 'L/100km',
-			currency: '€'
+			currency: '€',
+			theme: 'system'
 		};
 		clearFuelDraft();
 
@@ -1800,7 +1802,8 @@ describe('FuelEntryForm component — review fixes validation', () => {
 		it('renders MPG labels and saves gallon/mile entries with MPG output', async () => {
 			mockSettings.value = {
 				fuelUnit: 'MPG',
-				currency: '$'
+				currency: '$',
+				theme: 'system'
 			};
 
 			mockGetAllFuelLogs.mockResolvedValue({
@@ -1868,7 +1871,8 @@ describe('FuelEntryForm component — review fixes validation', () => {
 		it('renders edit-mode success feedback in the preferred display unit and currency', async () => {
 			mockSettings.value = {
 				fuelUnit: 'MPG',
-				currency: 'EUR '
+				currency: 'EUR ',
+				theme: 'system'
 			};
 
 			const predecessor: FuelLog = {

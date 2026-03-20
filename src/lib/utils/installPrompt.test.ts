@@ -1,7 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
 	getInstallPromptPlatform,
+	getSessionCount,
 	hasInstallPromptBeenDismissed,
+	incrementSessionCount,
+	isSecondOrLaterSession,
 	isStandaloneDisplayMode,
 	markInstallPromptDismissed
 } from './installPrompt';
@@ -82,6 +85,66 @@ describe('installPrompt utilities', () => {
 					maxTouchPoints: 0
 				} as Navigator)
 			).toBe('unsupported');
+		});
+	});
+
+	describe('session counting', () => {
+		it('returns 0 when no session count is stored', () => {
+			expect(getSessionCount()).toBe(0);
+		});
+
+		it('returns 0 when stored value is non-numeric', () => {
+			localStorageMock.setItem('passanger_session_count', 'abc');
+			expect(getSessionCount()).toBe(0);
+		});
+
+		it('returns the stored numeric value', () => {
+			localStorageMock.setItem('passanger_session_count', '3');
+			expect(getSessionCount()).toBe(3);
+		});
+
+		it('increments and returns the new count', () => {
+			expect(incrementSessionCount()).toBe(1);
+			expect(incrementSessionCount()).toBe(2);
+			expect(incrementSessionCount()).toBe(3);
+			expect(getSessionCount()).toBe(3);
+		});
+
+		it('returns false for isSecondOrLaterSession when count < 2', () => {
+			expect(isSecondOrLaterSession()).toBe(false);
+			incrementSessionCount(); // count = 1
+			expect(isSecondOrLaterSession()).toBe(false);
+		});
+
+		it('returns true for isSecondOrLaterSession when count >= 2', () => {
+			incrementSessionCount(); // count = 1
+			incrementSessionCount(); // count = 2
+			expect(isSecondOrLaterSession()).toBe(true);
+		});
+
+		it('falls back to 0 when localStorage throws on read', () => {
+			const originalGetItem = localStorageMock.getItem;
+			localStorageMock.getItem = () => {
+				throw new DOMException('Blocked', 'SecurityError');
+			};
+
+			expect(getSessionCount()).toBe(0);
+			expect(isSecondOrLaterSession()).toBe(false);
+
+			localStorageMock.getItem = originalGetItem;
+		});
+
+		it('handles localStorage write failure gracefully', () => {
+			const originalSetItem = localStorageMock.setItem;
+			localStorageMock.setItem = () => {
+				throw new DOMException('Blocked', 'SecurityError');
+			};
+
+			expect(() => incrementSessionCount()).not.toThrow();
+			// Count stays 0 because write failed and read returns default
+			expect(getSessionCount()).toBe(0);
+
+			localStorageMock.setItem = originalSetItem;
 		});
 	});
 

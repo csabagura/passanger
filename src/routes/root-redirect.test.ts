@@ -14,7 +14,7 @@ vi.mock('$app/paths', () => ({
 }));
 
 describe('Root route redirect (+page.ts)', () => {
-	it('redirects to /fuel-entry with 307 status', async () => {
+	it('redirects to /log with 307 status', async () => {
 		const { load } = await import('./+page');
 
 		try {
@@ -23,10 +23,10 @@ describe('Root route redirect (+page.ts)', () => {
 		} catch (e: unknown) {
 			const err = e as { status: number; location: string };
 			expect(err.status).toBe(307);
-			expect(err.location).toBe('/fuel-entry');
+			expect(err.location).toBe('/log');
 		}
 
-		expect(mockRedirect).toHaveBeenCalledWith(307, '/fuel-entry');
+		expect(mockRedirect).toHaveBeenCalledWith(307, '/log');
 	});
 
 	it('uses resolve() to make redirect base-path-safe', async () => {
@@ -54,6 +54,6 @@ describe('Root route redirect (+page.ts)', () => {
 			// Expected
 		}
 
-		expect(mockRedirect).toHaveBeenCalledWith(307, '/base/fuel-entry');
+		expect(mockRedirect).toHaveBeenCalledWith(307, '/base/log');
 	});
 });
