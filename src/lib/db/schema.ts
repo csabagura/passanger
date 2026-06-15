@@ -33,3 +33,16 @@ export interface Expense {
 	notes?: string;
 }
 export type NewExpense = Omit<Expense, 'id'>;
+
+export interface ServiceReminder {
+	id: number;
+	vehicleId: number;
+	title: string; // e.g. "Oil change", "Timing belt"
+	intervalKm?: number; // distance-based interval (km/mi, matches the vehicle's logs)
+	intervalDays?: number; // time-based interval, in days
+	lastServiceOdometer?: number; // odometer reading at the last service
+	lastServiceDate?: Date; // JS Date object — NOT string/timestamp
+	notes?: string;
+	// A valid reminder must specify at least one of intervalKm / intervalDays.
+}
+export type NewServiceReminder = Omit<ServiceReminder, 'id'>;

@@ -3,13 +3,43 @@
 	import { PRESET_CURRENCIES, SUPPORTED_UNITS } from '$lib/config';
 	import { saveSettings, type AppSettings, type ThemePreference } from '$lib/utils/settings';
 	import { readStoredVehicleId } from '$lib/utils/vehicleStorage';
+	import { getAllFuelLogs } from '$lib/db/repositories/fuelLogs';
+	import type { VehiclesContext } from '$lib/utils/vehicleContext';
 	import VehicleListManager from '$lib/components/VehicleListManager.svelte';
+	import ServiceReminderManager from '$lib/components/ServiceReminderManager.svelte';
 
 	let activeVehicleId = $state<number | null>(readStoredVehicleId());
 
 	function handleActiveVehicleChange(id: number | null) {
 		activeVehicleId = id;
 	}
+
+	const vehiclesCtx = getContext<VehiclesContext>('vehicles');
+	const activeVehicle = $derived(vehiclesCtx?.activeVehicle ?? null);
+
+	// Current odometer for the active vehicle = max odometer across its fuel logs.
+	let currentOdometer = $state<number | undefined>(undefined);
+
+	$effect(() => {
+		const vehicle = activeVehicle;
+		if (!vehicle) {
+			currentOdometer = undefined;
+			return;
+		}
+		let cancelled = false;
+		(async () => {
+			const result = await getAllFuelLogs(vehicle.id);
+			if (cancelled) return;
+			if (result.error || result.data.length === 0) {
+				currentOdometer = undefined;
+				return;
+			}
+			currentOdometer = result.data.reduce((max, log) => Math.max(max, log.odometer), 0);
+		})();
+		return () => {
+			cancelled = true;
+		};
+	});
 
 	const THEME_OPTIONS: { value: ThemePreference; label: string; description: string }[] = [
 		{ value: 'system', label: 'System', description: 'Follows your device setting' },
@@ -120,9 +150,7 @@
 			aria-label="Theme"
 			class="grid grid-cols-3 gap-2"
 			onkeydown={(e: KeyboardEvent) => {
-				const currentIndex = THEME_OPTIONS.findIndex(
-					(o) => o.value === settingsCtx.settings.theme
-				);
+				const currentIndex = THEME_OPTIONS.findIndex((o) => o.value === settingsCtx.settings.theme);
 				let nextIndex = -1;
 				if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
 					nextIndex = (currentIndex + 1) % THEME_OPTIONS.length;
@@ -167,15 +195,10 @@
 		class="space-y-5 rounded-2xl border border-border bg-card p-5 shadow-sm"
 	>
 		<div class="space-y-1">
-			<h2 id="settings-vehicles-heading" class="text-lg font-semibold text-foreground">
-				Vehicles
-			</h2>
+			<h2 id="settings-vehicles-heading" class="text-lg font-semibold text-foreground">Vehicles</h2>
 			<p class="text-sm text-muted-foreground">Manage your vehicles</p>
 		</div>
-		<VehicleListManager
-			{activeVehicleId}
-			onActiveVehicleChange={handleActiveVehicleChange}
-		/>
+		<VehicleListManager {activeVehicleId} onActiveVehicleChange={handleActiveVehicleChange} />
 	</section>
 
 	<section
@@ -188,7 +211,13 @@
 			</h2>
 			<p class="text-sm text-muted-foreground">Set maintenance reminders</p>
 		</div>
-		<p class="text-sm text-muted-foreground">Coming soon</p>
+		{#if activeVehicle}
+			<ServiceReminderManager vehicleId={activeVehicle.id} {currentOdometer} />
+		{:else}
+			<p class="text-sm text-muted-foreground">
+				Add a vehicle and select it as active to set maintenance reminders.
+			</p>
+		{/if}
 	</section>
 
 	<section
@@ -266,9 +295,7 @@
 					inputmode="text"
 					oninput={handleCurrencyInput}
 					aria-invalid={currencyError ? 'true' : undefined}
-					aria-describedby={currencyError
-						? `${currencyHelpId} ${currencyErrorId}`
-						: currencyHelpId}
+					aria-describedby={currencyError ? `${currencyHelpId} ${currencyErrorId}` : currencyHelpId}
 					class="block h-[52px] w-full rounded-xl border border-border px-3 py-2 text-base focus:outline-none focus:ring-2 focus:ring-ring"
 				/>
 
@@ -301,9 +328,7 @@
 		class="space-y-5 rounded-2xl border border-border bg-card p-5 shadow-sm"
 	>
 		<div class="space-y-1">
-			<h2 id="settings-data-heading" class="text-lg font-semibold text-foreground">
-				Data
-			</h2>
+			<h2 id="settings-data-heading" class="text-lg font-semibold text-foreground">Data</h2>
 			<p class="text-sm text-muted-foreground">Manage your app data</p>
 		</div>
 		<p class="text-sm text-muted-foreground">Coming soon</p>

@@ -27,9 +27,14 @@ export const ZERO_DECIMAL_CURRENCIES = new Set([
 export const SUFFIX_CURRENCIES = new Set(['FT', 'HUF', 'KR', 'ZŁ', 'KČ']);
 
 export const DB_NAME = 'passangerDB'; // Note: double-a brand name — NOT 'passengerDB'
-export const DB_VERSION = 3;
+export const DB_VERSION = 4;
 
 export const MAX_VEHICLES = 5;
+
+// Service-reminder "due soon" thresholds — a reminder switches from ok → due-soon once
+// the remaining distance/time falls at or below these, and → overdue at/below zero.
+export const REMINDER_DUE_SOON_KM = 500;
+export const REMINDER_DUE_SOON_DAYS = 14;
 export const MAX_CSV_ROWS = 10_000;
 export const IMPORT_FILE_SIZE_WARN_BYTES = 5 * 1024 * 1024; // 5MB — show amber warning
 export const IMPORT_FILE_SIZE_MAX_BYTES = 10 * 1024 * 1024; // 10MB — hard reject

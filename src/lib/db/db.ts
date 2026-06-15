@@ -1,6 +1,6 @@
 import Dexie, { type EntityTable } from 'dexie';
 import { DB_NAME } from '$lib/config';
-import type { Vehicle, FuelLog, Expense } from './schema';
+import type { Vehicle, FuelLog, Expense, ServiceReminder } from './schema';
 import { migrateV1ToV2 } from './migrations/v2';
 import { migrateV2ToV3 } from './migrations/v3';
 
@@ -8,6 +8,7 @@ class PassangerDB extends Dexie {
 	vehicles!: EntityTable<Vehicle, 'id'>;
 	fuelLogs!: EntityTable<FuelLog, 'id'>;
 	expenses!: EntityTable<Expense, 'id'>;
+	serviceReminders!: EntityTable<ServiceReminder, 'id'>;
 
 	constructor() {
 		super(DB_NAME);
@@ -40,6 +41,16 @@ class PassangerDB extends Dexie {
 				expenses: '++id, vehicleId, date, type, odometer'
 			})
 			.upgrade(migrateV2ToV3);
+
+		// Version 4 — Add the `serviceReminders` store. This is a brand-new empty table, so
+		// no upgrade function is required; existing tables are re-declared unchanged and
+		// their data carries forward automatically.
+		this.version(4).stores({
+			vehicles: '++id, name, make, model, year',
+			fuelLogs: '++id, vehicleId, date, odometer',
+			expenses: '++id, vehicleId, date, type, odometer',
+			serviceReminders: '++id, vehicleId'
+		});
 	}
 }
 
