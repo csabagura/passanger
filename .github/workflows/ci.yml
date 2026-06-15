@@ -3,6 +3,8 @@ name: CI
 on:
   pull_request:
     branches: [main]
+  push:
+    branches: [main]
 
 jobs:
   ci:
@@ -34,3 +36,39 @@ jobs:
       - run: npm run test:a11y
 
       - run: npx @lhci/cli autorun
+
+      # Hand the exact tested build to the deploy job (direct pushes to main only).
+      - name: Upload tested build
+        if: github.event_name == 'push'
+        uses: actions/upload-artifact@v4
+        with:
+          name: build
+          path: build/
+          if-no-files-found: error
+
+  # Deploy only on a direct push to main, and only if the full CI gate above passed.
+  # Ships the byte-identical tested ./build (no rebuild) so the per-build hash-mode CSP is preserved.
+  deploy:
+    needs: ci
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    # Serialize deploys so two near-simultaneous pushes to main can't ship out of order
+    # (older build overwriting newer). Don't cancel an in-flight deploy mid-wrangler.
+    concurrency:
+      group: deploy-main
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4 # for wrangler.toml
+
+      - name: Download tested build
+        uses: actions/download-artifact@v4
+        with:
+          name: build
+          path: build/
+
+      - name: Deploy to Cloudflare Workers
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: deploy
