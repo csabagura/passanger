@@ -31,7 +31,11 @@ vi.mock('$lib/utils/storagePersistence', () => ({
 }));
 
 vi.mock('$lib/utils/settings', () => ({
-	getSettings: () => ({ fuelUnit: 'L/100km' as const, currency: '€' as const, theme: 'system' as const })
+	getSettings: () => ({
+		fuelUnit: 'L/100km' as const,
+		currency: '€' as const,
+		theme: 'system' as const
+	})
 }));
 
 vi.mock('virtual:pwa-register', () => ({

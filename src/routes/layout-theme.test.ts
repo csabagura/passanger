@@ -11,7 +11,7 @@ import { render, cleanup } from '@testing-library/svelte';
 import { createRawSnippet, flushSync } from 'svelte';
 import Layout from './+layout.svelte';
 
-let mockPathname = '/fuel-entry';
+const mockPathname = '/fuel-entry';
 
 vi.mock('$app/state', () => ({
 	page: {

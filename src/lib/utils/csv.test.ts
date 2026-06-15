@@ -140,9 +140,7 @@ describe('csv utilities', () => {
 	});
 
 	it('has no vehicle column in single-vehicle buildHistoryExportCSV (backward compat)', () => {
-		const csv = buildHistoryExportCSV([
-			{ kind: 'fuel', entry: createFuelEntry() }
-		]);
+		const csv = buildHistoryExportCSV([{ kind: 'fuel', entry: createFuelEntry() }]);
 		const headerLine = csv.split('\r\n')[0];
 		expect(headerLine).toBe(
 			'date,odometer,entry type,quantity,unit,cost,currency,calculated consumption,notes'

@@ -39,23 +39,19 @@
 		rows.filter((r) => r.status === 'valid' || r.status === 'warning')
 	);
 	const skippedRows = $derived(rows.filter((r) => r.status === 'error'));
-	const correctedCount = $derived(
-		rows.filter((r) => r.status === 'warning').length
-	);
+	const correctedCount = $derived(rows.filter((r) => r.status === 'warning').length);
 	let showSkipped = $state(false);
 
-	const newVehicleAssignments = $derived(
-		assignments.filter((a) => a.assignmentType === 'new')
-	);
+	const newVehicleAssignments = $derived(assignments.filter((a) => a.assignmentType === 'new'));
 
 	function getVehicleBreakdown(): Array<{ name: string; count: number; isNew: boolean }> {
 		const breakdown: Array<{ name: string; count: number; isNew: boolean }> = [];
 		for (const assignment of assignments) {
 			const isNew = assignment.assignmentType === 'new';
 			const name = isNew
-				? assignment.newVehicle?.name ?? assignment.sourceVehicleName
-				: vehiclesContext.vehicles.find((v) => v.id === assignment.existingVehicleId)?.name ??
-					assignment.sourceVehicleName;
+				? (assignment.newVehicle?.name ?? assignment.sourceVehicleName)
+				: (vehiclesContext.vehicles.find((v) => v.id === assignment.existingVehicleId)?.name ??
+					assignment.sourceVehicleName);
 			breakdown.push({ name, count: assignment.rowCount, isNew });
 		}
 		return breakdown;
@@ -63,8 +59,7 @@
 
 	function formatDateRange(): string {
 		if (!summary.dateRange) return '';
-		const fmt = (d: Date) =>
-			d.toLocaleDateString(undefined, { month: 'short', year: 'numeric' });
+		const fmt = (d: Date) => d.toLocaleDateString(undefined, { month: 'short', year: 'numeric' });
 		return `${fmt(summary.dateRange.start)} – ${fmt(summary.dateRange.end)}`;
 	}
 
@@ -103,11 +98,8 @@
 					vehiclesContext.switchVehicle(assignment.existingVehicleId);
 				} else if (assignment.assignmentType === 'new') {
 					// After refreshVehicles(), look up the newly created vehicle by name
-					const newVehicleName =
-						assignment.newVehicle?.name ?? assignment.sourceVehicleName;
-					const newVehicle = vehiclesContext.vehicles.find(
-						(v) => v.name === newVehicleName
-					);
+					const newVehicleName = assignment.newVehicle?.name ?? assignment.sourceVehicleName;
+					const newVehicle = vehiclesContext.vehicles.find((v) => v.name === newVehicleName);
 					if (newVehicle) {
 						vehiclesContext.switchVehicle(newVehicle.id);
 					}
@@ -240,9 +232,7 @@
 			<p class="mt-1 text-sm text-muted-foreground">
 				{commitState.error.message}
 			</p>
-			<p class="mt-1 text-xs text-muted-foreground">
-				Your existing data is unchanged.
-			</p>
+			<p class="mt-1 text-xs text-muted-foreground">Your existing data is unchanged.</p>
 		</div>
 		<button
 			type="button"
@@ -280,9 +270,7 @@
 			<div class="rounded-lg border border-border p-4 space-y-1">
 				{#if commitState.data.fuelCount > 0}
 					<p class="text-sm text-foreground">
-						{commitState.data.fuelCount} fuel entr{commitState.data.fuelCount !== 1
-							? 'ies'
-							: 'y'} imported
+						{commitState.data.fuelCount} fuel entr{commitState.data.fuelCount !== 1 ? 'ies' : 'y'} imported
 					</p>
 				{/if}
 				{#if commitState.data.maintenanceCount > 0}
@@ -295,9 +283,7 @@
 				{/if}
 				{#if commitState.data.skippedCount > 0}
 					<p class="text-sm text-muted-foreground">
-						{commitState.data.skippedCount} row{commitState.data.skippedCount !== 1
-							? 's'
-							: ''} skipped
+						{commitState.data.skippedCount} row{commitState.data.skippedCount !== 1 ? 's' : ''} skipped
 					</p>
 				{/if}
 				{#if commitState.data.vehiclesCreated.length > 0}

@@ -2,7 +2,7 @@
 	import { tick } from 'svelte';
 	import { MAX_VEHICLES, VEHICLE_ID_STORAGE_KEY } from '$lib/config';
 	import { getAllVehicles, deleteVehicle } from '$lib/db/repositories/vehicles';
-	import { safeSetItem, safeRemoveItem, readStoredVehicleId } from '$lib/utils/vehicleStorage';
+	import { safeSetItem, safeRemoveItem } from '$lib/utils/vehicleStorage';
 	import type { Vehicle } from '$lib/db/schema';
 	import VehicleForm from './VehicleForm.svelte';
 
@@ -153,14 +153,121 @@
 		onUpdate={handleSaveOrUpdate}
 		onCancel={handleCancel}
 	/>
+{:else if loading}
+	<p class="text-sm text-muted-foreground">Loading vehicles…</p>
+{:else if loadError}
+	<p role="alert" class="text-sm text-destructive">{loadError}</p>
+{:else if vehicles.length === 0}
+	<div class="space-y-3 text-center">
+		<p class="text-sm text-muted-foreground">
+			No vehicles yet. Add your first vehicle to get started.
+		</p>
+		<button
+			type="button"
+			onclick={handleCreateClick}
+			bind:this={addButtonEl}
+			class="inline-flex min-h-11 items-center justify-center rounded-xl bg-accent px-5 py-3 text-sm font-semibold text-accent-foreground"
+		>
+			+ Add vehicle
+		</button>
+	</div>
 {:else}
-	{#if loading}
-		<p class="text-sm text-muted-foreground">Loading vehicles…</p>
-	{:else if loadError}
-		<p role="alert" class="text-sm text-destructive">{loadError}</p>
-	{:else if vehicles.length === 0}
-		<div class="space-y-3 text-center">
-			<p class="text-sm text-muted-foreground">No vehicles yet. Add your first vehicle to get started.</p>
+	<ul class="space-y-3" aria-label="Vehicle list" bind:this={listContainerEl}>
+		{#each vehicles as vehicle (vehicle.id)}
+			{@const isActive = activeVehicleId === vehicle.id}
+			{@const isDeleteTarget = deleteTarget?.id === vehicle.id && deletePromptVisible}
+			{@const deleteDialogId = `delete-dialog-${vehicle.id}`}
+			<li
+				class="rounded-xl border p-4 {isActive ? 'border-accent' : 'border-border'}"
+				aria-current={isActive ? 'true' : undefined}
+				data-vehicle-id={vehicle.id}
+			>
+				<div class="flex items-start justify-between gap-2">
+					<div class="min-w-0 flex-1">
+						<div class="flex items-center gap-2">
+							{#if isActive}
+								<span
+									class="inline-block h-2 w-2 flex-shrink-0 rounded-full bg-accent"
+									aria-hidden="true"
+								></span>
+							{/if}
+							<span class="font-semibold text-foreground">{vehicle.name}</span>
+							{#if isActive}
+								<span class="text-xs text-accent">Active</span>
+							{/if}
+						</div>
+						<p class="text-sm text-muted-foreground">
+							{vehicle.make}
+							{vehicle.model}{vehicle.year ? ` · ${vehicle.year}` : ''}
+						</p>
+					</div>
+					<div class="flex gap-2">
+						<button
+							type="button"
+							onclick={() => handleEditClick(vehicle)}
+							aria-label="Edit {vehicle.name}"
+							class="min-h-11 min-w-11 rounded-xl border border-border px-3 py-2 text-sm font-semibold text-foreground"
+						>
+							Edit
+						</button>
+						<button
+							type="button"
+							disabled={deletePromptVisible}
+							onclick={() => handleDeleteRequest(vehicle)}
+							aria-label="Delete {vehicle.name}"
+							class="min-h-11 min-w-11 rounded-xl border border-destructive/20 px-3 py-2 text-sm font-semibold text-destructive disabled:cursor-not-allowed disabled:opacity-70"
+						>
+							Delete
+						</button>
+					</div>
+				</div>
+
+				{#if isDeleteTarget}
+					<div
+						role="alertdialog"
+						aria-labelledby={deleteDialogId}
+						class="mt-4 rounded-2xl border border-destructive/20 bg-destructive/10 p-4"
+					>
+						<p id={deleteDialogId} class="text-sm font-semibold text-destructive">
+							Delete {vehicle.name}? Entries linked to this vehicle will remain but won't be
+							associated with any vehicle.
+						</p>
+
+						{#if deleteError}
+							<div
+								role="alert"
+								class="mt-3 rounded-xl border border-destructive/20 bg-background/80 p-3"
+							>
+								<p class="text-sm text-destructive">{deleteError}</p>
+							</div>
+						{/if}
+
+						<div class="mt-3 flex flex-wrap justify-end gap-2">
+							<button
+								type="button"
+								disabled={deleteState === 'loading'}
+								onclick={handleDeleteCancel}
+								class="rounded-xl border border-destructive/20 px-3 py-2 text-sm font-semibold text-destructive disabled:cursor-not-allowed disabled:opacity-70"
+							>
+								Cancel
+							</button>
+							<button
+								type="button"
+								disabled={deleteState === 'loading'}
+								onclick={handleDeleteConfirm}
+								class="rounded-xl bg-destructive px-3 py-2 text-sm font-semibold text-destructive-foreground disabled:cursor-not-allowed disabled:opacity-70"
+							>
+								{deleteState === 'loading' ? 'Deleting…' : 'Confirm delete'}
+							</button>
+						</div>
+					</div>
+				{/if}
+			</li>
+		{/each}
+	</ul>
+
+	<div class="mt-4 space-y-2">
+		{#if canAddVehicle}
 			<button
 				type="button"
 				onclick={handleCreateClick}
@@ -169,108 +276,11 @@
 			>
 				+ Add vehicle
 			</button>
-		</div>
-	{:else}
-		<ul class="space-y-3" aria-label="Vehicle list" bind:this={listContainerEl}>
-			{#each vehicles as vehicle (vehicle.id)}
-				{@const isActive = activeVehicleId === vehicle.id}
-				{@const isDeleteTarget = deleteTarget?.id === vehicle.id && deletePromptVisible}
-				{@const deleteDialogId = `delete-dialog-${vehicle.id}`}
-				<li
-					class="rounded-xl border p-4 {isActive ? 'border-accent' : 'border-border'}"
-					aria-current={isActive ? 'true' : undefined}
-					data-vehicle-id={vehicle.id}
-				>
-					<div class="flex items-start justify-between gap-2">
-						<div class="min-w-0 flex-1">
-							<div class="flex items-center gap-2">
-								{#if isActive}
-									<span class="inline-block h-2 w-2 flex-shrink-0 rounded-full bg-accent" aria-hidden="true"></span>
-								{/if}
-								<span class="font-semibold text-foreground">{vehicle.name}</span>
-								{#if isActive}
-									<span class="text-xs text-accent">Active</span>
-								{/if}
-							</div>
-							<p class="text-sm text-muted-foreground">
-								{vehicle.make} {vehicle.model}{vehicle.year ? ` · ${vehicle.year}` : ''}
-							</p>
-						</div>
-						<div class="flex gap-2">
-							<button
-								type="button"
-								onclick={() => handleEditClick(vehicle)}
-								aria-label="Edit {vehicle.name}"
-								class="min-h-11 min-w-11 rounded-xl border border-border px-3 py-2 text-sm font-semibold text-foreground"
-							>
-								Edit
-							</button>
-							<button
-								type="button"
-								disabled={deletePromptVisible}
-								onclick={() => handleDeleteRequest(vehicle)}
-								aria-label="Delete {vehicle.name}"
-								class="min-h-11 min-w-11 rounded-xl border border-destructive/20 px-3 py-2 text-sm font-semibold text-destructive disabled:cursor-not-allowed disabled:opacity-70"
-							>
-								Delete
-							</button>
-						</div>
-					</div>
-
-					{#if isDeleteTarget}
-						<div
-							role="alertdialog"
-							aria-labelledby={deleteDialogId}
-							class="mt-4 rounded-2xl border border-destructive/20 bg-destructive/10 p-4"
-						>
-							<p id={deleteDialogId} class="text-sm font-semibold text-destructive">
-								Delete {vehicle.name}? Entries linked to this vehicle will remain but won't be associated with any vehicle.
-							</p>
-
-							{#if deleteError}
-								<div role="alert" class="mt-3 rounded-xl border border-destructive/20 bg-background/80 p-3">
-									<p class="text-sm text-destructive">{deleteError}</p>
-								</div>
-							{/if}
-
-							<div class="mt-3 flex flex-wrap justify-end gap-2">
-								<button
-									type="button"
-									disabled={deleteState === 'loading'}
-									onclick={handleDeleteCancel}
-									class="rounded-xl border border-destructive/20 px-3 py-2 text-sm font-semibold text-destructive disabled:cursor-not-allowed disabled:opacity-70"
-								>
-									Cancel
-								</button>
-								<button
-									type="button"
-									disabled={deleteState === 'loading'}
-									onclick={handleDeleteConfirm}
-									class="rounded-xl bg-destructive px-3 py-2 text-sm font-semibold text-destructive-foreground disabled:cursor-not-allowed disabled:opacity-70"
-								>
-									{deleteState === 'loading' ? 'Deleting…' : 'Confirm delete'}
-								</button>
-							</div>
-						</div>
-					{/if}
-				</li>
-			{/each}
-		</ul>
-
-		<div class="mt-4 space-y-2">
-			{#if canAddVehicle}
-				<button
-					type="button"
-					onclick={handleCreateClick}
-					bind:this={addButtonEl}
-					class="inline-flex min-h-11 items-center justify-center rounded-xl bg-accent px-5 py-3 text-sm font-semibold text-accent-foreground"
-				>
-					+ Add vehicle
-				</button>
-			{:else}
-				<p class="text-sm text-muted-foreground">Maximum {MAX_VEHICLES} vehicles reached. Delete a vehicle to add a new one.</p>
-			{/if}
-			<p class="text-sm text-muted-foreground">{vehicleCount} of {MAX_VEHICLES} vehicles</p>
-		</div>
-	{/if}
+		{:else}
+			<p class="text-sm text-muted-foreground">
+				Maximum {MAX_VEHICLES} vehicles reached. Delete a vehicle to add a new one.
+			</p>
+		{/if}
+		<p class="text-sm text-muted-foreground">{vehicleCount} of {MAX_VEHICLES} vehicles</p>
+	</div>
 {/if}

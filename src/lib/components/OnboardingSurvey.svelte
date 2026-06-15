@@ -97,14 +97,19 @@
 					type="button"
 					role="radio"
 					aria-checked={selectedResponse === option.value}
-					tabindex={selectedResponse === option.value || (!selectedResponse && option.value === OPTIONS[0].value) ? 0 : -1}
+					tabindex={selectedResponse === option.value ||
+					(!selectedResponse && option.value === OPTIONS[0].value)
+						? 0
+						: -1}
 					onclick={() => (selectedResponse = option.value)}
-					class="flex w-full items-center gap-3 rounded-xl border px-4 py-3 text-left text-sm transition-colors {selectedResponse === option.value
+					class="flex w-full items-center gap-3 rounded-xl border px-4 py-3 text-left text-sm transition-colors {selectedResponse ===
+					option.value
 						? 'border-accent bg-accent/10 font-semibold text-accent'
 						: 'border-border text-foreground hover:bg-muted/60'}"
 				>
 					<span
-						class="flex h-4 w-4 shrink-0 items-center justify-center rounded-full border {selectedResponse === option.value
+						class="flex h-4 w-4 shrink-0 items-center justify-center rounded-full border {selectedResponse ===
+						option.value
 							? 'border-accent'
 							: 'border-muted-foreground'}"
 						aria-hidden="true"

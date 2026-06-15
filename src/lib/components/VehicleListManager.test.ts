@@ -33,8 +33,20 @@ function makeVehicle(overrides: Partial<Vehicle> & { id: number; name: string })
 	return { make: 'Make', model: 'Model', ...overrides };
 }
 
-const vehicle1: Vehicle = makeVehicle({ id: 1, name: 'My Honda', make: 'Honda', model: 'Civic', year: 2019 });
-const vehicle2: Vehicle = makeVehicle({ id: 2, name: 'Work Van', make: 'Ford', model: 'Transit', year: 2021 });
+const vehicle1: Vehicle = makeVehicle({
+	id: 1,
+	name: 'My Honda',
+	make: 'Honda',
+	model: 'Civic',
+	year: 2019
+});
+const vehicle2: Vehicle = makeVehicle({
+	id: 2,
+	name: 'Work Van',
+	make: 'Ford',
+	model: 'Transit',
+	year: 2021
+});
 
 function setupMocks(vehicles: Vehicle[] = [vehicle1, vehicle2]) {
 	mockGetAllVehicles.mockResolvedValue({ data: vehicles, error: null });
@@ -94,7 +106,12 @@ describe('VehicleListManager', () => {
 		});
 
 		it('does not show vehicle without year with separator', async () => {
-			const noYearVehicle = makeVehicle({ id: 3, name: 'No Year Car', make: 'Toyota', model: 'Yaris' });
+			const noYearVehicle = makeVehicle({
+				id: 3,
+				name: 'No Year Car',
+				make: 'Toyota',
+				model: 'Yaris'
+			});
 			await renderAndWait({ _vehicles: [noYearVehicle] });
 			expect(screen.getByText(/Toyota Yaris/)).toBeTruthy();
 			expect(screen.queryByText(/Toyota Yaris ·/)).toBeNull();
@@ -281,7 +298,10 @@ describe('VehicleListManager', () => {
 
 	describe('load error state', () => {
 		it('renders error message when getAllVehicles returns an error', async () => {
-			mockGetAllVehicles.mockResolvedValue({ data: null, error: { code: 'UNKNOWN', message: 'DB error' } });
+			mockGetAllVehicles.mockResolvedValue({
+				data: null,
+				error: { code: 'UNKNOWN', message: 'DB error' }
+			});
 			render(VehicleListManager);
 			await new Promise((r) => setTimeout(r, 0));
 			flushSync();

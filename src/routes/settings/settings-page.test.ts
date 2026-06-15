@@ -50,7 +50,11 @@ function renderPage() {
 		get settings() {
 			return settingsState.value;
 		},
-		updateSettings(nextSettings: { fuelUnit: 'L/100km' | 'MPG'; currency: string; theme: 'system' | 'light' | 'dark' }) {
+		updateSettings(nextSettings: {
+			fuelUnit: 'L/100km' | 'MPG';
+			currency: string;
+			theme: 'system' | 'light' | 'dark';
+		}) {
 			settingsState.value = nextSettings;
 			mockUpdateSettings(nextSettings);
 		}
@@ -92,7 +96,11 @@ describe('Settings page', () => {
 		await fireEvent.click(screen.getByRole('button', { name: '$' }));
 		await fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
 
-		expect(mockUpdateSettings).toHaveBeenCalledWith({ fuelUnit: 'L/100km', currency: '$', theme: 'system' });
+		expect(mockUpdateSettings).toHaveBeenCalledWith({
+			fuelUnit: 'L/100km',
+			currency: '$',
+			theme: 'system'
+		});
 		expect(JSON.parse(localStorageMock.getItem(SETTINGS_STORAGE_KEY)!)).toEqual({
 			fuelUnit: 'L/100km',
 			currency: '$',
@@ -110,7 +118,11 @@ describe('Settings page', () => {
 		});
 		await fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
 
-		expect(mockUpdateSettings).toHaveBeenCalledWith({ fuelUnit: 'MPG', currency: 'EUR ', theme: 'system' });
+		expect(mockUpdateSettings).toHaveBeenCalledWith({
+			fuelUnit: 'MPG',
+			currency: 'EUR ',
+			theme: 'system'
+		});
 		expect(JSON.parse(localStorageMock.getItem(SETTINGS_STORAGE_KEY)!)).toEqual({
 			fuelUnit: 'MPG',
 			currency: 'EUR ',
@@ -183,9 +195,7 @@ describe('Settings page', () => {
 
 			await fireEvent.click(screen.getByRole('radio', { name: /Dark/ }));
 
-			expect(mockUpdateSettings).toHaveBeenCalledWith(
-				expect.objectContaining({ theme: 'dark' })
-			);
+			expect(mockUpdateSettings).toHaveBeenCalledWith(expect.objectContaining({ theme: 'dark' }));
 			expect(JSON.parse(localStorageMock.getItem(SETTINGS_STORAGE_KEY)!)).toMatchObject({
 				theme: 'dark'
 			});
@@ -196,9 +206,7 @@ describe('Settings page', () => {
 
 			await fireEvent.click(screen.getByRole('radio', { name: /Light/ }));
 
-			expect(mockUpdateSettings).toHaveBeenCalledWith(
-				expect.objectContaining({ theme: 'light' })
-			);
+			expect(mockUpdateSettings).toHaveBeenCalledWith(expect.objectContaining({ theme: 'light' }));
 		});
 
 		it('renders helper text for each theme option', () => {

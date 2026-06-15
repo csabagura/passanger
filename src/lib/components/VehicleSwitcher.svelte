@@ -223,9 +223,7 @@
 		dragOffsetY = Math.max(0, deltaY);
 	}
 
-	function handlePointerUp(
-		event: PointerEvent & { currentTarget: EventTarget & HTMLDivElement }
-	) {
+	function handlePointerUp(event: PointerEvent & { currentTarget: EventTarget & HTMLDivElement }) {
 		if (!dismissGesture || dismissGesture.pointerId !== event.pointerId) return;
 		event.currentTarget.releasePointerCapture?.(event.pointerId);
 
@@ -291,12 +289,17 @@
 							role="option"
 							aria-selected={vehicle.id === vehiclesCtx.activeVehicleId}
 							onclick={() => selectVehicle(vehicle.id)}
-							class="flex w-full min-h-[44px] items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors hover:bg-muted/50 {vehicle.id === vehiclesCtx.activeVehicleId ? 'border border-accent bg-accent/5' : ''}"
+							class="flex w-full min-h-[44px] items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors hover:bg-muted/50 {vehicle.id ===
+							vehiclesCtx.activeVehicleId
+								? 'border border-accent bg-accent/5'
+								: ''}"
 						>
 							<div class="flex-1 min-w-0">
 								<p class="font-semibold text-foreground truncate">{vehicle.name}</p>
 								<p class="text-sm text-muted-foreground truncate">
-									{vehicle.make} {vehicle.model}{#if vehicle.year} · {vehicle.year}{/if}
+									{vehicle.make}
+									{vehicle.model}{#if vehicle.year}
+										· {vehicle.year}{/if}
 								</p>
 							</div>
 							{#if vehicle.id === vehiclesCtx.activeVehicleId}
@@ -379,12 +382,17 @@
 								aria-selected={vehicle.id === vehiclesCtx.activeVehicleId}
 								aria-current={vehicle.id === vehiclesCtx.activeVehicleId ? 'true' : undefined}
 								onclick={() => selectVehicle(vehicle.id)}
-								class="flex w-full min-h-[44px] items-center gap-3 rounded-xl border p-4 text-left transition-colors {vehicle.id === vehiclesCtx.activeVehicleId ? 'border-accent bg-accent/5' : 'border-border'}"
+								class="flex w-full min-h-[44px] items-center gap-3 rounded-xl border p-4 text-left transition-colors {vehicle.id ===
+								vehiclesCtx.activeVehicleId
+									? 'border-accent bg-accent/5'
+									: 'border-border'}"
 							>
 								<div class="flex-1 min-w-0">
 									<p class="font-semibold text-foreground">{vehicle.name}</p>
 									<p class="text-sm text-muted-foreground">
-										{vehicle.make} {vehicle.model}{#if vehicle.year} · {vehicle.year}{/if}
+										{vehicle.make}
+										{vehicle.model}{#if vehicle.year}
+											· {vehicle.year}{/if}
 									</p>
 								</div>
 								{#if vehicle.id === vehiclesCtx.activeVehicleId}

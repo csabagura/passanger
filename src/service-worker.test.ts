@@ -49,7 +49,7 @@ const { skipWaitingFn, addEventListenerFn, clientsClaimFn } = vi.hoisted(() => {
 	const skipWaitingFn = vi.fn();
 	const addEventListenerFn = vi.fn();
 	const clientsClaimFn = vi.fn().mockResolvedValue(undefined);
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+
 	(globalThis as any).self = {
 		__WB_MANIFEST: [{ url: '/index.html', revision: 'test-abc123' }],
 		skipWaiting: skipWaitingFn,

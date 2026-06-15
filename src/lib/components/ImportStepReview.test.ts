@@ -83,10 +83,13 @@ function createSummary(rows: ImportRow[]): ImportDryRunSummary {
 }
 
 describe('ImportStepReview', () => {
-	let onReviewConfirmed: ReturnType<typeof vi.fn<(data: { rows: ImportRow[]; summary: ImportDryRunSummary }) => void>>;
+	let onReviewConfirmed: ReturnType<
+		typeof vi.fn<(data: { rows: ImportRow[]; summary: ImportDryRunSummary }) => void>
+	>;
 
 	beforeEach(() => {
-		onReviewConfirmed = vi.fn<(data: { rows: ImportRow[]; summary: ImportDryRunSummary }) => void>();
+		onReviewConfirmed =
+			vi.fn<(data: { rows: ImportRow[]; summary: ImportDryRunSummary }) => void>();
 	});
 
 	afterEach(() => {
@@ -113,12 +116,7 @@ describe('ImportStepReview', () => {
 
 	describe('Collapsed card rendering', () => {
 		it('renders only flagged rows (filters out valid)', () => {
-			const rows = [
-				createValidRow(1),
-				createErrorRow(2),
-				createWarningRow(3),
-				createValidRow(4)
-			];
+			const rows = [createValidRow(1), createErrorRow(2), createWarningRow(3), createValidRow(4)];
 			const summary = createSummary(rows);
 
 			render(ImportStepReview, {
@@ -176,9 +174,7 @@ describe('ImportStepReview', () => {
 				props: { rows, summary, onReviewConfirmed }
 			});
 
-			expect(screen.getByTestId('review-card-2').textContent).toContain(
-				'Missing odometer reading'
-			);
+			expect(screen.getByTestId('review-card-2').textContent).toContain('Missing odometer reading');
 		});
 
 		it('shows "X issues" when row has multiple issues', () => {
@@ -244,9 +240,7 @@ describe('ImportStepReview', () => {
 			await fireEvent.click(screen.getByRole('button', { name: /edit row 2/i }));
 
 			// Odometer should be an input (invalid)
-			const odometerInput = document.getElementById(
-				'field-2-odometer'
-			) as HTMLInputElement | null;
+			const odometerInput = document.getElementById('field-2-odometer') as HTMLInputElement | null;
 			expect(odometerInput).toBeTruthy();
 			expect(odometerInput?.tagName).toBe('INPUT');
 
@@ -283,9 +277,7 @@ describe('ImportStepReview', () => {
 
 			await fireEvent.click(screen.getByRole('button', { name: /edit row 2/i }));
 
-			const odometerInput = document.getElementById(
-				'field-2-odometer'
-			) as HTMLInputElement;
+			const odometerInput = document.getElementById('field-2-odometer') as HTMLInputElement;
 			expect(odometerInput).toBeTruthy();
 
 			// Type a valid value
@@ -309,9 +301,7 @@ describe('ImportStepReview', () => {
 			await fireEvent.click(screen.getByRole('button', { name: /edit row 2/i }));
 
 			// Fix the odometer
-			const odometerInput = document.getElementById(
-				'field-2-odometer'
-			) as HTMLInputElement;
+			const odometerInput = document.getElementById('field-2-odometer') as HTMLInputElement;
 			await fireEvent.input(odometerInput, { target: { value: '50000' } });
 			await fireEvent.blur(odometerInput);
 
@@ -464,9 +454,7 @@ describe('ImportStepReview', () => {
 
 			// Expand and fix
 			await fireEvent.click(screen.getByRole('button', { name: /edit row 2/i }));
-			const odometerInput = document.getElementById(
-				'field-2-odometer'
-			) as HTMLInputElement;
+			const odometerInput = document.getElementById('field-2-odometer') as HTMLInputElement;
 			await fireEvent.input(odometerInput, { target: { value: '50000' } });
 			await fireEvent.blur(odometerInput);
 			await fireEvent.click(screen.getByRole('button', { name: /save corrections/i }));
@@ -542,9 +530,7 @@ describe('ImportStepReview', () => {
 			await fireEvent.click(screen.getByRole('button', { name: /edit row 2/i }));
 
 			// Initially the input is blank — blur to trigger validation
-			const odometerInput = document.getElementById(
-				'field-2-odometer'
-			) as HTMLInputElement;
+			const odometerInput = document.getElementById('field-2-odometer') as HTMLInputElement;
 			await fireEvent.blur(odometerInput);
 
 			await waitFor(() => {
@@ -564,9 +550,7 @@ describe('ImportStepReview', () => {
 			await fireEvent.click(screen.getByRole('button', { name: /edit row 2/i }));
 
 			// Blur the empty input to trigger error
-			const odometerInput = document.getElementById(
-				'field-2-odometer'
-			) as HTMLInputElement;
+			const odometerInput = document.getElementById('field-2-odometer') as HTMLInputElement;
 			await fireEvent.blur(odometerInput);
 
 			await waitFor(() => {
@@ -656,11 +640,7 @@ describe('ImportStepReview', () => {
 		});
 
 		it('shows per-status breakdowns after corrections (AC 10)', async () => {
-			const rows = [
-				createValidRow(1),
-				createErrorRow(2),
-				createWarningRow(3)
-			];
+			const rows = [createValidRow(1), createErrorRow(2), createWarningRow(3)];
 			const summary = createSummary(rows);
 
 			render(ImportStepReview, {
@@ -817,9 +797,33 @@ describe('ImportStepReview', () => {
 			const rows = [createErrorRow(2), createWarningRow(3)];
 			const summary = createSummary(rows);
 
-			const initialEntries: [number, { status: 'pending' | 'corrected' | 'skipped'; correctedData: Record<string, unknown>; correctedIssues: string[]; correctedStatus: 'valid' | 'warning' | 'error' }][] = [
-				[2, { status: 'skipped', correctedData: {}, correctedIssues: ['Missing odometer reading'], correctedStatus: 'error' }],
-				[3, { status: 'corrected', correctedData: { totalCost: 50 }, correctedIssues: [], correctedStatus: 'valid' }]
+			const initialEntries: [
+				number,
+				{
+					status: 'pending' | 'corrected' | 'skipped';
+					correctedData: Record<string, unknown>;
+					correctedIssues: string[];
+					correctedStatus: 'valid' | 'warning' | 'error';
+				}
+			][] = [
+				[
+					2,
+					{
+						status: 'skipped',
+						correctedData: {},
+						correctedIssues: ['Missing odometer reading'],
+						correctedStatus: 'error'
+					}
+				],
+				[
+					3,
+					{
+						status: 'corrected',
+						correctedData: { totalCost: 50 },
+						correctedIssues: [],
+						correctedStatus: 'valid'
+					}
+				]
 			];
 
 			render(ImportStepReview, {
@@ -827,7 +831,15 @@ describe('ImportStepReview', () => {
 					rows,
 					summary,
 					onReviewConfirmed,
-					initialReviewEntries: initialEntries as [number, { status: 'pending' | 'corrected' | 'skipped'; correctedData: Record<string, unknown>; correctedIssues: string[]; correctedStatus: 'valid' | 'warning' | 'error' }][]
+					initialReviewEntries: initialEntries as [
+						number,
+						{
+							status: 'pending' | 'corrected' | 'skipped';
+							correctedData: Record<string, unknown>;
+							correctedIssues: string[];
+							correctedStatus: 'valid' | 'warning' | 'error';
+						}
+					][]
 				}
 			});
 

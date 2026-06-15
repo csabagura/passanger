@@ -530,9 +530,7 @@ describe('VehicleForm', () => {
 				onUpdate: mockOnUpdate,
 				onCancel: mockOnCancel
 			});
-			expect((screen.getByLabelText(/display name/i) as HTMLInputElement).value).toBe(
-				'My Honda'
-			);
+			expect((screen.getByLabelText(/display name/i) as HTMLInputElement).value).toBe('My Honda');
 			expect((screen.getByLabelText(/^make$/i) as HTMLInputElement).value).toBe('Honda');
 			expect((screen.getByLabelText(/^model$/i) as HTMLInputElement).value).toBe('Civic');
 			expect((screen.getByLabelText(/year/i) as HTMLInputElement).value).toBe('2019');

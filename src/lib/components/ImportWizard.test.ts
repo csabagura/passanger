@@ -41,7 +41,10 @@ vi.mock('papaparse', () => ({
 }));
 
 // Mock importDetect (used by ImportStepUpload)
-const mockDetectCSVFormat = vi.fn((_csvContent: string): { data: string; error: null } => ({ data: 'fuelly', error: null }));
+const mockDetectCSVFormat = vi.fn((_csvContent: string): { data: string; error: null } => ({
+	data: 'fuelly',
+	error: null
+}));
 vi.mock('$lib/utils/importDetect', () => ({
 	detectCSVFormat: (csvContent: string) => mockDetectCSVFormat(csvContent)
 }));

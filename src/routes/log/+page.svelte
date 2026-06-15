@@ -6,7 +6,6 @@
 	import MaintenanceForm from '$lib/components/MaintenanceForm.svelte';
 	import InstallPrompt from '$lib/components/InstallPrompt.svelte';
 	import OnboardingSurvey from '$lib/components/OnboardingSurvey.svelte';
-	import { resolve } from '$app/paths';
 	import type { Vehicle } from '$lib/db/schema';
 	import type { InstallPromptContext } from '$lib/utils/installPrompt';
 	import type { VehiclesContext } from '$lib/utils/vehicleContext';
@@ -110,7 +109,8 @@
 				aria-checked={activeMode === 'fuel'}
 				tabindex={activeMode === 'fuel' ? 0 : -1}
 				onclick={() => (activeMode = 'fuel')}
-				class="flex-1 rounded-lg px-4 py-2 text-sm font-medium transition-colors {activeMode === 'fuel'
+				class="flex-1 rounded-lg px-4 py-2 text-sm font-medium transition-colors {activeMode ===
+				'fuel'
 					? 'bg-card text-foreground shadow-sm'
 					: 'text-muted-foreground'}"
 			>
@@ -122,7 +122,8 @@
 				aria-checked={activeMode === 'service'}
 				tabindex={activeMode === 'service' ? 0 : -1}
 				onclick={() => (activeMode = 'service')}
-				class="flex-1 rounded-lg px-4 py-2 text-sm font-medium transition-colors {activeMode === 'service'
+				class="flex-1 rounded-lg px-4 py-2 text-sm font-medium transition-colors {activeMode ===
+				'service'
 					? 'bg-card text-foreground shadow-sm'
 					: 'text-muted-foreground'}"
 			>
@@ -147,10 +148,7 @@
 							/>
 						{/if}
 						{#if showOnboardingSurvey}
-							<OnboardingSurvey
-								onSubmit={handleSurveySubmit}
-								onDismiss={handleSurveyDismiss}
-							/>
+							<OnboardingSurvey onSubmit={handleSurveySubmit} onDismiss={handleSurveyDismiss} />
 						{/if}
 					{/snippet}
 				</FuelEntryForm>
@@ -169,10 +167,7 @@
 					/>
 				{/if}
 				{#if showOnboardingSurvey}
-					<OnboardingSurvey
-						onSubmit={handleSurveySubmit}
-						onDismiss={handleSurveyDismiss}
-					/>
+					<OnboardingSurvey onSubmit={handleSurveySubmit} onDismiss={handleSurveyDismiss} />
 				{/if}
 			{/if}
 		</div>

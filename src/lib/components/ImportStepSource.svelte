@@ -25,7 +25,7 @@
 	</p>
 
 	<div class="grid grid-cols-1 gap-3 md:grid-cols-2">
-		{#each sources as source}
+		{#each sources as source (source.id)}
 			<button
 				type="button"
 				class="flex min-h-12 flex-col items-start rounded-2xl border border-border bg-card p-4 text-left shadow-sm transition-colors hover:border-accent hover:bg-accent/5"

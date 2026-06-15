@@ -53,9 +53,7 @@
 	// Track per-field errors for the currently expanded card
 	let fieldErrors = $state<Record<string, string>>({});
 
-	const flaggedRows = $derived(
-		rows.filter((r) => r.status === 'warning' || r.status === 'error')
-	);
+	const flaggedRows = $derived(rows.filter((r) => r.status === 'warning' || r.status === 'error'));
 
 	const reviewedCount = $derived.by(() => {
 		let count = 0;
@@ -92,6 +90,10 @@
 
 		return { validCount, warningCount, errorCount, skippedCount };
 	});
+
+	const statusCountsText = $derived(
+		`${updatedCounts.validCount} valid, ${updatedCounts.warningCount} warning, ${updatedCounts.errorCount} error, ${updatedCounts.skippedCount} skipped`
+	);
 
 	// Auto-skip: if no flagged rows, call onReviewConfirmed immediately
 	$effect(() => {
@@ -251,7 +253,9 @@
 
 	type InputMode = 'text' | 'decimal' | 'numeric' | 'tel' | 'search' | 'email' | 'url' | 'none';
 
-	function getEditableFields(row: ImportRow): { name: string; label: string; inputMode: InputMode }[] {
+	function getEditableFields(
+		row: ImportRow
+	): { name: string; label: string; inputMode: InputMode }[] {
 		const fields: { name: string; label: string; inputMode: InputMode }[] = [
 			{ name: 'date', label: 'Date', inputMode: 'text' },
 			{ name: 'odometer', label: 'Odometer', inputMode: 'decimal' },
@@ -485,23 +489,25 @@
 	}
 
 	function buildFinalRows(): ImportRow[] {
-		return rows.filter((row) => {
-			const state = reviewState.get(row.rowNumber);
-			if (state?.status === 'skipped') return false;
-			return true;
-		}).map((row) => {
-			const state = reviewState.get(row.rowNumber);
-			if (state?.status === 'corrected') {
-				const mergedData = { ...row.data, ...state.correctedData };
-				return {
-					...row,
-					data: mergedData,
-					status: state.correctedStatus,
-					issues: state.correctedIssues
-				};
-			}
-			return row;
-		});
+		return rows
+			.filter((row) => {
+				const state = reviewState.get(row.rowNumber);
+				if (state?.status === 'skipped') return false;
+				return true;
+			})
+			.map((row) => {
+				const state = reviewState.get(row.rowNumber);
+				if (state?.status === 'corrected') {
+					const mergedData = { ...row.data, ...state.correctedData };
+					return {
+						...row,
+						data: mergedData,
+						status: state.correctedStatus,
+						issues: state.correctedIssues
+					};
+				}
+				return row;
+			});
 	}
 
 	function handleAssignVehicles() {
@@ -521,14 +527,16 @@
 			data-testid="review-summary"
 		>
 			<p class="text-sm text-foreground">
-				{flaggedRows.length} row{flaggedRows.length !== 1 ? 's' : ''} need{flaggedRows.length === 1 ? 's' : ''} attention
+				{flaggedRows.length} row{flaggedRows.length !== 1 ? 's' : ''} need{flaggedRows.length === 1
+					? 's'
+					: ''} attention
 				{#if reviewedCount > 0}
 					&mdash; {reviewedCount} of {flaggedRows.length} reviewed
 				{/if}
 			</p>
 			{#if reviewedCount > 0}
 				<p class="mt-1 text-xs text-muted-foreground" data-testid="review-status-counts">
-					{updatedCounts.validCount} valid, {updatedCounts.warningCount} warning, {updatedCounts.errorCount} error, {updatedCounts.skippedCount} skipped
+					{statusCountsText}
 				</p>
 			{/if}
 		</div>
@@ -558,9 +566,15 @@
 							<span class={severity.class} aria-hidden="true">{severity.text}</span>
 							<span class="font-medium">Row {row.rowNumber}</span>
 							{#if state.status === 'corrected'}
-								<span class="ml-2 inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800 dark:bg-green-900/30 dark:text-green-400">Corrected</span>
+								<span
+									class="ml-2 inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800 dark:bg-green-900/30 dark:text-green-400"
+									>Corrected</span
+								>
 							{:else if state.status === 'skipped'}
-								<span class="ml-2 inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">Skipped</span>
+								<span
+									class="ml-2 inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground"
+									>Skipped</span
+								>
 							{/if}
 						</p>
 						<p class="mt-0.5 text-xs text-muted-foreground">
@@ -588,10 +602,7 @@
 
 				<!-- Expanded card content -->
 				{#if isExpanded}
-					<div
-						id="review-row-{row.rowNumber}"
-						class="mt-3 space-y-3 border-t border-border pt-3"
-					>
+					<div id="review-row-{row.rowNumber}" class="mt-3 space-y-3 border-t border-border pt-3">
 						{#if state.status === 'skipped'}
 							<!-- Un-skip option -->
 							<div class="flex flex-col gap-2">
@@ -612,7 +623,10 @@
 								{@const invalid = isFieldInvalid(row, field.name)}
 								{@const error = getFieldError(field.name)}
 								<div>
-									<label class="block text-xs font-medium text-muted-foreground" for="field-{row.rowNumber}-{field.name}">
+									<label
+										class="block text-xs font-medium text-muted-foreground"
+										for="field-{row.rowNumber}-{field.name}"
+									>
 										{field.label}
 									</label>
 									{#if invalid}
@@ -620,7 +634,9 @@
 											id="field-{row.rowNumber}-{field.name}"
 											type="text"
 											inputmode={field.inputMode}
-											class="mt-1 h-12 w-full rounded-md border px-3 text-sm text-foreground {error ? 'border-destructive' : 'border-border'}"
+											class="mt-1 h-12 w-full rounded-md border px-3 text-sm text-foreground {error
+												? 'border-destructive'
+												: 'border-border'}"
 											value={editValues[field.name] ?? ''}
 											oninput={(e) => {
 												editValues[field.name] = (e.target as HTMLInputElement).value;

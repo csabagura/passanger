@@ -27,8 +27,13 @@ vi.mock('$lib/db/repositories/expenses', () => ({
 }));
 
 let mockSettingsFuelUnit: 'L/100km' | 'MPG' = 'L/100km';
-let mockActiveVehicle: { id: number; name: string; make: string; model: string; year?: number } | null =
-	null;
+let mockActiveVehicle: {
+	id: number;
+	name: string;
+	make: string;
+	model: string;
+	year?: number;
+} | null = null;
 const mockSwitchVehicle = vi.fn();
 const mockRefreshVehicles = vi.fn().mockResolvedValue(undefined);
 
@@ -326,9 +331,7 @@ describe('History page', () => {
 		vi.useFakeTimers();
 
 		mockActiveVehicle = testVehicle;
-		let resolveFuelLogs:
-			| ((value: { data: never[]; error: null }) => void)
-			| undefined;
+		let resolveFuelLogs: ((value: { data: never[]; error: null }) => void) | undefined;
 		mockGetAllFuelLogs.mockReturnValue(
 			new Promise((resolve) => {
 				resolveFuelLogs = resolve;
@@ -521,6 +524,9 @@ describe('History page', () => {
 	});
 
 	it('deletes from detail, updates the stat bar immediately, and focuses the next visible entry', async () => {
+		// Pin "today" to the entries' month so the default current-month period includes them
+		// (the March test data is otherwise excluded when the suite runs in another month).
+		setHistoryReferenceDate(new Date(2026, 2, 15, 12, 0, 0, 0));
 		mockActiveVehicle = testVehicle;
 		mockGetAllFuelLogs.mockResolvedValue({ data: [testFuelEntry], error: null });
 		mockGetAllExpenses.mockResolvedValue({ data: [testExpense], error: null });
@@ -1569,9 +1575,7 @@ describe('History page', () => {
 
 		expect(screen.getByText('No entries yet for Old Faithful')).toBeTruthy();
 		expect(
-			screen.getByText(
-				'Log a fuel fill-up or maintenance event for Old Faithful to get started.'
-			)
+			screen.getByText('Log a fuel fill-up or maintenance event for Old Faithful to get started.')
 		).toBeTruthy();
 	});
 

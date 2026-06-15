@@ -35,7 +35,7 @@
 	<h1 class="text-base font-semibold text-foreground">{screenTitle}</h1>
 
 	<a
-		href={settingsHref}
+		href={resolve('/settings')}
 		aria-label="Settings"
 		aria-current={isSettingsActive ? 'page' : undefined}
 		class="inline-flex h-11 w-11 items-center justify-center rounded-full text-muted-foreground transition-colors hover:text-foreground {isSettingsActive

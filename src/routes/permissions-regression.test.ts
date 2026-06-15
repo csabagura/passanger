@@ -10,7 +10,7 @@ import { render, cleanup } from '@testing-library/svelte';
 import { createRawSnippet, flushSync } from 'svelte';
 import Layout from './+layout.svelte';
 
-let mockPathname = '/log';
+const mockPathname = '/log';
 
 vi.mock('$app/state', () => ({
 	page: {
@@ -38,7 +38,7 @@ vi.mock('$lib/utils/settings', () => ({
 
 // Mock matchMedia
 Object.defineProperty(window, 'matchMedia', {
-	value: vi.fn((query: string) => ({
+	value: vi.fn((_query: string) => ({
 		matches: false,
 		addEventListener: vi.fn(),
 		removeEventListener: vi.fn(),

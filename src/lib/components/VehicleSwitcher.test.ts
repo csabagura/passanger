@@ -14,10 +14,7 @@ vi.mock('$app/navigation', () => ({
 const testVehicle1 = { id: 1, name: 'My Car', make: 'Honda', model: 'Civic', year: 2020 };
 const testVehicle2 = { id: 2, name: 'Work Truck', make: 'Ford', model: 'F-150', year: 2022 };
 
-function makeContext(
-	vehicles = [testVehicle1],
-	activeId: number | null = 1
-): VehiclesContext {
+function makeContext(vehicles = [testVehicle1], activeId: number | null = 1): VehiclesContext {
 	return {
 		get vehicles() {
 			return vehicles;
@@ -327,7 +324,6 @@ describe('VehicleSwitcher (swipe-to-dismiss)', () => {
 
 describe('VehicleSwitcher (desktop dropdown)', () => {
 	let originalMatchMedia: typeof window.matchMedia;
-	let changeHandler: ((e: MediaQueryListEvent) => void) | null = null;
 
 	beforeEach(() => {
 		vi.clearAllMocks();
@@ -335,12 +331,8 @@ describe('VehicleSwitcher (desktop dropdown)', () => {
 		window.matchMedia = vi.fn().mockImplementation((query: string) => ({
 			matches: query.includes('min-width: 768px'),
 			media: query,
-			addEventListener: (_event: string, handler: (e: MediaQueryListEvent) => void) => {
-				changeHandler = handler;
-			},
-			removeEventListener: () => {
-				changeHandler = null;
-			},
+			addEventListener: vi.fn(),
+			removeEventListener: vi.fn(),
 			onchange: null,
 			addListener: vi.fn(),
 			removeListener: vi.fn(),
@@ -351,7 +343,6 @@ describe('VehicleSwitcher (desktop dropdown)', () => {
 	afterEach(() => {
 		cleanup();
 		window.matchMedia = originalMatchMedia;
-		changeHandler = null;
 	});
 
 	it('renders dropdown instead of bottom sheet on desktop', async () => {

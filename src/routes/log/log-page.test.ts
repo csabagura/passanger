@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import LogPage from './+page.svelte';
+import type { InstallPromptPlatform } from '$lib/utils/installPrompt';
 
 vi.mock('$lib/db/repositories/fuelLogs', () => ({
 	getAllFuelLogs: vi.fn().mockResolvedValue({ data: [], error: null }),
@@ -37,7 +38,7 @@ Object.defineProperty(globalThis, 'localStorage', { value: localStorageMock, wri
 const testVehicle = { id: 7, name: 'Old Faithful', make: 'Ford', model: 'Mustang', year: 2016 };
 
 const installPromptCtx = {
-	platform: 'unsupported' as const,
+	platform: 'unsupported' as InstallPromptPlatform,
 	isStandalone: false,
 	isDismissed: false,
 	canShowPrompt: false,

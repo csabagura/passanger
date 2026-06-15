@@ -181,7 +181,9 @@ describe('Settings utility', () => {
 			const spy = vi.spyOn(Storage.prototype, 'setItem').mockImplementationOnce(() => {
 				throw new DOMException('QuotaExceededError', 'QuotaExceededError');
 			});
-			expect(saveSettings({ fuelUnit: DEFAULT_UNIT, currency: DEFAULT_CURRENCY, theme: 'system' })).toBe(false);
+			expect(
+				saveSettings({ fuelUnit: DEFAULT_UNIT, currency: DEFAULT_CURRENCY, theme: 'system' })
+			).toBe(false);
 			spy.mockRestore();
 		});
 
@@ -189,7 +191,9 @@ describe('Settings utility', () => {
 			const spy = vi.spyOn(Storage.prototype, 'setItem').mockImplementationOnce(() => {
 				throw new DOMException('SecurityError', 'SecurityError');
 			});
-			expect(saveSettings({ fuelUnit: DEFAULT_UNIT, currency: DEFAULT_CURRENCY, theme: 'system' })).toBe(false);
+			expect(
+				saveSettings({ fuelUnit: DEFAULT_UNIT, currency: DEFAULT_CURRENCY, theme: 'system' })
+			).toBe(false);
 			spy.mockRestore();
 		});
 	});

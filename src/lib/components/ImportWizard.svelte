@@ -159,7 +159,7 @@
 	<!-- Progress indicator -->
 	<nav aria-label="Import wizard progress">
 		<ol class="flex gap-1">
-			{#each STEP_LABELS as label, i}
+			{#each STEP_LABELS as label, i (label)}
 				{@const stepNumber = i + 1}
 				{@const isCurrent = stepNumber === wizardState.step}
 				{@const isCompleted = stepNumber < wizardState.step}
@@ -221,10 +221,7 @@
 			}}
 		/>
 	{:else if wizardState.step === 5 && wizardState.parsedRows.length > 0 && wizardState.dryRunSummary}
-		<ImportStepVehicles
-			rows={wizardState.parsedRows}
-			onVehiclesAssigned={handleVehiclesAssigned}
-		/>
+		<ImportStepVehicles rows={wizardState.parsedRows} onVehiclesAssigned={handleVehiclesAssigned} />
 	{:else if wizardState.step === 6 && wizardState.parsedRows.length > 0 && wizardState.dryRunSummary && wizardState.vehicleAssignments.length > 0}
 		<ImportStepConfirm
 			rows={wizardState.parsedRows}
@@ -267,8 +264,6 @@
 
 <!-- Cancel confirmation dialog -->
 {#if showCancelConfirm}
-	<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-	<!-- svelte-ignore a11y_interactive_supports_focus -->
 	<div
 		class="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
 		role="dialog"

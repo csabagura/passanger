@@ -2,11 +2,7 @@
 	import { getContext } from 'svelte';
 	import { SvelteMap } from 'svelte/reactivity';
 	import { MAX_VEHICLES } from '$lib/config';
-	import type {
-		ImportRow,
-		VehicleAssignment,
-		VehicleGroup
-	} from '$lib/utils/importTypes';
+	import type { ImportRow, VehicleAssignment, VehicleGroup } from '$lib/utils/importTypes';
 	import type { NewVehicle } from '$lib/db/schema';
 	import type { VehiclesContext } from '$lib/utils/vehicleContext';
 
@@ -51,9 +47,7 @@
 				if (assignment.assignmentType === 'existing') return true;
 				if (assignment.assignmentType === 'new') {
 					const formData = inlineFormData.get(g.sourceVehicleName);
-					return (
-						!!formData?.name?.trim() && !!formData?.make?.trim() && !!formData?.model?.trim()
-					);
+					return !!formData?.name?.trim() && !!formData?.make?.trim() && !!formData?.model?.trim();
 				}
 				return false;
 			})
@@ -282,10 +276,7 @@
 
 			<!-- Assignment dropdown -->
 			<div>
-				<label
-					class="sr-only"
-					for="assign-{group.sourceVehicleName}"
-				>
+				<label class="sr-only" for="assign-{group.sourceVehicleName}">
 					Assign {group.sourceVehicleName} to a passanger vehicle
 				</label>
 				<select
@@ -294,10 +285,7 @@
 					aria-label="Assign {group.sourceVehicleName} to a passanger vehicle"
 					value={getDropdownValue(group.sourceVehicleName)}
 					onchange={(e) =>
-						handleAssignmentChange(
-							group.sourceVehicleName,
-							(e.target as HTMLSelectElement).value
-						)}
+						handleAssignmentChange(group.sourceVehicleName, (e.target as HTMLSelectElement).value)}
 				>
 					<option value="">Select vehicle…</option>
 					{#each vehiclesContext.vehicles as vehicle (vehicle.id)}
@@ -310,8 +298,7 @@
 			<!-- MAX_VEHICLES error -->
 			{#if maxVehiclesError === group.sourceVehicleName}
 				<p class="text-sm text-destructive" role="alert">
-					You already have {MAX_VEHICLES} vehicles. Delete or reassign one in Settings before
-					importing.
+					You already have {MAX_VEHICLES} vehicles. Delete or reassign one in Settings before importing.
 				</p>
 			{/if}
 

@@ -156,7 +156,7 @@ export async function parseACarCSV(rawCSV: string): Promise<Result<ImportParseRe
 
 		const vehicleRow = vehicleRows[0];
 		const vehicleName = getColumn(vehicleRow, 'Name').replace(/^"|"$/g, '');
-		const vehicleUnits = detectUnitsFromVehicleCodes(vehicleRow);
+		const _vehicleUnits = detectUnitsFromVehicleCodes(vehicleRow);
 
 		// Parse Log section
 		const logResult = Papa.parse(sections.get('log')!, {

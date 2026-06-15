@@ -62,7 +62,7 @@ describe('parseDrivvoCSV', () => {
 		const first = fuelRows[0];
 		expect(first.data.odometer).toBe(12345);
 		expect(first.data.quantity).toBeCloseTo(30.0);
-		expect(first.data.totalCost).toBeCloseTo(55.50);
+		expect(first.data.totalCost).toBeCloseTo(55.5);
 		expect(first.data.type).toBe('fuel');
 		expect(first.data.notes).toBe('Highway trip');
 	});
@@ -122,7 +122,7 @@ describe('parseDrivvoCSV', () => {
 		expect(result.error).toBeNull();
 
 		const row = result.data!.rows[0];
-		expect(row.data.totalCost).toBeCloseTo(55.50);
+		expect(row.data.totalCost).toBeCloseTo(55.5);
 		expect(row.data.quantity).toBeCloseTo(30.0);
 	});
 
@@ -211,7 +211,7 @@ Odometer,Date,Fuel type,Volume price,Total price,Fuel amount,Full fillup,,,,,,,,
 		const result = await parseDrivvoCSV(csv, METRIC_UNITS);
 		expect(result.error).toBeNull();
 		// "1.055,50" → 1055.50
-		expect(result.data!.rows[0].data.totalCost).toBeCloseTo(1055.50);
+		expect(result.data!.rows[0].data.totalCost).toBeCloseTo(1055.5);
 	});
 
 	it('handles empty notes gracefully', async () => {
