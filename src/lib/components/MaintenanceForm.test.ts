@@ -67,7 +67,7 @@ describe('MaintenanceForm', () => {
 		expect(screen.getByLabelText(/notes/i)).toBeTruthy();
 	});
 
-	it('uses the saved currency prefix in the cost label and success feedback', async () => {
+	it('uses the saved currency in success feedback', async () => {
 		mockSettings.value = {
 			fuelUnit: 'L/100km',
 			currency: 'EUR ',
@@ -85,12 +85,12 @@ describe('MaintenanceForm', () => {
 
 		render(MaintenanceForm, { vehicleId: 7, onSave: onSaveSpy });
 
-		expect(screen.getByLabelText(/cost \(EUR \)/i)).toBeTruthy();
+		expect(screen.getByLabelText(/cost/i)).toBeTruthy();
 
 		await fireEvent.input(screen.getByLabelText(/^type$/i), {
 			target: { value: 'Insurance' }
 		});
-		await fireEvent.input(screen.getByLabelText(/cost \(EUR \)/i), {
+		await fireEvent.input(screen.getByLabelText(/cost/i), {
 			target: { value: '100' }
 		});
 		await fireEvent.click(screen.getByRole('button', { name: /^save$/i }));
@@ -272,6 +272,7 @@ describe('MaintenanceForm', () => {
 			type: 'Tyres',
 			odometer: 87200,
 			cost: 340,
+			currency: '€',
 			notes: 'Winter set and balancing'
 		});
 		expect(screen.getByRole('status').textContent).toContain('Updated Tyres');

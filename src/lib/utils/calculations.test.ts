@@ -182,4 +182,23 @@ describe('shared display helpers', () => {
 	it('formats currency using the literal saved prefix', () => {
 		expect(formatCurrency(78, 'EUR ')).toBe('EUR 78.00');
 	});
+
+	it('keeps prefix symbols and two decimals for known prefix currencies', () => {
+		expect(formatCurrency(78, '€')).toBe('€78.00');
+		expect(formatCurrency(78.5, '$')).toBe('$78.50');
+		expect(formatCurrency(78, '£')).toBe('£78.00');
+	});
+
+	it('uses zero decimals and a suffix for forint', () => {
+		expect(formatCurrency(20000, 'Ft')).toBe('20000 Ft');
+		expect(formatCurrency(20000.7, 'HUF')).toBe('20001 HUF');
+	});
+
+	it('uses zero decimals for yen', () => {
+		expect(formatCurrency(1500, '¥')).toBe('¥1500');
+	});
+
+	it('keeps the default behavior for unknown/custom currencies', () => {
+		expect(formatCurrency(10, 'CHF ')).toBe('CHF 10.00');
+	});
 });

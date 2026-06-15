@@ -3,8 +3,13 @@
 	import type { Snippet } from 'svelte';
 	import { getAllFuelLogs, saveFuelLog, updateFuelLogsAtomic } from '$lib/db/repositories/fuelLogs';
 	import type { FuelLog, NewFuelLog } from '$lib/db/schema';
-	import { fuelDraft, clearFuelDraft } from '$lib/stores/draft';
-	import { RESULT_CARD_DISMISS_MS } from '$lib/config';
+	import {
+		fuelDraft,
+		clearFuelDraft,
+		getLastUsedCurrency,
+		setLastUsedCurrency
+	} from '$lib/stores/draft';
+	import { RESULT_CARD_DISMISS_MS, PRESET_CURRENCIES } from '$lib/config';
 	import {
 		calculateConsumption,
 		formatConsumptionForDisplay,
@@ -81,6 +86,17 @@
 	let cost = $state(
 		getInitialLog() ? String(getInitialLog()!.totalCost) : (fuelDraft['cost'] ?? '')
 	);
+	// Currency the cost is entered in. Edit: the entry's own currency; create: the last
+	// currency the user picked this session (so a trip stays consistent), else home.
+	let currency = $state(
+		getInitialLog()
+			? (getInitialLog()!.currency ?? settingsCtx.settings.currency)
+			: (getLastUsedCurrency() ?? settingsCtx.settings.currency)
+	);
+	const currencyOptions = $derived.by(() => {
+		const presets = PRESET_CURRENCIES as readonly string[];
+		return presets.includes(currency) ? [...presets] : [currency, ...presets];
+	});
 
 	let odometerInput: HTMLInputElement | undefined = $state();
 	let quantityInput: HTMLInputElement | undefined = $state();
@@ -318,8 +334,11 @@
 				log.unit,
 				settingsCtx.settings.fuelUnit
 			);
-			resultFormattedText = `✓ ${prefix} — ${formatted} | ${formatCurrency(parsedCost, settingsCtx.settings.currency)} | ${parsedQuantity.toFixed(1)} ${log.unit === 'L' ? 'L' : 'gal'}`;
+			resultFormattedText = `✓ ${prefix} — ${formatted} | ${formatCurrency(parsedCost, log.currency ?? settingsCtx.settings.currency)} | ${parsedQuantity.toFixed(1)} ${log.unit === 'L' ? 'L' : 'gal'}`;
 		}
+
+		// Remember the chosen currency for the next new entry (travel convenience).
+		setLastUsedCurrency(currency);
 
 		saveState = { status: 'success', data: log };
 		showResultCard = true;
@@ -441,7 +460,8 @@
 				quantity: parsedQuantity,
 				unit: storageUnit,
 				distanceUnit,
-				totalCost: parsedCost
+				totalCost: parsedCost,
+				currency
 			};
 
 			const updatePlan = buildFuelLogUpdatePlan(timelineContextLogs, updatedLog);
@@ -500,6 +520,7 @@
 			unit: storageUnit,
 			distanceUnit,
 			totalCost: parsedCost,
+			currency,
 			calculatedConsumption: consumption,
 			notes: ''
 		};
@@ -594,19 +615,28 @@
 	</div>
 
 	<div>
-		<label for="cost" class="block text-sm font-medium text-foreground">
-			Total Cost ({settingsCtx.settings.currency})
-		</label>
-		<input
-			bind:this={costInput}
-			bind:value={cost}
-			type="text"
-			inputmode="decimal"
-			id="cost"
-			aria-describedby={costError ? 'cost-error' : undefined}
-			aria-invalid={!!costError}
-			class="mt-1 block h-[52px] w-full rounded-lg border border-border px-3 py-2 text-base focus:outline-none focus:ring-2 focus:ring-ring"
-		/>
+		<label for="cost" class="block text-sm font-medium text-foreground"> Total Cost </label>
+		<div class="mt-1 flex gap-2">
+			<input
+				bind:this={costInput}
+				bind:value={cost}
+				type="text"
+				inputmode="decimal"
+				id="cost"
+				aria-describedby={costError ? 'cost-error' : undefined}
+				aria-invalid={!!costError}
+				class="block h-[52px] w-full rounded-lg border border-border px-3 py-2 text-base focus:outline-none focus:ring-2 focus:ring-ring"
+			/>
+			<select
+				bind:value={currency}
+				aria-label="Currency"
+				class="h-[52px] shrink-0 rounded-lg border border-border bg-background px-2 text-base focus:outline-none focus:ring-2 focus:ring-ring"
+			>
+				{#each currencyOptions as option (option)}
+					<option value={option}>{option}</option>
+				{/each}
+			</select>
+		</div>
 		{#if costError}
 			<p id="cost-error" role="alert" class="mt-1 text-sm text-destructive">
 				{costError}

@@ -76,7 +76,7 @@
 			label: 'Cost',
 			value: formatCurrency(
 				entry.kind === 'fuel' ? entry.entry.totalCost : entry.entry.cost,
-				currency
+				entry.entry.currency ?? currency
 			)
 		},
 		{ label: 'Calculated consumption', value: getConsumptionValue(entry) },

@@ -1847,7 +1847,7 @@ describe('FuelEntryForm component — review fixes validation', () => {
 
 			const odometerInput = screen.getByLabelText(/odometer \(mi\)/i) as HTMLInputElement;
 			const quantityInput = screen.getByLabelText(/quantity \(gal\)/i) as HTMLInputElement;
-			const costInput = screen.getByLabelText(/total cost \(\$\)/i) as HTMLInputElement;
+			const costInput = screen.getByLabelText(/total cost/i) as HTMLInputElement;
 
 			await fireEvent.input(odometerInput, { target: { value: '10360' } });
 			await fireEvent.input(quantityInput, { target: { value: '10' } });

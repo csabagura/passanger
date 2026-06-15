@@ -8,7 +8,7 @@
 	import StatBar from '$lib/components/StatBar.svelte';
 	import { deleteExpense, getAllExpenses } from '$lib/db/repositories/expenses';
 	import { deleteFuelLog, getAllFuelLogs } from '$lib/db/repositories/fuelLogs';
-	import type { Expense, FuelLog, Vehicle } from '$lib/db/schema';
+	import type { Expense, FuelLog } from '$lib/db/schema';
 	import type { VehiclesContext } from '$lib/utils/vehicleContext';
 	import {
 		compareHistoryEntriesNewestFirst,
@@ -73,7 +73,8 @@
 			visibleHistoryEntries,
 			selectedHistoryTimePeriod,
 			settingsCtx.settings.fuelUnit,
-			historySummaryReferenceDate
+			historySummaryReferenceDate,
+			settingsCtx.settings.currency
 		)
 	);
 	const selectedHistoryTimePeriodAriaLabel = $derived(
@@ -704,6 +705,7 @@
 					selectedPeriodLabel={visibleHistoryTimePeriodSummary.periodLabel}
 					selectedPeriodAriaLabel={selectedHistoryTimePeriodAriaLabel}
 					currency={settingsCtx.settings.currency}
+					selectedPeriodSpendByCurrency={visibleHistoryTimePeriodSummary.totalSpendByCurrency}
 				/>
 			{/if}
 

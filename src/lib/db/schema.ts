@@ -16,6 +16,7 @@ export interface FuelLog {
 	unit: 'L' | 'gal'; // storage unit for quantity
 	distanceUnit: 'km' | 'mi'; // distance unit used at time of log (FIX #2: prevents mixed-unit calculations)
 	totalCost: number; // float (display with toFixed(2) at UI layer)
+	currency?: string; // display currency the cost was entered in (e.g. '€', 'Ft'). Optional for back-compat; new entries always set it, migration v3 backfills, readers fall back to the home currency.
 	calculatedConsumption: number; // L/100km or MPG — computed on save
 	notes?: string;
 }
@@ -28,6 +29,7 @@ export interface Expense {
 	type: string; // free text: "Oil Change", "Tyres", "Insurance", etc.
 	odometer?: number; // optional for expenses
 	cost: number; // float
+	currency?: string; // display currency the cost was entered in (e.g. '€', 'Ft'). Optional for back-compat; new entries always set it, migration v3 backfills, readers fall back to the home currency.
 	notes?: string;
 }
 export type NewExpense = Omit<Expense, 'id'>;

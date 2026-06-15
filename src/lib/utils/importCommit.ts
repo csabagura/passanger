@@ -5,7 +5,8 @@ import type { NewFuelLog, NewExpense } from '$lib/db/schema'
 import { saveVehicle } from '$lib/db/repositories/vehicles'
 import { ok, err } from '$lib/utils/result'
 import type { Result } from '$lib/utils/result'
-import { MAX_VEHICLES } from '$lib/config'
+import { MAX_VEHICLES, DEFAULT_CURRENCY } from '$lib/config'
+import { getSettings } from '$lib/utils/settings'
 import { isQuotaExceededError, QUOTA_EXCEEDED_CODE, QUOTA_EXCEEDED_MESSAGE } from '$lib/db/dbErrors'
 import { calculateConsumption } from '$lib/utils/calculations'
 import type { ImportRow, VehicleAssignment, ImportCommitResult } from '$lib/utils/importTypes'
@@ -15,6 +16,10 @@ export async function commitImportRows(
 	assignments: VehicleAssignment[],
 	onProgress?: (current: number, total: number) => void
 ): Promise<Result<ImportCommitResult>> {
+	// Imported rows carry no currency metadata (3rd-party CSVs don't include it), so they
+	// adopt the user's home currency. Per-row currency import is a future enhancement.
+	const homeCurrency = getSettings().currency || DEFAULT_CURRENCY
+
 	// Step 1: Check MAX_VEHICLES before creating any
 	const existingCount = await db.vehicles.count()
 	const newVehicleCount = assignments.filter((a) => a.assignmentType === 'new').length
@@ -124,6 +129,7 @@ export async function commitImportRows(
 					unit: entry.row.data.unit!,
 					distanceUnit: entry.row.data.distanceUnit!,
 					totalCost: entry.row.data.totalCost ?? 0,
+					currency: homeCurrency,
 					calculatedConsumption: consumptionMap.get(entry.row) ?? 0,
 					notes: entry.row.data.notes || undefined
 				}
@@ -140,6 +146,7 @@ export async function commitImportRows(
 					type: entry.row.data.maintenanceType || 'Imported',
 					odometer: entry.row.data.odometer || undefined,
 					cost: entry.row.data.totalCost ?? 0,
+					currency: homeCurrency,
 					notes: entry.row.data.notes || undefined
 				}
 					// eslint-disable-next-line @typescript-eslint/no-explicit-any -- Dexie auto-generates id for auto-increment tables

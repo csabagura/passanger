@@ -4,6 +4,7 @@
 	import EntryCard from '$lib/components/EntryCard.svelte';
 	import {
 		getHistoryEntryKey,
+		summarizeSpendByCurrency,
 		type HistoryMonthGroup,
 		type HistoryEntry
 	} from '$lib/utils/historyEntries';
@@ -48,6 +49,17 @@
 	}: Props = $props();
 
 	let revealedEntryKey = $state<string | null>(null);
+
+	// A month can contain entries in multiple currencies, which can't be summed without an
+	// FX rate. Single-currency months render exactly as before; mixed months show each
+	// currency's subtotal separately.
+	function formatMonthSubtotal(group: HistoryMonthGroup): string {
+		const byCurrency = Object.entries(summarizeSpendByCurrency(group.entries, currency));
+		if (byCurrency.length <= 1) {
+			return formatCurrency(group.subtotalCost, byCurrency[0]?.[0] ?? currency);
+		}
+		return byCurrency.map(([cur, amount]) => formatCurrency(amount, cur)).join(' · ');
+	}
 	let emptyStateLink = $state<HTMLAnchorElement | undefined>(undefined);
 	let hasMounted = false;
 
@@ -133,7 +145,7 @@
 						{group.label}
 					</h2>
 					<p class="text-sm font-semibold tabular-nums text-foreground">
-						{formatCurrency(group.subtotalCost, currency)}
+						{formatMonthSubtotal(group)}
 					</p>
 				</div>
 

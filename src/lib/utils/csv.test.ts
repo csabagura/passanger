@@ -57,9 +57,9 @@ describe('csv utilities', () => {
 
 		expect(csv).toBe(
 			[
-				'date,odometer,entry type,quantity,unit,cost,calculated consumption,notes',
-				'2026-03-12,,Oil Change,,,120,,',
-				'2026-03-10,87400,fuel,42,L,78.5,7.25,Top off before road trip'
+				'date,odometer,entry type,quantity,unit,cost,currency,calculated consumption,notes',
+				'2026-03-12,,Oil Change,,,120,,,',
+				'2026-03-10,87400,fuel,42,L,78.5,,7.25,Top off before road trip'
 			].join('\r\n')
 		);
 	});
@@ -85,7 +85,9 @@ describe('csv utilities', () => {
 		expect(csv).toContain('"Line 1\nLine 2"');
 		expect(csv).toContain('"Quoted ""note"", keep"');
 		expect(
-			csv.startsWith('date,odometer,entry type,quantity,unit,cost,calculated consumption,notes\r\n')
+			csv.startsWith(
+				'date,odometer,entry type,quantity,unit,cost,currency,calculated consumption,notes\r\n'
+			)
 		).toBe(true);
 	});
 
@@ -143,7 +145,7 @@ describe('csv utilities', () => {
 		]);
 		const headerLine = csv.split('\r\n')[0];
 		expect(headerLine).toBe(
-			'date,odometer,entry type,quantity,unit,cost,calculated consumption,notes'
+			'date,odometer,entry type,quantity,unit,cost,currency,calculated consumption,notes'
 		);
 		expect(headerLine).not.toContain('vehicle');
 	});
@@ -212,7 +214,7 @@ describe('buildHistoryExportCSVWithVehicles', () => {
 		);
 		const lines = csv.split('\r\n');
 		expect(lines[0]).toBe(
-			'vehicle,date,odometer,entry type,quantity,unit,cost,calculated consumption,notes'
+			'vehicle,date,odometer,entry type,quantity,unit,cost,currency,calculated consumption,notes'
 		);
 	});
 

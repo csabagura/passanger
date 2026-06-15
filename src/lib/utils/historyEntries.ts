@@ -1,4 +1,5 @@
 import type { FuelUnit } from '$lib/config';
+import { DEFAULT_CURRENCY } from '$lib/config';
 import type { Expense, FuelLog } from '$lib/db/schema';
 
 export type HistoryEntryFilter = 'all' | 'fuel' | 'maintenance';
@@ -24,6 +25,7 @@ export interface HistoryMonthGroup {
 
 export interface HistorySummary {
 	totalSpend: number;
+	totalSpendByCurrency: Record<string, number>;
 	totalFuelVolume: number;
 	fuelVolumeUnit: HistoryFuelVolumeUnit;
 	averageConsumption: number | null;
@@ -94,6 +96,28 @@ export function filterHistoryEntries(
 
 function getHistoryEntryCost(entry: HistoryEntry): number {
 	return entry.kind === 'fuel' ? entry.entry.totalCost : entry.entry.cost;
+}
+
+/** The currency an entry was logged in, falling back to the home currency for legacy rows. */
+export function resolveHistoryEntryCurrency(entry: HistoryEntry, homeCurrency: string): string {
+	return entry.entry.currency ?? homeCurrency;
+}
+
+/**
+ * Sum spend grouped by currency. Currencies cannot be added together without an exchange
+ * rate (and the app makes no network calls), so totals are reported per currency. Legacy
+ * entries with no currency are attributed to the home currency.
+ */
+export function summarizeSpendByCurrency(
+	entries: HistoryEntry[],
+	homeCurrency: string
+): Record<string, number> {
+	const byCurrency: Record<string, number> = {};
+	for (const entry of entries) {
+		const currency = resolveHistoryEntryCurrency(entry, homeCurrency);
+		byCurrency[currency] = (byCurrency[currency] ?? 0) + getHistoryEntryCost(entry);
+	}
+	return byCurrency;
 }
 
 function getHistoryMonthKey(date: Date): string {
@@ -204,9 +228,11 @@ export function groupHistoryEntriesByMonth(
 
 export function summarizeHistoryEntries(
 	entries: HistoryEntry[],
-	preferredFuelUnit: FuelUnit = 'L/100km'
+	preferredFuelUnit: FuelUnit = 'L/100km',
+	homeCurrency: string = DEFAULT_CURRENCY
 ): HistorySummary {
 	const totalSpend = entries.reduce((sum, entry) => sum + getHistoryEntryCost(entry), 0);
+	const totalSpendByCurrency = summarizeSpendByCurrency(entries, homeCurrency);
 	const preferredVolumeUnit = getPreferredFuelVolumeUnit(preferredFuelUnit);
 	const preferredDistanceUnit = preferredVolumeUnit === 'L' ? 'km' : 'mi';
 	const fuelEntries = entries.filter(
@@ -242,6 +268,7 @@ export function summarizeHistoryEntries(
 
 	return {
 		totalSpend,
+		totalSpendByCurrency,
 		totalFuelVolume,
 		fuelVolumeUnit: preferredVolumeUnit,
 		averageConsumption:
@@ -258,7 +285,8 @@ export function summarizeHistoryEntriesForTimePeriod(
 	entries: HistoryEntry[],
 	period: HistoryTimePeriod,
 	preferredFuelUnit: FuelUnit = 'L/100km',
-	referenceDate: Date = new Date()
+	referenceDate: Date = new Date(),
+	homeCurrency: string = DEFAULT_CURRENCY
 ): HistoryTimePeriodSummary {
 	const periodOption = getHistoryTimePeriodOption(period);
 	const periodEntries = entries.filter((entry) =>
@@ -269,7 +297,7 @@ export function summarizeHistoryEntriesForTimePeriod(
 		timePeriod: period,
 		periodLabel: periodOption.label,
 		periodAriaLabel: periodOption.ariaLabel,
-		...summarizeHistoryEntries(periodEntries, preferredFuelUnit)
+		...summarizeHistoryEntries(periodEntries, preferredFuelUnit, homeCurrency)
 	};
 }
 
@@ -277,13 +305,15 @@ export function summarizeCurrentMonthHistoryEntries(
 	entries: HistoryEntry[],
 	preferredFuelUnit: FuelUnit = 'L/100km',
 	referenceDate: Date = new Date(),
-	locale: Intl.LocalesArgument = undefined
+	locale: Intl.LocalesArgument = undefined,
+	homeCurrency: string = DEFAULT_CURRENCY
 ): CurrentMonthHistorySummary {
 	const currentMonthSummary = summarizeHistoryEntriesForTimePeriod(
 		entries,
 		'current-month',
 		preferredFuelUnit,
-		referenceDate
+		referenceDate,
+		homeCurrency
 	);
 
 	return {

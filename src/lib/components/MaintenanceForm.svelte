@@ -1,9 +1,14 @@
 <script lang="ts">
 	import { getContext, onDestroy } from 'svelte';
-	import { RESULT_CARD_DISMISS_MS } from '$lib/config';
+	import { RESULT_CARD_DISMISS_MS, PRESET_CURRENCIES } from '$lib/config';
 	import { saveExpense, updateExpense } from '$lib/db/repositories/expenses';
 	import type { Expense, NewExpense } from '$lib/db/schema';
-	import { clearMaintenanceDraft, maintenanceDraft } from '$lib/stores/draft';
+	import {
+		clearMaintenanceDraft,
+		maintenanceDraft,
+		getLastUsedCurrency,
+		setLastUsedCurrency
+	} from '$lib/stores/draft';
 	import {
 		formatLocalCalendarDate,
 		getTodayDateInputValue,
@@ -72,6 +77,17 @@
 	let costValue = $state(
 		getInitialExpense() ? String(getInitialExpense()!.cost) : (maintenanceDraft['cost'] ?? '')
 	);
+	// Currency the cost is entered in. Edit: the entry's own currency; create: the last
+	// currency picked this session (so a trip stays consistent), else home.
+	let currency = $state(
+		getInitialExpense()
+			? (getInitialExpense()!.currency ?? settingsCtx.settings.currency)
+			: (getLastUsedCurrency() ?? settingsCtx.settings.currency)
+	);
+	const currencyOptions = $derived.by(() => {
+		const presets = PRESET_CURRENCIES as readonly string[];
+		return presets.includes(currency) ? [...presets] : [currency, ...presets];
+	});
 	let notesValue = $state(
 		getInitialExpense() ? (getInitialExpense()!.notes ?? '') : (maintenanceDraft['notes'] ?? '')
 	);
@@ -196,6 +212,7 @@
 			type: typeValue.trim(),
 			odometer: parsedOdometer ?? undefined,
 			cost: parsedCost,
+			currency,
 			notes: notesValue
 		};
 
@@ -234,10 +251,13 @@
 			notesValue = '';
 		}
 
+		setLastUsedCurrency(currency);
+
 		saveState = { status: 'success', data: result.data };
+		const resultCurrency = result.data.currency ?? settingsCtx.settings.currency;
 		successMessage = isEditMode
-			? `Updated ${result.data.type} for ${formatCurrency(result.data.cost, settingsCtx.settings.currency)} on ${formatLocalCalendarDate(result.data.date)}.`
-			: `Saved ${result.data.type} for ${formatCurrency(result.data.cost, settingsCtx.settings.currency)} on ${formatLocalCalendarDate(result.data.date)}.`;
+			? `Updated ${result.data.type} for ${formatCurrency(result.data.cost, resultCurrency)} on ${formatLocalCalendarDate(result.data.date)}.`
+			: `Saved ${result.data.type} for ${formatCurrency(result.data.cost, resultCurrency)} on ${formatLocalCalendarDate(result.data.date)}.`;
 		showSuccessMessage = true;
 		successMessageTimeout = setTimeout(() => {
 			showSuccessMessage = false;
@@ -341,21 +361,30 @@
 	</div>
 
 	<div>
-		<label for="maintenance-cost" class="block text-sm font-medium text-foreground">
-			Cost ({settingsCtx.settings.currency})
-		</label>
-		<input
-			bind:this={costInput}
-			bind:value={costValue}
-			id="maintenance-cost"
-			type="text"
-			inputmode="decimal"
-			placeholder="e.g. 78.00"
-			aria-invalid={costError ? 'true' : undefined}
-			aria-describedby={costError ? 'maintenance-cost-error' : undefined}
-			oninput={clearAsyncFeedback}
-			class="mt-1 block h-[52px] w-full rounded-lg border border-border bg-card px-3 py-2 text-base text-foreground outline-none focus:ring-2 focus:ring-ring"
-		/>
+		<label for="maintenance-cost" class="block text-sm font-medium text-foreground"> Cost </label>
+		<div class="mt-1 flex gap-2">
+			<input
+				bind:this={costInput}
+				bind:value={costValue}
+				id="maintenance-cost"
+				type="text"
+				inputmode="decimal"
+				placeholder="e.g. 78.00"
+				aria-invalid={costError ? 'true' : undefined}
+				aria-describedby={costError ? 'maintenance-cost-error' : undefined}
+				oninput={clearAsyncFeedback}
+				class="block h-[52px] w-full rounded-lg border border-border bg-card px-3 py-2 text-base text-foreground outline-none focus:ring-2 focus:ring-ring"
+			/>
+			<select
+				bind:value={currency}
+				aria-label="Currency"
+				class="h-[52px] shrink-0 rounded-lg border border-border bg-card px-2 text-base text-foreground outline-none focus:ring-2 focus:ring-ring"
+			>
+				{#each currencyOptions as option (option)}
+					<option value={option}>{option}</option>
+				{/each}
+			</select>
+		</div>
 		{#if costError}
 			<p id="maintenance-cost-error" role="alert" class="mt-1 text-sm text-destructive">
 				{costError}

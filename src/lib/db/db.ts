@@ -2,6 +2,7 @@ import Dexie, { type EntityTable } from 'dexie';
 import { DB_NAME } from '$lib/config';
 import type { Vehicle, FuelLog, Expense } from './schema';
 import { migrateV1ToV2 } from './migrations/v2';
+import { migrateV2ToV3 } from './migrations/v3';
 
 class PassangerDB extends Dexie {
 	vehicles!: EntityTable<Vehicle, 'id'>;
@@ -28,6 +29,17 @@ class PassangerDB extends Dexie {
 				expenses: '++id, vehicleId, date, type, odometer'
 			})
 			.upgrade(migrateV1ToV2);
+
+		// Version 3 — Add per-entry `currency` to fuelLogs and expenses.
+		// Schema strings are unchanged (currency is not indexed); the upgrade backfills
+		// existing rows from the user's home currency.
+		this.version(3)
+			.stores({
+				vehicles: '++id, name, make, model, year',
+				fuelLogs: '++id, vehicleId, date, odometer',
+				expenses: '++id, vehicleId, date, type, odometer'
+			})
+			.upgrade(migrateV2ToV3);
 	}
 }
 

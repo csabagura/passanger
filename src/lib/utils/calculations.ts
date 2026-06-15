@@ -1,4 +1,5 @@
 import type { FuelUnit } from '$lib/config';
+import { ZERO_DECIMAL_CURRENCIES, SUFFIX_CURRENCIES } from '$lib/config';
 
 export const LITERS_PER_GALLON = 3.785411784;
 export const KILOMETERS_PER_MILE = 1.609344;
@@ -57,8 +58,20 @@ export function formatConsumption(consumption: number, unit: 'L' | 'gal'): strin
 	}
 }
 
+// Format a monetary amount in the given currency. `currency` is the literal display
+// string the user chose (e.g. '€', 'EUR ', 'Ft'); we keep it verbatim and only adjust
+// the decimal places and symbol position for known currencies. Unknown/custom currencies
+// keep the historical behavior (prefix, two decimals).
 export function formatCurrency(value: number, currency: string): string {
-	return `${currency}${value.toFixed(2)}`;
+	const key = currency.trim().toUpperCase();
+	const decimals = ZERO_DECIMAL_CURRENCIES.has(key) ? 0 : 2;
+	const amount = value.toFixed(decimals);
+
+	if (SUFFIX_CURRENCIES.has(key)) {
+		return `${amount} ${currency.trim()}`;
+	}
+
+	return `${currency}${amount}`;
 }
 
 export function getVolumeUnitForFuelUnit(fuelUnit: FuelUnit): 'L' | 'gal' {

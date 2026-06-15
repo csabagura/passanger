@@ -4,14 +4,30 @@
 export const SUPPORTED_UNITS = ['L/100km', 'MPG'] as const;
 export type FuelUnit = (typeof SUPPORTED_UNITS)[number];
 
-export const PRESET_CURRENCIES = ['€', '$', '£'] as const;
+export const PRESET_CURRENCIES = ['€', '$', '£', 'Ft'] as const;
 export type PresetCurrency = (typeof PRESET_CURRENCIES)[number];
 
 export const DEFAULT_UNIT: FuelUnit = 'L/100km';
 export const DEFAULT_CURRENCY: string = '€';
 
+// Currency display metadata, keyed by the currency string trimmed + upper-cased.
+// Currencies whose minor unit is absent/negligible are shown with no decimal places.
+export const ZERO_DECIMAL_CURRENCIES = new Set([
+	'HUF',
+	'FT',
+	'JPY',
+	'¥',
+	'KRW',
+	'₩',
+	'CLP',
+	'ISK',
+	'VND'
+]);
+// Currency symbols conventionally written after the amount (e.g. "20000 Ft").
+export const SUFFIX_CURRENCIES = new Set(['FT', 'HUF', 'KR', 'ZŁ', 'KČ']);
+
 export const DB_NAME = 'passangerDB'; // Note: double-a brand name — NOT 'passengerDB'
-export const DB_VERSION = 2;
+export const DB_VERSION = 3;
 
 export const MAX_VEHICLES = 5;
 export const MAX_CSV_ROWS = 10_000;

@@ -9,6 +9,8 @@ import {
 	summarizeCurrentMonthHistoryEntries,
 	summarizeHistoryEntriesForTimePeriod,
 	summarizeHistoryEntries,
+	summarizeSpendByCurrency,
+	resolveHistoryEntryCurrency,
 	type HistoryEntry
 } from './historyEntries';
 
@@ -22,6 +24,7 @@ function createFuelEntry(overrides: Partial<FuelLog> = {}): FuelLog {
 		unit: overrides.unit ?? 'L',
 		distanceUnit: overrides.distanceUnit ?? 'km',
 		totalCost: overrides.totalCost ?? 78,
+		currency: overrides.currency,
 		calculatedConsumption: overrides.calculatedConsumption ?? 7.2,
 		notes: overrides.notes ?? ''
 	};
@@ -35,6 +38,7 @@ function createMaintenanceEntry(overrides: Partial<Expense> = {}): Expense {
 		type: overrides.type ?? 'Oil Change',
 		odometer: overrides.odometer ?? 87400,
 		cost: overrides.cost ?? 78,
+		currency: overrides.currency,
 		notes: overrides.notes ?? 'Changed oil filter'
 	};
 }
@@ -276,6 +280,7 @@ describe('historyEntries', () => {
 			periodLabel: 'This month',
 			periodAriaLabel: 'this month',
 			totalSpend: 0,
+			totalSpendByCurrency: {},
 			totalFuelVolume: 0,
 			fuelVolumeUnit: 'L',
 			averageConsumption: null,
@@ -547,10 +552,37 @@ describe('historyEntries', () => {
 
 		expect(summarizeHistoryEntries(entries, 'L/100km')).toEqual({
 			totalSpend: 120,
+			totalSpendByCurrency: { '€': 120 },
 			totalFuelVolume: 0,
 			fuelVolumeUnit: 'L',
 			averageConsumption: null,
 			averageConsumptionUnit: 'L'
 		});
+	});
+});
+
+describe('currency segmentation', () => {
+	it('resolves an entry currency, falling back to the home currency for legacy rows', () => {
+		const withCurrency: HistoryEntry = { kind: 'fuel', entry: createFuelEntry({ currency: 'Ft' }) };
+		const legacy: HistoryEntry = { kind: 'fuel', entry: createFuelEntry() };
+		expect(resolveHistoryEntryCurrency(withCurrency, '€')).toBe('Ft');
+		expect(resolveHistoryEntryCurrency(legacy, '€')).toBe('€');
+	});
+
+	it('sums spend per currency without mixing them', () => {
+		const entries = mergeHistoryEntries(
+			[
+				createFuelEntry({ id: 1, totalCost: 78, currency: '€' }),
+				createFuelEntry({ id: 2, totalCost: 20000, currency: 'Ft' })
+			],
+			[createMaintenanceEntry({ id: 3, cost: 50, currency: '€' })]
+		);
+
+		expect(summarizeSpendByCurrency(entries, '€')).toEqual({ '€': 128, Ft: 20000 });
+	});
+
+	it('attributes legacy entries (no currency) to the home currency', () => {
+		const entries = mergeHistoryEntries([createFuelEntry({ totalCost: 78 })], []);
+		expect(summarizeSpendByCurrency(entries, 'Ft')).toEqual({ Ft: 78 });
 	});
 });

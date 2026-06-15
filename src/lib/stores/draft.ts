@@ -36,3 +36,21 @@ export function clearMaintenanceDraft(): void {
 		delete maintenanceDraft[key];
 	}
 }
+
+/**
+ * Last currency the user picked while logging an entry (fuel or maintenance). Lives for
+ * the whole app session — NOT cleared on submit — so a trip's worth of entries stay in
+ * the same currency without re-picking each time. `null` until the user changes it; the
+ * forms fall back to the home currency from settings.
+ */
+let lastUsedCurrency: string | null = null;
+
+/** The remembered entry currency, or `null` if the user hasn't picked one this session. */
+export function getLastUsedCurrency(): string | null {
+	return lastUsedCurrency;
+}
+
+/** Remember the currency the user just logged in, for the next new entry. */
+export function setLastUsedCurrency(currency: string): void {
+	lastUsedCurrency = currency;
+}

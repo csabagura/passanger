@@ -8,6 +8,7 @@ const CSV_HEADERS = [
 	'quantity',
 	'unit',
 	'cost',
+	'currency',
 	'calculated consumption',
 	'notes'
 ] as const;
@@ -49,6 +50,7 @@ function mapHistoryEntryToCSVRow(entry: HistoryEntry): string[] {
 			String(entry.entry.quantity),
 			entry.entry.unit,
 			String(entry.entry.totalCost),
+			formatOptionalText(entry.entry.currency),
 			String(entry.entry.calculatedConsumption),
 			formatOptionalText(entry.entry.notes)
 		];
@@ -61,6 +63,7 @@ function mapHistoryEntryToCSVRow(entry: HistoryEntry): string[] {
 		'',
 		'',
 		String(entry.entry.cost),
+		formatOptionalText(entry.entry.currency),
 		'',
 		formatOptionalText(entry.entry.notes)
 	];

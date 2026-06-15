@@ -7,6 +7,7 @@ describe('StatBar', () => {
 		render(StatBar, {
 			summary: {
 				totalSpend: 242,
+				totalSpendByCurrency: { 'EUR ': 242 },
 				totalFuelVolume: 72,
 				fuelVolumeUnit: 'L',
 				averageConsumption: 7.2,
@@ -29,6 +30,7 @@ describe('StatBar', () => {
 		render(StatBar, {
 			summary: {
 				totalSpend: 60,
+				totalSpendByCurrency: { '€': 60 },
 				totalFuelVolume: 8,
 				fuelVolumeUnit: 'gal',
 				averageConsumption: 32.7,
@@ -48,6 +50,7 @@ describe('StatBar', () => {
 		const { container } = render(StatBar, {
 			summary: {
 				totalSpend: 120,
+				totalSpendByCurrency: { 'EUR ': 120 },
 				totalFuelVolume: 0,
 				fuelVolumeUnit: 'L',
 				averageConsumption: null,

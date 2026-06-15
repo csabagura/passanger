@@ -116,17 +116,17 @@
 				const efficiencyLabel =
 					entry.calculatedConsumption > 0 ? getFuelEfficiencyLabel(entry) : 'efficiency pending';
 
-				return `Fuel entry, ${formatLocalCalendarDate(entry.date)}, ${entry.quantity} ${entry.unit}, ${formatCurrency(entry.totalCost, currency)}, ${efficiencyLabel}`;
+				return `Fuel entry, ${formatLocalCalendarDate(entry.date)}, ${entry.quantity} ${entry.unit}, ${formatCurrency(entry.totalCost, entry.currency ?? currency)}, ${efficiencyLabel}`;
 			}
 
-			return `Maintenance entry, ${formatLocalCalendarDate(entry.date)}, ${entry.type}, ${formatCurrency(entry.cost, currency)}`;
+			return `Maintenance entry, ${formatLocalCalendarDate(entry.date)}, ${entry.type}, ${formatCurrency(entry.cost, entry.currency ?? currency)}`;
 		}
 
 		if (isFuelEntry(entry)) {
-			return `Fuel entry, ${formatLocalCalendarDate(entry.date)}, ${formatCurrency(entry.totalCost, currency)}, ${getHistorySecondaryDetail()}`;
+			return `Fuel entry, ${formatLocalCalendarDate(entry.date)}, ${formatCurrency(entry.totalCost, entry.currency ?? currency)}, ${getHistorySecondaryDetail()}`;
 		}
 
-		return `Maintenance entry, ${formatLocalCalendarDate(entry.date)}, ${formatCurrency(entry.cost, currency)}, ${entry.type}`;
+		return `Maintenance entry, ${formatLocalCalendarDate(entry.date)}, ${formatCurrency(entry.cost, entry.currency ?? currency)}, ${entry.type}`;
 	}
 
 	function getEntryContextLabel(): string {
@@ -365,7 +365,10 @@
 
 		<div class="shrink-0 text-right">
 			<p class="text-sm font-semibold text-foreground">
-				{formatCurrency(isFuelEntry(entry) ? entry.totalCost : entry.cost, currency)}
+				{formatCurrency(
+					isFuelEntry(entry) ? entry.totalCost : entry.cost,
+					entry.currency ?? currency
+				)}
 			</p>
 			{#if presentation !== 'history' && isFuelEntry(entry)}
 				<p class="mt-1 text-xs text-muted-foreground">{formatLocalCalendarDate(entry.date)}</p>
