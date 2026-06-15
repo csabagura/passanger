@@ -39,9 +39,9 @@ for (const route of routes) {
 	});
 }
 
-test('Root (/) redirects to /fuel-entry', async ({ page }) => {
+test('Root (/) redirects to /log', async ({ page }) => {
 	await page.goto('/');
-	await expect(page).toHaveURL(/\/fuel-entry/);
+	await expect(page).toHaveURL(/\/log/);
 });
 
 test('Fuel Entry form fields are reachable via Tab and show visible focus', async ({ page }) => {
@@ -115,8 +115,8 @@ test('NavBar tabs are reachable via keyboard', async ({ page }) => {
 	});
 	expect(navLink).toBe(true);
 
-	// Arrow right should move to next tab
+	// Arrow right should move to next tab (Log → History in the current NavBar)
 	await page.keyboard.press('ArrowRight');
 	const href = await page.evaluate(() => (document.activeElement as HTMLAnchorElement)?.pathname);
-	expect(href).toBe('/maintenance');
+	expect(href).toBe('/history');
 });
