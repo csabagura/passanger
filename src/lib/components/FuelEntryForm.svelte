@@ -17,6 +17,13 @@
 		getFuelLogPredecessor,
 		getFuelLogSuccessor
 	} from '$lib/utils/fuelLogTimeline';
+	import {
+		getLocaleNumberSeparators,
+		isGroupedOdometerValue,
+		normalizeGroupingWhitespace,
+		parseNonNegativeNumeric,
+		parsePositiveNumeric
+	} from '$lib/utils/numberInput';
 	import type { AppError } from '$lib/utils/result';
 	import type { AppSettings } from '$lib/utils/settings';
 
@@ -108,30 +115,8 @@
 
 	const LAST_LOG_LOAD_ERROR_MESSAGE =
 		'Could not load previous fuel history. Try again before saving.';
-	const GROUPING_WHITESPACE_PATTERN = /[\s\u00A0\u202F]+/g;
-	const localeNumberParts = new Intl.NumberFormat().formatToParts(1000.1);
-	const localeGroupSeparator = localeNumberParts.find((part) => part.type === 'group')?.value;
-	const localeDecimalSeparator =
-		localeNumberParts.find((part) => part.type === 'decimal')?.value ?? '.';
-
-	function normalizeGroupingWhitespace(value: string): string {
-		return value.replace(GROUPING_WHITESPACE_PATTERN, ' ').trim();
-	}
-
-	function escapeRegExp(value: string): string {
-		return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-	}
-
-	function parseGroupedCandidateWithSeparator(value: string, separator: string): number | null {
-		const separatorPattern = escapeRegExp(separator);
-		const groupedPattern = new RegExp(`^\\d{1,3}(?:${separatorPattern}\\d{3})+$`);
-		if (!groupedPattern.test(value)) {
-			return null;
-		}
-
-		const candidate = Number(value.replace(new RegExp(separatorPattern, 'g'), ''));
-		return Number.isFinite(candidate) ? candidate : null;
-	}
+	const { group: localeGroupSeparator, decimal: localeDecimalSeparator } =
+		getLocaleNumberSeparators();
 
 	function setTimelineState(logs: FuelLog[]) {
 		timelineLogs = logs;
@@ -194,101 +179,22 @@
 		);
 	}
 
-	function parseGroupedOdometerCandidate(value: string): number | null {
-		const trimmed = value.trim();
-		if (!trimmed) {
-			return null;
-		}
-
-		const normalizedWhitespace = normalizeGroupingWhitespace(trimmed);
-		const candidates = [
-			parseGroupedCandidateWithSeparator(normalizedWhitespace, ' '),
-			parseGroupedCandidateWithSeparator(trimmed, ','),
-			parseGroupedCandidateWithSeparator(trimmed, '.')
-		];
-
-		if (
-			localeGroupSeparator &&
-			localeGroupSeparator !== ',' &&
-			localeGroupSeparator !== '.' &&
-			normalizeGroupingWhitespace(localeGroupSeparator) !== ' '
-		) {
-			candidates.push(parseGroupedCandidateWithSeparator(trimmed, localeGroupSeparator));
-		}
-
-		return candidates.find((candidate) => candidate !== null) ?? null;
-	}
-
-	function isCollapsedFirstEntryDecimal(value: string, parsedValue: number): boolean {
-		if (previousOdometer !== undefined) {
-			return false;
-		}
-
-		const trimmed = value.trim();
-		if (!/^\d{1,3}[,.]\d{3}$/.test(trimmed)) {
-			return false;
-		}
-
-		if (!trimmed.includes(',')) {
-			return false;
-		}
-
-		const normalized = trimmed.replace(',', '.');
-		const fraction = normalized.match(/\.(\d{3})$/)?.[1];
-		if (!fraction) {
-			return false;
-		}
-
-		const parsedFractionLength = parsedValue.toString().split('.')[1]?.length ?? 0;
-		return parsedFractionLength < fraction.length;
-	}
-
-	function isGroupedOdometerValue(value: string, parsedValue: number | null): boolean {
-		const trimmed = value.trim();
-		if (!trimmed) {
-			return false;
-		}
-
-		const normalizedTrimmed = normalizeGroupingWhitespace(trimmed);
-		const displayedHint = getDisplayedPreviousOdometerHint();
-		if (displayedHint && normalizedTrimmed === displayedHint) {
-			return true;
-		}
-
-		const groupedCandidate = parseGroupedOdometerCandidate(trimmed);
-		if (groupedCandidate === null) {
-			return false;
-		}
-
-		if (hasComparablePreviousOdometer(currentDistanceUnit)) {
-			if (parsedValue === null) {
-				return true;
-			}
-
-			return groupedCandidate > previousOdometer! && parsedValue <= previousOdometer!;
-		}
-
-		if (parsedValue === null) {
-			return true;
-		}
-
-		const usesWhitespaceGrouping =
-			normalizedTrimmed.includes(' ') &&
-			localeGroupSeparator !== undefined &&
-			normalizeGroupingWhitespace(localeGroupSeparator) === ' ';
-		if (usesWhitespaceGrouping) {
-			return true;
-		}
-
-		const separatorIsAmbiguousDecimal =
-			trimmed.includes(localeDecimalSeparator) && trimmed.includes(localeGroupSeparator ?? '');
-
-		return (
-			groupedCandidate >= 1000 &&
-			(Number.isInteger(parsedValue) ||
-				isCollapsedFirstEntryDecimal(trimmed, parsedValue) ||
-				separatorIsAmbiguousDecimal)
-		);
+	// Wraps the shared grouped-odometer detector with this form's timeline context:
+	// the previous-odometer hint, a unit-comparable baseline, and the locale-aware
+	// whitespace/ambiguous-decimal rules. Defaults in the util reproduce the simpler
+	// maintenance-form behavior; here we opt into the fuller fuel-form behavior.
+	function odometerLooksGrouped(value: string, parsedValue: number | null): boolean {
+		return isGroupedOdometerValue(value, parsedValue, {
+			localeGroupSeparator,
+			localeDecimalSeparator,
+			displayedPreviousOdometerHint: getDisplayedPreviousOdometerHint(),
+			comparablePreviousOdometer: hasComparablePreviousOdometer(currentDistanceUnit)
+				? (previousOdometer ?? null)
+				: null,
+			requireLocaleSpaceForWhitespaceGrouping: true,
+			checkAmbiguousDecimalSeparator: true,
+			hasPreviousOdometer: previousOdometer !== undefined
+		});
 	}
 
 	function normalizeLastLogLoadError(error?: AppError | null): AppError {
@@ -392,44 +298,6 @@
 		odometerInput?.focus();
 	});
 
-	function parseNumeric(value: string): number | null {
-		if (!value || !value.trim()) return null;
-		let normalized = value.trim();
-
-		const commaCount = (normalized.match(/,/g) || []).length;
-		const periodCount = (normalized.match(/\./g) || []).length;
-
-		if (commaCount + periodCount > 1) return null;
-
-		if (commaCount === 1) {
-			normalized = normalized.replace(',', '.');
-		}
-
-		if (!/^-?(\d+\.?\d*|\.\d+)$/.test(normalized)) return null;
-
-		const parsed = parseFloat(normalized);
-		return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
-	}
-
-	function parseNonNegativeNumeric(value: string): number | null {
-		if (!value || !value.trim()) return null;
-		let normalized = value.trim();
-
-		const commaCount = (normalized.match(/,/g) || []).length;
-		const periodCount = (normalized.match(/\./g) || []).length;
-
-		if (commaCount + periodCount > 1) return null;
-
-		if (commaCount === 1) {
-			normalized = normalized.replace(',', '.');
-		}
-
-		if (!/^-?(\d+\.?\d*|\.\d+)$/.test(normalized)) return null;
-
-		const parsed = parseFloat(normalized);
-		return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
-	}
-
 	function setFormValuesFromLog(log: FuelLog): void {
 		odometer = String(log.odometer);
 		quantity = String(log.quantity);
@@ -479,16 +347,16 @@
 		quantityError = '';
 		costError = '';
 
-		const parsedOdometer = parseNumeric(odometer);
+		const parsedOdometer = parsePositiveNumeric(odometer);
 		const odometerTrimmed = odometer.trim();
-		const hasOdometerGroupingSeparator = isGroupedOdometerValue(odometerTrimmed, parsedOdometer);
+		const hasOdometerGroupingSeparator = odometerLooksGrouped(odometerTrimmed, parsedOdometer);
 		if (parsedOdometer === null || hasOdometerGroupingSeparator) {
 			odometerError = hasOdometerGroupingSeparator
 				? 'Enter odometer without commas (e.g. 87400)'
 				: 'Enter a valid odometer reading (e.g. 87400)';
 		}
 
-		const parsedQuantity = parseNumeric(quantity);
+		const parsedQuantity = parsePositiveNumeric(quantity);
 		if (parsedQuantity === null) {
 			quantityError = 'Enter the fuel quantity (e.g. 42)';
 		}
@@ -537,7 +405,7 @@
 			? previousOdometer
 			: undefined;
 
-		if (isGroupedOdometerValue(odometerTrimmed, parsedOdometer)) {
+		if (odometerLooksGrouped(odometerTrimmed, parsedOdometer)) {
 			saveState = { status: 'idle' };
 			odometerError = 'Enter odometer without commas (e.g. 87400)';
 			odometerInput?.focus();

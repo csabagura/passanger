@@ -3,6 +3,7 @@ import { ok, err } from '$lib/utils/result';
 import type { Result } from '$lib/utils/result';
 import type { FuelLog, NewFuelLog } from '../schema';
 import { buildFuelLogDeletionPlan } from '$lib/utils/fuelLogTimeline';
+import { isQuotaExceededError, QUOTA_EXCEEDED_CODE, QUOTA_EXCEEDED_MESSAGE } from '../dbErrors';
 
 function validateNewFuelLog(entry: NewFuelLog): string | null {
 	if (!Number.isInteger(entry.vehicleId) || entry.vehicleId <= 0)
@@ -111,6 +112,7 @@ export class FuelLogRepository {
 			if (!saved) return err('SAVE_FAILED', 'Record not found after insert');
 			return ok(saved);
 		} catch (e) {
+			if (isQuotaExceededError(e)) return err(QUOTA_EXCEEDED_CODE, QUOTA_EXCEEDED_MESSAGE);
 			return err('SAVE_FAILED', String(e));
 		}
 	}
@@ -147,6 +149,7 @@ export class FuelLogRepository {
 			if (!updated) return err('UPDATE_FAILED', 'Record not found after update');
 			return ok(updated);
 		} catch (e) {
+			if (isQuotaExceededError(e)) return err(QUOTA_EXCEEDED_CODE, QUOTA_EXCEEDED_MESSAGE);
 			return err('UPDATE_FAILED', String(e));
 		}
 	}
@@ -184,6 +187,7 @@ export class FuelLogRepository {
 				return err('NOT_FOUND', `FuelLog ${missingId} not found`);
 			}
 
+			if (isQuotaExceededError(error)) return err(QUOTA_EXCEEDED_CODE, QUOTA_EXCEEDED_MESSAGE);
 			return err('UPDATE_FAILED', message);
 		}
 	}

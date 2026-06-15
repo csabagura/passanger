@@ -6,6 +6,7 @@ import { saveVehicle } from '$lib/db/repositories/vehicles'
 import { ok, err } from '$lib/utils/result'
 import type { Result } from '$lib/utils/result'
 import { MAX_VEHICLES } from '$lib/config'
+import { isQuotaExceededError, QUOTA_EXCEEDED_CODE, QUOTA_EXCEEDED_MESSAGE } from '$lib/db/dbErrors'
 import { calculateConsumption } from '$lib/utils/calculations'
 import type { ImportRow, VehicleAssignment, ImportCommitResult } from '$lib/utils/importTypes'
 
@@ -148,6 +149,7 @@ export async function commitImportRows(
 			}
 		})
 	} catch (e) {
+		if (isQuotaExceededError(e)) return err(QUOTA_EXCEEDED_CODE, QUOTA_EXCEEDED_MESSAGE)
 		return err('IMPORT_FAILED', String(e))
 	}
 

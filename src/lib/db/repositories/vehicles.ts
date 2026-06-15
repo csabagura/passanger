@@ -3,6 +3,7 @@ import { ok, err } from '$lib/utils/result';
 import type { Result } from '$lib/utils/result';
 import type { Vehicle, NewVehicle } from '../schema';
 import { MAX_VEHICLES } from '$lib/config';
+import { isQuotaExceededError, QUOTA_EXCEEDED_CODE, QUOTA_EXCEEDED_MESSAGE } from '../dbErrors';
 
 function validateNewVehicle(vehicle: NewVehicle): string | null {
 	if (!vehicle.name || vehicle.name.trim() === '') return 'Vehicle name is required';
@@ -57,6 +58,7 @@ export class VehicleRepository {
 			if (!saved) return err('SAVE_FAILED', 'Record not found after insert');
 			return ok(saved);
 		} catch (e) {
+			if (isQuotaExceededError(e)) return err(QUOTA_EXCEEDED_CODE, QUOTA_EXCEEDED_MESSAGE);
 			return err('SAVE_FAILED', String(e));
 		}
 	}
@@ -90,6 +92,7 @@ export class VehicleRepository {
 			if (!updated) return err('UPDATE_FAILED', 'Record not found after update');
 			return ok(updated);
 		} catch (e) {
+			if (isQuotaExceededError(e)) return err(QUOTA_EXCEEDED_CODE, QUOTA_EXCEEDED_MESSAGE);
 			return err('UPDATE_FAILED', String(e));
 		}
 	}
