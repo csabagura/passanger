@@ -120,6 +120,56 @@ export function summarizeSpendByCurrency(
 	return byCurrency;
 }
 
+export interface ConvertedHomeSpend {
+	total: number;
+	unconvertedEntries: number;
+	convertibleEntries: number;
+	ratedEntries: number;
+}
+
+/**
+ * Approximate a single home-currency total from user-entered exchange rates. The app makes no
+ * network calls, so rates are supplied by the caller (from `AppSettings`). `rate[c]` is the
+ * home-currency value of 1 unit of currency `c`; converted = cost × rate. Home-currency entries
+ * always count at rate 1. Entries in a currency with no usable (finite > 0) rate are excluded
+ * from the total and counted in `unconvertedEntries` so the UI can flag them. `ratedEntries`
+ * counts non-home entries actually converted via a rate — the UI shows the converted total only
+ * when this is > 0, so home-currency entries alone never produce a misleading partial total.
+ */
+export function convertHistorySpendToHome(
+	entries: HistoryEntry[],
+	homeCurrency: string,
+	rates: Record<string, number> | undefined
+): ConvertedHomeSpend {
+	let total = 0;
+	let unconvertedEntries = 0;
+	let convertibleEntries = 0;
+	let ratedEntries = 0;
+
+	for (const entry of entries) {
+		const currency = resolveHistoryEntryCurrency(entry, homeCurrency);
+		const cost = getHistoryEntryCost(entry);
+
+		if (currency === homeCurrency) {
+			total += cost;
+			convertibleEntries++;
+			continue;
+		}
+
+		const rate = rates?.[currency];
+		if (typeof rate === 'number' && Number.isFinite(rate) && rate > 0) {
+			total += cost * rate;
+			convertibleEntries++;
+			ratedEntries++;
+			continue;
+		}
+
+		unconvertedEntries++;
+	}
+
+	return { total, unconvertedEntries, convertibleEntries, ratedEntries };
+}
+
 function getHistoryMonthKey(date: Date): string {
 	return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
 }
@@ -166,6 +216,20 @@ function convertDistanceToUnit(
 	}
 
 	return fromUnit === 'km' ? distance / KILOMETERS_PER_MILE : distance * KILOMETERS_PER_MILE;
+}
+
+/**
+ * The entries that fall within a time period relative to `referenceDate` — the exact set the
+ * period summary (and the converted-total helper) operate on.
+ */
+export function filterHistoryEntriesForTimePeriod(
+	entries: HistoryEntry[],
+	period: HistoryTimePeriod,
+	referenceDate: Date = new Date()
+): HistoryEntry[] {
+	return entries.filter((entry) =>
+		isHistoryEntryInTimePeriod(entry.entry.date, period, referenceDate)
+	);
 }
 
 function isHistoryEntryInTimePeriod(
@@ -289,9 +353,7 @@ export function summarizeHistoryEntriesForTimePeriod(
 	homeCurrency: string = DEFAULT_CURRENCY
 ): HistoryTimePeriodSummary {
 	const periodOption = getHistoryTimePeriodOption(period);
-	const periodEntries = entries.filter((entry) =>
-		isHistoryEntryInTimePeriod(entry.entry.date, period, referenceDate)
-	);
+	const periodEntries = filterHistoryEntriesForTimePeriod(entries, period, referenceDate);
 
 	return {
 		timePeriod: period,

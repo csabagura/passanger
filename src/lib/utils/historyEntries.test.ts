@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Expense, FuelLog } from '$lib/db/schema';
 import {
 	compareHistoryEntriesNewestFirst,
+	convertHistorySpendToHome,
 	filterHistoryEntries,
 	getHistoryEntryKey,
 	groupHistoryEntriesByMonth,
@@ -584,5 +585,106 @@ describe('currency segmentation', () => {
 	it('attributes legacy entries (no currency) to the home currency', () => {
 		const entries = mergeHistoryEntries([createFuelEntry({ totalCost: 78 })], []);
 		expect(summarizeSpendByCurrency(entries, 'Ft')).toEqual({ Ft: 78 });
+	});
+});
+
+describe('convertHistorySpendToHome', () => {
+	it('converts every entry when each non-home currency has a usable rate (full)', () => {
+		const entries = mergeHistoryEntries(
+			[createFuelEntry({ id: 1, currency: '€', totalCost: 100 })],
+			[createMaintenanceEntry({ id: 2, currency: 'Ft', cost: 5000 })]
+		);
+		const result = convertHistorySpendToHome(entries, 'Ft', { '€': 400 });
+		// 100 € × 400 + 5000 Ft (home at rate 1)
+		expect(result.total).toBe(100 * 400 + 5000);
+		expect(result.convertibleEntries).toBe(2);
+		expect(result.unconvertedEntries).toBe(0);
+		expect(result.ratedEntries).toBe(1);
+	});
+
+	it('counts home-currency entries at rate 1 without needing a rate', () => {
+		const entries = mergeHistoryEntries(
+			[createFuelEntry({ id: 1, currency: 'Ft', totalCost: 5000 })],
+			[createMaintenanceEntry({ id: 2, currency: undefined, cost: 1200 })]
+		);
+		// Legacy entry (no currency) is attributed to home and also counts at rate 1.
+		const result = convertHistorySpendToHome(entries, 'Ft', undefined);
+		expect(result.total).toBe(5000 + 1200);
+		expect(result.convertibleEntries).toBe(2);
+		expect(result.unconvertedEntries).toBe(0);
+		expect(result.ratedEntries).toBe(0);
+	});
+
+	it('converts available currencies and counts the rest as unconverted (partial)', () => {
+		const entries = mergeHistoryEntries(
+			[
+				createFuelEntry({ id: 1, currency: '€', totalCost: 100 }),
+				createFuelEntry({ id: 2, currency: '$', totalCost: 50 })
+			],
+			[createMaintenanceEntry({ id: 3, currency: 'Ft', cost: 5000 })]
+		);
+		// Only € has a rate; $ entry is excluded and counted as unconverted.
+		const result = convertHistorySpendToHome(entries, 'Ft', { '€': 400 });
+		expect(result.total).toBe(100 * 400 + 5000);
+		expect(result.convertibleEntries).toBe(2);
+		expect(result.unconvertedEntries).toBe(1);
+		expect(result.ratedEntries).toBe(1);
+	});
+
+	it('reports nothing convertible when no usable rate exists (none)', () => {
+		const entries = mergeHistoryEntries(
+			[createFuelEntry({ id: 1, currency: '€', totalCost: 100 })],
+			[createMaintenanceEntry({ id: 2, currency: '$', cost: 50 })]
+		);
+		const result = convertHistorySpendToHome(entries, 'Ft', undefined);
+		expect(result.total).toBe(0);
+		expect(result.convertibleEntries).toBe(0);
+		expect(result.unconvertedEntries).toBe(2);
+		expect(result.ratedEntries).toBe(0);
+	});
+
+	it('does not count a lone home entry as rated when foreign entries are unrated', () => {
+		// F1 guard: a home entry makes convertibleEntries > 0, but with no foreign rate applied
+		// ratedEntries stays 0, so the caller keeps the converted line hidden rather than showing
+		// a misleading home-only "total" while the dominant foreign spend is silently dropped.
+		const entries = mergeHistoryEntries(
+			[createFuelEntry({ id: 1, currency: 'Ft', totalCost: 5000 })],
+			[createMaintenanceEntry({ id: 2, currency: '€', cost: 100 })]
+		);
+		const result = convertHistorySpendToHome(entries, 'Ft', undefined);
+		expect(result.total).toBe(5000);
+		expect(result.convertibleEntries).toBe(1);
+		expect(result.unconvertedEntries).toBe(1);
+		expect(result.ratedEntries).toBe(0);
+	});
+
+	it('treats non-finite or ≤0 rates as no rate (invalid rate)', () => {
+		const entries = mergeHistoryEntries(
+			[
+				createFuelEntry({ id: 1, currency: '€', totalCost: 100 }),
+				createFuelEntry({ id: 2, currency: '$', totalCost: 80 }),
+				createFuelEntry({ id: 3, currency: '£', totalCost: 60 })
+			],
+			[]
+		);
+		const result = convertHistorySpendToHome(entries, 'Ft', {
+			'€': 0,
+			$: Number.NaN,
+			'£': -2
+		} as Record<string, number>);
+		expect(result.total).toBe(0);
+		expect(result.convertibleEntries).toBe(0);
+		expect(result.unconvertedEntries).toBe(3);
+		expect(result.ratedEntries).toBe(0);
+	});
+
+	it('returns a zeroed result for an empty entry list', () => {
+		const result = convertHistorySpendToHome([], 'Ft', { '€': 400 });
+		expect(result).toEqual({
+			total: 0,
+			unconvertedEntries: 0,
+			convertibleEntries: 0,
+			ratedEntries: 0
+		});
 	});
 });

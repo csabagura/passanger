@@ -9,6 +9,9 @@ export interface AppSettings {
 	fuelUnit: FuelUnit;
 	currency: string;
 	theme: ThemePreference;
+	// User-entered exchange rates, keyed by currency string. rate[c] = home-currency value of
+	// 1 unit of currency c. Optional/absent for back-compat. Only finite > 0 entries are kept.
+	exchangeRates?: Record<string, number>;
 }
 
 const DEFAULT_SETTINGS: AppSettings = {
@@ -29,6 +32,24 @@ function isValidTheme(value: unknown): value is ThemePreference {
 	return typeof value === 'string' && VALID_THEMES.includes(value as ThemePreference);
 }
 
+// Keep only entries whose rate is a finite number > 0; drop blanks/NaN/≤0. Returns
+// undefined when nothing survives so the field stays absent (back-compat) rather than
+// persisting an empty object.
+function sanitizeExchangeRates(value: unknown): Record<string, number> | undefined {
+	if (!value || typeof value !== 'object') {
+		return undefined;
+	}
+
+	const sanitized: Record<string, number> = {};
+	for (const [currency, rate] of Object.entries(value as Record<string, unknown>)) {
+		if (typeof rate === 'number' && Number.isFinite(rate) && rate > 0) {
+			sanitized[currency] = rate;
+		}
+	}
+
+	return Object.keys(sanitized).length > 0 ? sanitized : undefined;
+}
+
 export function getSettings(): AppSettings {
 	if (typeof localStorage === 'undefined') {
 		return { ...DEFAULT_SETTINGS };
@@ -43,8 +64,9 @@ export function getSettings(): AppSettings {
 		}
 
 		const persistedSettings = parsed as Record<string, unknown>;
+		const exchangeRates = sanitizeExchangeRates(persistedSettings.exchangeRates);
 
-		return {
+		const settings: AppSettings = {
 			fuelUnit: isValidFuelUnit(persistedSettings.fuelUnit)
 				? persistedSettings.fuelUnit
 				: DEFAULT_SETTINGS.fuelUnit,
@@ -55,6 +77,12 @@ export function getSettings(): AppSettings {
 				? persistedSettings.theme
 				: DEFAULT_SETTINGS.theme
 		};
+
+		if (exchangeRates) {
+			settings.exchangeRates = exchangeRates;
+		}
+
+		return settings;
 	} catch {
 		return { ...DEFAULT_SETTINGS };
 	}
@@ -68,6 +96,11 @@ export function saveSettings(settings: AppSettings): boolean {
 		currency: isValidCurrency(settings.currency) ? settings.currency : DEFAULT_SETTINGS.currency,
 		theme: isValidTheme(settings.theme) ? settings.theme : DEFAULT_SETTINGS.theme
 	};
+
+	const exchangeRates = sanitizeExchangeRates(settings.exchangeRates);
+	if (exchangeRates) {
+		nextSettings.exchangeRates = exchangeRates;
+	}
 
 	try {
 		localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(nextSettings));
