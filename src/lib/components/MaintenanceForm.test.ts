@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/svelte';
 import { flushSync } from 'svelte';
 import type { Expense } from '$lib/db/schema';
+import { QUOTA_EXCEEDED_MESSAGE } from '$lib/db/dbErrors';
 import { clearMaintenanceDraft, maintenanceDraft } from '$lib/stores/draft';
 import { getTodayDateInputValue } from '$lib/utils/date';
 import type { AppSettings } from '$lib/utils/settings';
@@ -219,6 +220,68 @@ describe('MaintenanceForm', () => {
 		expect((screen.getByLabelText(/cost/i) as HTMLInputElement).value).toBe('100');
 		expect(maintenanceDraft['type']).toBe('Insurance');
 		expect(maintenanceDraft['cost']).toBe('100');
+		expect(onSaveSpy).not.toHaveBeenCalled();
+	});
+
+	it('surfaces the specific storage-full message (not the generic one) when a create save hits quota', async () => {
+		mockSaveExpense.mockResolvedValue({
+			data: null,
+			error: { code: 'QUOTA_EXCEEDED', message: QUOTA_EXCEEDED_MESSAGE }
+		});
+
+		render(MaintenanceForm, { vehicleId: 7, onSave: onSaveSpy });
+
+		await fireEvent.input(screen.getByLabelText(/^type$/i), {
+			target: { value: 'Insurance' }
+		});
+		await fireEvent.input(screen.getByLabelText(/cost/i), {
+			target: { value: '100' }
+		});
+
+		await fireEvent.click(screen.getByRole('button', { name: /^save$/i }));
+		await Promise.resolve();
+		flushSync();
+
+		const alertText = screen.getByRole('alert').textContent ?? '';
+		expect(alertText).toContain(QUOTA_EXCEEDED_MESSAGE);
+		expect(alertText).not.toContain('Please try again');
+		// Input is preserved so the user can free space and retry without re-typing.
+		expect((screen.getByLabelText(/cost/i) as HTMLInputElement).value).toBe('100');
+		expect(onSaveSpy).not.toHaveBeenCalled();
+	});
+
+	it('surfaces the specific storage-full message when an edit update hits quota', async () => {
+		const existingExpense: Expense = {
+			id: 23,
+			vehicleId: 7,
+			date: new Date(2026, 2, 8, 12, 0, 0, 0),
+			type: 'Insurance',
+			cost: 120,
+			notes: ''
+		};
+		mockUpdateExpense.mockResolvedValue({
+			data: null,
+			error: { code: 'QUOTA_EXCEEDED', message: QUOTA_EXCEEDED_MESSAGE }
+		});
+
+		render(MaintenanceForm, {
+			vehicleId: 7,
+			mode: 'edit',
+			initialExpense: existingExpense,
+			onSave: onSaveSpy
+		});
+
+		await fireEvent.input(screen.getByLabelText(/cost/i), {
+			target: { value: '150' }
+		});
+		await fireEvent.click(screen.getByRole('button', { name: /save changes/i }));
+		await Promise.resolve();
+		flushSync();
+
+		const alertText = screen.getByRole('alert').textContent ?? '';
+		expect(alertText).toContain(QUOTA_EXCEEDED_MESSAGE);
+		expect(alertText).not.toContain('Please try again');
+		expect((screen.getByLabelText(/cost/i) as HTMLInputElement).value).toBe('150');
 		expect(onSaveSpy).not.toHaveBeenCalled();
 	});
 

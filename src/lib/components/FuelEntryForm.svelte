@@ -2,6 +2,7 @@
 	import { onDestroy, getContext } from 'svelte';
 	import type { Snippet } from 'svelte';
 	import { getAllFuelLogs, saveFuelLog, updateFuelLogsAtomic } from '$lib/db/repositories/fuelLogs';
+	import { saveErrorMessage } from '$lib/utils/saveErrorMessage';
 	import type { FuelLog, NewFuelLog } from '$lib/db/schema';
 	import {
 		fuelDraft,
@@ -475,7 +476,10 @@
 					status: 'error',
 					error: {
 						code: result.error.code,
-						message: 'Could not update fuel entry. Please try again.'
+						message: saveErrorMessage(
+							result.error,
+							'Could not update fuel entry. Please try again.'
+						)
 					}
 				};
 				return;
