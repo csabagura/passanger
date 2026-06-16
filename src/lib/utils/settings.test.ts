@@ -197,4 +197,82 @@ describe('Settings utility', () => {
 			spy.mockRestore();
 		});
 	});
+
+	describe('exchangeRates', () => {
+		it('omits exchangeRates entirely when absent (byte-identical back-compat)', () => {
+			saveSettings({ fuelUnit: DEFAULT_UNIT, currency: DEFAULT_CURRENCY, theme: 'system' });
+			const raw = localStorage.getItem(SETTINGS_STORAGE_KEY);
+			expect(JSON.parse(raw!)).toEqual({
+				fuelUnit: DEFAULT_UNIT,
+				currency: DEFAULT_CURRENCY,
+				theme: 'system'
+			});
+			expect('exchangeRates' in getSettings()).toBe(false);
+		});
+
+		it('persists and reloads finite > 0 rates', () => {
+			saveSettings({
+				fuelUnit: DEFAULT_UNIT,
+				currency: 'Ft',
+				theme: 'system',
+				exchangeRates: { '€': 400, $: 360 }
+			});
+			expect(getSettings().exchangeRates).toEqual({ '€': 400, $: 360 });
+		});
+
+		it('drops blank/NaN/zero/negative rates on save and keeps only valid ones', () => {
+			saveSettings({
+				fuelUnit: DEFAULT_UNIT,
+				currency: 'Ft',
+				theme: 'system',
+				exchangeRates: {
+					'€': 400,
+					$: 0,
+					'£': -5,
+					zł: Number.NaN,
+					kr: Number.POSITIVE_INFINITY
+				} as Record<string, number>
+			});
+			expect(getSettings().exchangeRates).toEqual({ '€': 400 });
+		});
+
+		it('omits exchangeRates when no entry survives validation', () => {
+			saveSettings({
+				fuelUnit: DEFAULT_UNIT,
+				currency: 'Ft',
+				theme: 'system',
+				exchangeRates: { '€': 0, $: -1 } as Record<string, number>
+			});
+			expect(getSettings().exchangeRates).toBeUndefined();
+			expect('exchangeRates' in JSON.parse(localStorage.getItem(SETTINGS_STORAGE_KEY)!)).toBe(
+				false
+			);
+		});
+
+		it('sanitises invalid persisted rates on read (drops non-number/≤0 values)', () => {
+			localStorage.setItem(
+				SETTINGS_STORAGE_KEY,
+				JSON.stringify({
+					fuelUnit: DEFAULT_UNIT,
+					currency: 'Ft',
+					theme: 'system',
+					exchangeRates: { '€': 400, $: 'oops', '£': 0 }
+				})
+			);
+			expect(getSettings().exchangeRates).toEqual({ '€': 400 });
+		});
+
+		it('ignores a non-object exchangeRates value on read', () => {
+			localStorage.setItem(
+				SETTINGS_STORAGE_KEY,
+				JSON.stringify({
+					fuelUnit: DEFAULT_UNIT,
+					currency: 'Ft',
+					theme: 'system',
+					exchangeRates: 'nope'
+				})
+			);
+			expect(getSettings().exchangeRates).toBeUndefined();
+		});
+	});
 });

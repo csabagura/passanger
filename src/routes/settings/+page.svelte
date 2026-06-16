@@ -53,6 +53,9 @@
 	let settingsStatusMessage = $state('');
 	let settingsErrorMessage = $state('');
 	let initialized = $state(false);
+	// Exchange-rate drafts kept as strings (inputs may be blank/partial). Sanitised to finite
+	// > 0 numbers on save; blank/0/negative entries are dropped from settings.exchangeRates.
+	let exchangeRateDrafts = $state<Record<string, string>>({});
 
 	const settingsCtx = getContext<{
 		settings: AppSettings;
@@ -63,10 +66,24 @@
 	const currencyHelpId = 'settings-currency-help';
 	const currencyErrorId = 'settings-currency-error';
 
+	// Currencies offered for a rate: non-home presets plus any currency already saved with a
+	// rate (so custom currencies stay editable), minus the home currency (always implicitly 1).
+	const exchangeRateCurrencies = $derived.by(() => {
+		const savedRates = settingsCtx.settings.exchangeRates ?? {};
+		const candidates = [...PRESET_CURRENCIES, ...Object.keys(savedRates)];
+		return candidates.filter(
+			(currency, index) => currency !== settingsCurrency && candidates.indexOf(currency) === index
+		);
+	});
+
 	$effect(() => {
 		if (!initialized) {
 			settingsFuelUnit = settingsCtx.settings.fuelUnit;
 			settingsCurrency = settingsCtx.settings.currency;
+			const savedRates = settingsCtx.settings.exchangeRates ?? {};
+			exchangeRateDrafts = Object.fromEntries(
+				Object.entries(savedRates).map(([currency, rate]) => [currency, String(rate)])
+			);
 			initialized = true;
 		}
 	});
@@ -97,6 +114,27 @@
 		settingsErrorMessage = '';
 	}
 
+	function handleExchangeRateInput(): void {
+		settingsStatusMessage = '';
+		settingsErrorMessage = '';
+	}
+
+	// Build the persisted rate map from the drafts: parse each draft and keep only finite > 0
+	// values. Blank/0/negative/NaN drafts are omitted entirely (treated as "no rate").
+	function buildExchangeRates(): Record<string, number> {
+		const rates: Record<string, number> = {};
+		for (const [currency, draft] of Object.entries(exchangeRateDrafts)) {
+			if (currency === settingsCurrency || draft.trim().length === 0) {
+				continue;
+			}
+			const parsed = Number(draft);
+			if (Number.isFinite(parsed) && parsed > 0) {
+				rates[currency] = parsed;
+			}
+		}
+		return rates;
+	}
+
 	function handleSettingsSubmit(event: SubmitEvent): void {
 		event.preventDefault();
 
@@ -107,10 +145,15 @@
 			return;
 		}
 
+		// Rates are defined relative to the home currency; if it changed, the saved rates are no
+		// longer meaningful, so drop them and let the user re-enter against the new home currency.
+		const homeCurrencyChanged = settingsCurrency !== settingsCtx.settings.currency;
+		const exchangeRates = homeCurrencyChanged ? {} : buildExchangeRates();
 		const nextSettings: AppSettings = {
 			fuelUnit: settingsFuelUnit,
 			currency: settingsCurrency,
-			theme: settingsCtx.settings.theme
+			theme: settingsCtx.settings.theme,
+			...(Object.keys(exchangeRates).length > 0 ? { exchangeRates } : {})
 		};
 
 		currencyError = '';
@@ -305,6 +348,38 @@
 					</p>
 				{/if}
 			</div>
+
+			<fieldset class="space-y-3">
+				<legend class="text-sm font-medium text-foreground">Exchange rates</legend>
+				<p id="settings-exchange-rates-help" class="text-sm text-muted-foreground">
+					Optional. Enter how much each currency is worth in {settingsCurrency.trim() ||
+						settingsCurrency} to see an approximate combined total. Leave blank to skip.
+				</p>
+
+				<div class="space-y-2">
+					{#each exchangeRateCurrencies as rateCurrency (rateCurrency)}
+						<div class="flex items-center gap-3">
+							<label for={`settings-exchange-rate-${rateCurrency}`} class="text-sm text-foreground">
+								1 {rateCurrency} =
+							</label>
+							<input
+								id={`settings-exchange-rate-${rateCurrency}`}
+								bind:value={exchangeRateDrafts[rateCurrency]}
+								type="number"
+								inputmode="decimal"
+								min="0"
+								step="any"
+								oninput={handleExchangeRateInput}
+								aria-describedby="settings-exchange-rates-help"
+								class="h-11 w-32 rounded-xl border border-border px-3 py-2 text-base focus:outline-none focus:ring-2 focus:ring-ring"
+							/>
+							<span class="text-sm text-muted-foreground"
+								>{settingsCurrency.trim() || settingsCurrency}</span
+							>
+						</div>
+					{/each}
+				</div>
+			</fieldset>
 
 			<div class="border-t border-border pt-4">
 				<button

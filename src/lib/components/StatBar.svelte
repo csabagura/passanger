@@ -12,6 +12,11 @@
 		// present the totals are shown per currency (they can't be summed without an FX
 		// rate). Omitted/single-currency → behaves exactly like the single-total display.
 		selectedPeriodSpendByCurrency?: Record<string, number>;
+		// Optional approximate home-currency total derived from user-entered rates. Only
+		// shown when the period is multi-currency. Null/omitted → no converted line (the
+		// caller passes null when nothing converts), keeping single-currency output identical.
+		convertedHomeTotal?: { total: number; unconvertedEntries: number } | null;
+		homeCurrency?: string;
 	}
 
 	let {
@@ -20,13 +25,28 @@
 		selectedPeriodLabel,
 		selectedPeriodAriaLabel,
 		currency,
-		selectedPeriodSpendByCurrency = undefined
+		selectedPeriodSpendByCurrency = undefined,
+		convertedHomeTotal = null,
+		homeCurrency = undefined
 	}: Props = $props();
 
 	const spendByCurrencyEntries = $derived(
 		selectedPeriodSpendByCurrency ? Object.entries(selectedPeriodSpendByCurrency) : []
 	);
 	const isMultiCurrency = $derived(spendByCurrencyEntries.length > 1);
+	// Approximate converted total, shown only for multi-currency views with at least one
+	// usable rate (the caller passes null otherwise). Marked `· your rates` to signal it is
+	// user-entered/approximate; appends an unconverted-entry count when some entries lack a rate.
+	const showConvertedHomeTotal = $derived(isMultiCurrency && convertedHomeTotal !== null);
+	const formattedConvertedHomeTotal = $derived(
+		convertedHomeTotal
+			? `≈ ${formatCurrency(convertedHomeTotal.total, homeCurrency ?? currency)} · your rates${
+					convertedHomeTotal.unconvertedEntries > 0
+						? ` · ${convertedHomeTotal.unconvertedEntries} unconverted`
+						: ''
+				}`
+			: ''
+	);
 	// Single currency (the common case) renders identically to before; multi-currency
 	// joins each currency's subtotal with a separator.
 	const formattedSelectedPeriodTotal = $derived(
@@ -69,6 +89,11 @@
 		<p class="text-[2rem] font-bold leading-none tabular-nums text-foreground">
 			{formattedSelectedPeriodTotal}
 		</p>
+		{#if showConvertedHomeTotal}
+			<p class="text-sm tabular-nums text-muted-foreground">
+				{formattedConvertedHomeTotal}
+			</p>
+		{/if}
 		<p class="text-xs uppercase tracking-[0.18em] text-muted-foreground">{selectedPeriodLabel}</p>
 	</div>
 

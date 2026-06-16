@@ -72,4 +72,93 @@ describe('StatBar', () => {
 		expect(within(summaryList as HTMLElement).getByText('Fuel volume')).toBeTruthy();
 		expect(within(summaryList as HTMLElement).getByText('Avg consumption')).toBeTruthy();
 	});
+
+	it('shows the approximate converted home total only when multi-currency with a rate', () => {
+		render(StatBar, {
+			summary: {
+				totalSpend: 0,
+				totalSpendByCurrency: { Ft: 5000, '€': 100 },
+				totalFuelVolume: 0,
+				fuelVolumeUnit: 'L',
+				averageConsumption: null,
+				averageConsumptionUnit: 'L'
+			},
+			selectedPeriodTotal: 0,
+			selectedPeriodLabel: 'All time',
+			selectedPeriodAriaLabel: 'Total car costs for all time',
+			currency: 'Ft',
+			selectedPeriodSpendByCurrency: { Ft: 5000, '€': 100 },
+			homeCurrency: 'Ft',
+			convertedHomeTotal: { total: 45000, unconvertedEntries: 0 }
+		});
+
+		// Ft is a zero-decimal suffix currency → "45000 Ft".
+		expect(screen.getByText('≈ 45000 Ft · your rates')).toBeTruthy();
+	});
+
+	it('does not show the converted line for a single-currency view even if a total is passed', () => {
+		render(StatBar, {
+			summary: {
+				totalSpend: 198,
+				totalSpendByCurrency: { '€': 198 },
+				totalFuelVolume: 0,
+				fuelVolumeUnit: 'L',
+				averageConsumption: null,
+				averageConsumptionUnit: 'L'
+			},
+			selectedPeriodTotal: 198,
+			selectedPeriodLabel: 'This year',
+			selectedPeriodAriaLabel: 'Fuel costs for this year',
+			currency: '€',
+			selectedPeriodSpendByCurrency: { '€': 198 },
+			homeCurrency: '€',
+			convertedHomeTotal: { total: 198, unconvertedEntries: 0 }
+		});
+
+		expect(screen.queryByText(/your rates/)).toBeNull();
+	});
+
+	it('does not show the converted line when convertedHomeTotal is null', () => {
+		render(StatBar, {
+			summary: {
+				totalSpend: 0,
+				totalSpendByCurrency: { Ft: 5000, '€': 100 },
+				totalFuelVolume: 0,
+				fuelVolumeUnit: 'L',
+				averageConsumption: null,
+				averageConsumptionUnit: 'L'
+			},
+			selectedPeriodTotal: 0,
+			selectedPeriodLabel: 'All time',
+			selectedPeriodAriaLabel: 'Total car costs for all time',
+			currency: 'Ft',
+			selectedPeriodSpendByCurrency: { Ft: 5000, '€': 100 },
+			homeCurrency: 'Ft',
+			convertedHomeTotal: null
+		});
+
+		expect(screen.queryByText(/your rates/)).toBeNull();
+	});
+
+	it('appends an unconverted-entry note when some entries lack a rate', () => {
+		render(StatBar, {
+			summary: {
+				totalSpend: 0,
+				totalSpendByCurrency: { Ft: 5000, '€': 100, $: 50 },
+				totalFuelVolume: 0,
+				fuelVolumeUnit: 'L',
+				averageConsumption: null,
+				averageConsumptionUnit: 'L'
+			},
+			selectedPeriodTotal: 0,
+			selectedPeriodLabel: 'All time',
+			selectedPeriodAriaLabel: 'Total car costs for all time',
+			currency: 'Ft',
+			selectedPeriodSpendByCurrency: { Ft: 5000, '€': 100, $: 50 },
+			homeCurrency: 'Ft',
+			convertedHomeTotal: { total: 45000, unconvertedEntries: 2 }
+		});
+
+		expect(screen.getByText('≈ 45000 Ft · your rates · 2 unconverted')).toBeTruthy();
+	});
 });

@@ -12,7 +12,9 @@
 	import type { VehiclesContext } from '$lib/utils/vehicleContext';
 	import {
 		compareHistoryEntriesNewestFirst,
+		convertHistorySpendToHome,
 		filterHistoryEntries,
+		filterHistoryEntriesForTimePeriod,
 		getHistoryEntryKey,
 		groupHistoryEntriesByMonth,
 		historyTimePeriodOptions,
@@ -76,6 +78,28 @@
 			historySummaryReferenceDate,
 			settingsCtx.settings.currency
 		)
+	);
+	// Optional approximate home-currency total over the same period entries the summary uses,
+	// from the user's saved rates. Pass a value only when something converts; null otherwise so
+	// StatBar keeps single-currency / rate-less rendering identical to today.
+	const visiblePeriodConvertedHomeSpend = $derived(
+		convertHistorySpendToHome(
+			filterHistoryEntriesForTimePeriod(
+				visibleHistoryEntries,
+				selectedHistoryTimePeriod,
+				historySummaryReferenceDate
+			),
+			settingsCtx.settings.currency,
+			settingsCtx.settings.exchangeRates
+		)
+	);
+	const visiblePeriodConvertedHomeTotal = $derived(
+		visiblePeriodConvertedHomeSpend.ratedEntries > 0
+			? {
+					total: visiblePeriodConvertedHomeSpend.total,
+					unconvertedEntries: visiblePeriodConvertedHomeSpend.unconvertedEntries
+				}
+			: null
 	);
 	const selectedHistoryTimePeriodAriaLabel = $derived(
 		selectedHistoryFilter === 'fuel'
@@ -706,6 +730,8 @@
 					selectedPeriodAriaLabel={selectedHistoryTimePeriodAriaLabel}
 					currency={settingsCtx.settings.currency}
 					selectedPeriodSpendByCurrency={visibleHistoryTimePeriodSummary.totalSpendByCurrency}
+					convertedHomeTotal={visiblePeriodConvertedHomeTotal}
+					homeCurrency={settingsCtx.settings.currency}
 				/>
 			{/if}
 
