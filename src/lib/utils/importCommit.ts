@@ -7,6 +7,7 @@ import { ok, err } from '$lib/utils/result';
 import type { Result } from '$lib/utils/result';
 import { MAX_VEHICLES, DEFAULT_CURRENCY } from '$lib/config';
 import { getSettings } from '$lib/utils/settings';
+import { notifyDataChanged } from '$lib/utils/tabSync';
 import {
 	isQuotaExceededError,
 	QUOTA_EXCEEDED_CODE,
@@ -164,6 +165,9 @@ export async function commitImportRows(
 		return err('IMPORT_FAILED', String(e));
 	}
 
+	// Imported fuel/expense rows are written via a direct atomic transaction (not the repositories),
+	// so signal other tabs once here. New vehicles went through saveVehicle, which already signalled.
+	notifyDataChanged();
 	return ok({
 		fuelCount: fuelEntries.length,
 		maintenanceCount: maintenanceEntries.length,

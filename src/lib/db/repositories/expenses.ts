@@ -1,6 +1,7 @@
 import { db } from '../db';
 import { ok, err } from '$lib/utils/result';
 import type { Result } from '$lib/utils/result';
+import { notifyDataChanged } from '$lib/utils/tabSync';
 import type { Expense, NewExpense } from '../schema';
 import { isQuotaExceededError, QUOTA_EXCEEDED_CODE, QUOTA_EXCEEDED_MESSAGE } from '../dbErrors';
 
@@ -59,6 +60,7 @@ export class ExpenseRepository {
 			const id = await db.expenses.add({ ...entry } as Expense);
 			const saved = await db.expenses.get(id as number);
 			if (!saved) return err('SAVE_FAILED', 'Record not found after insert');
+			notifyDataChanged();
 			return ok(saved);
 		} catch (e) {
 			if (isQuotaExceededError(e)) return err(QUOTA_EXCEEDED_CODE, QUOTA_EXCEEDED_MESSAGE);
@@ -96,6 +98,7 @@ export class ExpenseRepository {
 			if (count === 0) return err('NOT_FOUND', `Expense ${id} not found`);
 			const updated = await db.expenses.get(id);
 			if (!updated) return err('UPDATE_FAILED', 'Record not found after update');
+			notifyDataChanged();
 			return ok(updated);
 		} catch (e) {
 			if (isQuotaExceededError(e)) return err(QUOTA_EXCEEDED_CODE, QUOTA_EXCEEDED_MESSAGE);
@@ -113,6 +116,7 @@ export class ExpenseRepository {
 
 				await db.expenses.delete(id);
 			});
+			notifyDataChanged();
 			return ok(undefined);
 		} catch (e) {
 			const message = String(e);

@@ -37,6 +37,7 @@
 	] as const satisfies ReadonlyArray<{ label: string; value: HistoryEntryFilter }>;
 
 	const vehiclesCtx = getContext<VehiclesContext>('vehicles');
+	const tabSyncCtx = getContext<{ dataRevision: number } | undefined>('tabSync');
 
 	let currentVehicle = $derived(vehiclesCtx.activeVehicle);
 	let historyEntries = $state<HistoryEntry[]>([]);
@@ -547,7 +548,9 @@
 
 	$effect(() => {
 		const vehicleId = vehiclesCtx.activeVehicle?.id;
-		if (vehicleId) {
+		// Reactive dep: a write in another tab bumps dataRevision → re-run this load (multi-tab safety).
+		const revision = tabSyncCtx?.dataRevision ?? 0;
+		if (vehicleId && revision >= 0) {
 			void loadEntriesForVehicle(vehicleId);
 		} else {
 			historyEntries = [];

@@ -2,6 +2,7 @@
 	import { getContext } from 'svelte';
 	import { PRESET_CURRENCIES, SUPPORTED_UNITS, IMPORT_FILE_SIZE_MAX_BYTES } from '$lib/config';
 	import { saveSettings, type AppSettings, type ThemePreference } from '$lib/utils/settings';
+	import { notifySettingsChanged, notifyTabsRestored } from '$lib/utils/tabSync';
 	import { readStoredVehicleId } from '$lib/utils/vehicleStorage';
 	import { getAllFuelLogs } from '$lib/db/repositories/fuelLogs';
 	import { exportAllTables, restoreAllTables, type BackupData } from '$lib/db/backup';
@@ -106,6 +107,7 @@
 		}
 
 		settingsCtx.updateSettings(nextSettings);
+		notifySettingsChanged();
 	}
 
 	function handlePresetCurrencySelect(presetCurrency: string): void {
@@ -174,6 +176,7 @@
 		}
 
 		settingsCtx.updateSettings(nextSettings);
+		notifySettingsChanged();
 		settingsStatusMessage = 'Settings saved.';
 	}
 
@@ -254,9 +257,15 @@
 			// Data restored, but the settings write failed (e.g. storage full). Surface it instead of
 			// reloading into restored-data-with-stale-settings with no signal.
 			backupErrorMessage = 'Your data was restored, but settings could not be saved.';
+			// The DB is already replaced for every tab (shared IndexedDB), so other tabs must still be
+			// told to reload — even though this tab stays put to show the settings-save error.
+			notifyTabsRestored();
 			return;
 		}
-		// Reload so live Dexie queries and the settings context rehydrate from the restored state.
+		// Tell other tabs the DB was replaced, then reload so this tab's live queries and settings
+		// context rehydrate. The message is posted before reload; BroadcastChannel dispatches it
+		// independently of this tab's navigation, so other tabs still receive it (verified by e2e).
+		notifyTabsRestored();
 		location.reload();
 	}
 </script>

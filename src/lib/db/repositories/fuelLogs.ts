@@ -1,6 +1,7 @@
 import { db } from '../db';
 import { ok, err } from '$lib/utils/result';
 import type { Result } from '$lib/utils/result';
+import { notifyDataChanged } from '$lib/utils/tabSync';
 import type { FuelLog, NewFuelLog } from '../schema';
 import { buildFuelLogDeletionPlan } from '$lib/utils/fuelLogTimeline';
 import { isQuotaExceededError, QUOTA_EXCEEDED_CODE, QUOTA_EXCEEDED_MESSAGE } from '../dbErrors';
@@ -110,6 +111,7 @@ export class FuelLogRepository {
 			const id = await db.fuelLogs.add({ ...entry } as FuelLog);
 			const saved = await db.fuelLogs.get(id as number);
 			if (!saved) return err('SAVE_FAILED', 'Record not found after insert');
+			notifyDataChanged();
 			return ok(saved);
 		} catch (e) {
 			if (isQuotaExceededError(e)) return err(QUOTA_EXCEEDED_CODE, QUOTA_EXCEEDED_MESSAGE);
@@ -147,6 +149,7 @@ export class FuelLogRepository {
 			if (count === 0) return err('NOT_FOUND', `FuelLog ${id} not found`);
 			const updated = await db.fuelLogs.get(id);
 			if (!updated) return err('UPDATE_FAILED', 'Record not found after update');
+			notifyDataChanged();
 			return ok(updated);
 		} catch (e) {
 			if (isQuotaExceededError(e)) return err(QUOTA_EXCEEDED_CODE, QUOTA_EXCEEDED_MESSAGE);
@@ -179,6 +182,7 @@ export class FuelLogRepository {
 				return refreshedLogs as FuelLog[];
 			});
 
+			notifyDataChanged();
 			return ok(updatedLogs);
 		} catch (error) {
 			const message = String(error);
@@ -237,6 +241,7 @@ export class FuelLogRepository {
 				};
 			});
 
+			notifyDataChanged();
 			return ok(deleteResult);
 		} catch (e) {
 			const message = String(e);

@@ -5,9 +5,11 @@
 	import AppHeader from '$lib/components/AppHeader.svelte';
 	import NavBar from '$lib/components/NavBar.svelte';
 	import StorageProtectionNotice from '$lib/components/StorageProtectionNotice.svelte';
+	import TabSyncNotice from '$lib/components/TabSyncNotice.svelte';
 	import {
 		APP_SHELL_MAIN_PADDING,
 		APP_SHELL_MAIN_PADDING_WITH_UPDATE_PROMPT,
+		TAB_SYNC_CUE_DURATION_MS,
 		VEHICLE_ID_STORAGE_KEY
 	} from '$lib/config';
 	import { getAllVehicles } from '$lib/db/repositories/vehicles';
@@ -15,6 +17,7 @@
 	import { readStoredVehicleId, safeSetItem } from '$lib/utils/vehicleStorage';
 	import { getSettings } from '$lib/utils/settings';
 	import type { AppSettings } from '$lib/utils/settings';
+	import { subscribeTabSync } from '$lib/utils/tabSync';
 	import {
 		requestStoragePersistence,
 		hasNoticeDismissed,
@@ -94,6 +97,56 @@
 		},
 		switchVehicle,
 		refreshVehicles
+	});
+
+	// Multi-tab safety: a write / settings change / restore in ANOTHER tab posts a BroadcastChannel
+	// message; here we re-run the existing imperative loads so this tab reconciles. `dataRevision` is
+	// the reactive trigger that history/analytics read inside their load $effect.
+	let dataRevision = $state(0);
+	let remoteCue = $state<'data' | 'settings' | null>(null);
+	let remoteRestorePending = $state(false);
+	let cueTimer: ReturnType<typeof setTimeout> | null = null;
+
+	function showRemoteCue(kind: 'data' | 'settings') {
+		remoteCue = kind;
+		if (cueTimer) clearTimeout(cueTimer);
+		cueTimer = setTimeout(() => {
+			remoteCue = null;
+			cueTimer = null;
+		}, TAB_SYNC_CUE_DURATION_MS);
+	}
+
+	setContext('tabSync', {
+		get dataRevision() {
+			return dataRevision;
+		}
+	});
+
+	$effect(() => {
+		const unsubscribe = subscribeTabSync((message) => {
+			// Once a remote restore is pending, this tab's view is stale until the user reloads — ignore
+			// further data/settings signals so we never silently refetch/swap under the reload prompt.
+			if (remoteRestorePending) return;
+			if (message.kind === 'restore') {
+				// The whole DB was replaced elsewhere — never silently swap this tab's now-orphaned rows.
+				remoteRestorePending = true;
+				return;
+			}
+			if (message.kind === 'settings') {
+				settings = getSettings();
+				showRemoteCue('settings');
+				return;
+			}
+			// 'data' — refetch live data (revision bump) and refresh the shared vehicle list.
+			dataRevision++;
+			void refreshVehicles();
+			showRemoteCue('data');
+		});
+
+		return () => {
+			unsubscribe();
+			if (cueTimer) clearTimeout(cueTimer);
+		};
 	});
 
 	// Theme: toggle .dark class on <html> based on settings.theme
@@ -287,6 +340,11 @@
 </svelte:head>
 
 <UpdatePrompt onVisibilityChange={(visible) => (updatePromptVisible = visible)} />
+<TabSyncNotice
+	cue={remoteCue}
+	restorePending={remoteRestorePending}
+	onReload={() => location.reload()}
+/>
 <AppHeader />
 <main class="min-h-screen" style={`padding-bottom: ${mainBottomPadding};`}>
 	{#if showNotice}
