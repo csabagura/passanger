@@ -3,6 +3,7 @@ import { render, screen, fireEvent, cleanup } from '@testing-library/svelte';
 import { flushSync } from 'svelte';
 import FuelEntryForm from './FuelEntryForm.svelte';
 import type { FuelLog } from '$lib/db/schema';
+import { QUOTA_EXCEEDED_MESSAGE } from '$lib/db/dbErrors';
 import { fuelDraft, clearFuelDraft } from '$lib/stores/draft';
 import type { AppSettings } from '$lib/utils/settings';
 
@@ -2335,6 +2336,78 @@ describe('FuelEntryForm component — review fixes validation', () => {
 			expect(screen.getByRole('alert').textContent).toContain(
 				'Could not update fuel entry. Please try again.'
 			);
+			expect(onSaveSpy).not.toHaveBeenCalled();
+		});
+
+		it('surfaces the specific storage-full message (not the generic one) when an edit update hits quota', async () => {
+			const initialLog: FuelLog = {
+				id: 2,
+				vehicleId: 1,
+				date: new Date('2026-03-09T10:00:00Z'),
+				odometer: 87400,
+				quantity: 42,
+				unit: 'L',
+				distanceUnit: 'km',
+				totalCost: 78,
+				calculatedConsumption: 10.5,
+				notes: ''
+			};
+
+			mockGetAllFuelLogs.mockResolvedValue({ data: [initialLog], error: null });
+			mockUpdateFuelLogsAtomic.mockResolvedValue({
+				data: null,
+				error: { code: 'QUOTA_EXCEEDED', message: QUOTA_EXCEEDED_MESSAGE }
+			});
+
+			render(FuelEntryForm, {
+				props: {
+					vehicleId: 1,
+					mode: 'edit',
+					initialFuelLog: initialLog,
+					onSave: onSaveSpy
+				}
+			});
+			await new Promise((resolve) => setTimeout(resolve, 0));
+			flushSync();
+
+			await fireEvent.input(screen.getByLabelText(/total cost/i), {
+				target: { value: '90' }
+			});
+			await fireEvent.click(screen.getByRole('button', { name: /save changes/i }));
+			await new Promise((resolve) => setTimeout(resolve, 0));
+			flushSync();
+
+			const alertText = screen.getByRole('alert').textContent ?? '';
+			expect(alertText).toContain(QUOTA_EXCEEDED_MESSAGE);
+			expect(alertText).not.toContain('Please try again');
+			// Input preserved so the user can free space and retry without re-entering.
+			expect((screen.getByLabelText(/total cost/i) as HTMLInputElement).value).toBe('90');
+			expect(onSaveSpy).not.toHaveBeenCalled();
+		});
+
+		it('surfaces the specific storage-full message when a new fuel log save hits quota', async () => {
+			mockSaveFuelLog.mockResolvedValue({
+				data: null,
+				error: { code: 'QUOTA_EXCEEDED', message: QUOTA_EXCEEDED_MESSAGE }
+			});
+
+			render(FuelEntryForm, { props: { vehicleId: 1, onSave: onSaveSpy } });
+			await new Promise((resolve) => setTimeout(resolve, 0));
+			flushSync();
+
+			await fireEvent.input(screen.getByLabelText(/odometer/i), { target: { value: '87400' } });
+			await fireEvent.input(screen.getByLabelText(/quantity/i), { target: { value: '42' } });
+			await fireEvent.input(screen.getByLabelText(/total cost/i), { target: { value: '78' } });
+			await fireEvent.click(screen.getByRole('button', { name: /save/i }));
+			await new Promise((resolve) => setTimeout(resolve, 0));
+			flushSync();
+
+			const alertText = screen.getByRole('alert').textContent ?? '';
+			expect(alertText).toContain(QUOTA_EXCEEDED_MESSAGE);
+			expect(alertText).not.toContain('Please try again');
+			// Draft preserved on a failed save so the user can free space and retry.
+			expect((screen.getByLabelText(/odometer/i) as HTMLInputElement).value).toBe('87400');
+			expect((screen.getByLabelText(/total cost/i) as HTMLInputElement).value).toBe('78');
 			expect(onSaveSpy).not.toHaveBeenCalled();
 		});
 	});

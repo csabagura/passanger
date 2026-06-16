@@ -2,6 +2,7 @@
 	import { getContext, onDestroy } from 'svelte';
 	import { RESULT_CARD_DISMISS_MS, PRESET_CURRENCIES } from '$lib/config';
 	import { saveExpense, updateExpense } from '$lib/db/repositories/expenses';
+	import { saveErrorMessage } from '$lib/utils/saveErrorMessage';
 	import type { Expense, NewExpense } from '$lib/db/schema';
 	import {
 		clearMaintenanceDraft,
@@ -232,9 +233,12 @@
 				status: 'error',
 				error: {
 					code: result.error.code,
-					message: isEditMode
-						? 'Could not update maintenance entry. Please try again.'
-						: 'Could not save maintenance entry. Please try again.'
+					message: saveErrorMessage(
+						result.error,
+						isEditMode
+							? 'Could not update maintenance entry. Please try again.'
+							: 'Could not save maintenance entry. Please try again.'
+					)
 				}
 			};
 			return;
