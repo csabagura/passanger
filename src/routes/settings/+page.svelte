@@ -1,9 +1,16 @@
 <script lang="ts">
 	import { getContext } from 'svelte';
-	import { PRESET_CURRENCIES, SUPPORTED_UNITS } from '$lib/config';
+	import { PRESET_CURRENCIES, SUPPORTED_UNITS, IMPORT_FILE_SIZE_MAX_BYTES } from '$lib/config';
 	import { saveSettings, type AppSettings, type ThemePreference } from '$lib/utils/settings';
 	import { readStoredVehicleId } from '$lib/utils/vehicleStorage';
 	import { getAllFuelLogs } from '$lib/db/repositories/fuelLogs';
+	import { exportAllTables, restoreAllTables, type BackupData } from '$lib/db/backup';
+	import {
+		serializeBackup,
+		parseBackup,
+		downloadBackupFile,
+		buildBackupFilename
+	} from '$lib/utils/backup';
 	import type { VehiclesContext } from '$lib/utils/vehicleContext';
 	import VehicleListManager from '$lib/components/VehicleListManager.svelte';
 	import ServiceReminderManager from '$lib/components/ServiceReminderManager.svelte';
@@ -169,6 +176,89 @@
 		settingsCtx.updateSettings(nextSettings);
 		settingsStatusMessage = 'Settings saved.';
 	}
+
+	// Backup & Restore --------------------------------------------------------------------------
+	let backupStatusMessage = $state('');
+	let backupErrorMessage = $state('');
+	// A parsed, validated backup awaiting the user's explicit confirm before it replaces all data.
+	// Kept OUT of $state on purpose: $state deep-proxies the object graph, and a Proxy is not
+	// structured-cloneable, so IndexedDB bulkPut throws DataCloneError. The confirm panel's
+	// visibility is tracked by the separate reactive `showRestoreConfirm` flag instead.
+	let pendingRestore: { data: BackupData; settings: AppSettings } | null = null;
+	let showRestoreConfirm = $state(false);
+	let fileInput = $state<HTMLInputElement | null>(null);
+
+	function resetBackupMessages(): void {
+		backupStatusMessage = '';
+		backupErrorMessage = '';
+	}
+
+	async function handleDownloadBackup(): Promise<void> {
+		resetBackupMessages();
+		const result = await exportAllTables();
+		if (result.error) {
+			backupErrorMessage = 'Could not read your data to back up. Please try again.';
+			return;
+		}
+		const json = serializeBackup(result.data, settingsCtx.settings);
+		downloadBackupFile(json, buildBackupFilename(new Date()));
+		backupStatusMessage = 'Backup downloaded.';
+	}
+
+	async function handleRestoreFileChange(event: Event): Promise<void> {
+		resetBackupMessages();
+		pendingRestore = null;
+		showRestoreConfirm = false;
+		const input = event.currentTarget as HTMLInputElement;
+		const file = input.files?.[0];
+		if (!file) return;
+
+		if (file.size > IMPORT_FILE_SIZE_MAX_BYTES) {
+			backupErrorMessage = 'This file is too large to be a passanger backup.';
+			input.value = '';
+			return;
+		}
+
+		const parsed = parseBackup(await file.text());
+		// Allow re-selecting the same file later by clearing the input value now.
+		input.value = '';
+		if (parsed.error) {
+			backupErrorMessage = parsed.error.message;
+			return;
+		}
+		pendingRestore = parsed.data;
+		showRestoreConfirm = true;
+	}
+
+	function cancelRestore(): void {
+		pendingRestore = null;
+		showRestoreConfirm = false;
+		resetBackupMessages();
+	}
+
+	async function confirmRestore(): Promise<void> {
+		if (!pendingRestore) return;
+		const restore = pendingRestore;
+		// Clear pending state before the await so a double-click can't trigger a second restore.
+		pendingRestore = null;
+		showRestoreConfirm = false;
+		resetBackupMessages();
+
+		const result = await restoreAllTables(restore.data);
+		if (result.error) {
+			backupErrorMessage = result.error.message;
+			return;
+		}
+
+		if (!saveSettings(restore.settings)) {
+			// Data restored, but the settings write failed (e.g. storage full). Surface it instead of
+			// reloading into restored-data-with-stale-settings with no signal.
+			backupErrorMessage = 'Your data was restored, but settings could not be saved.';
+			return;
+		}
+		// Reload so live Dexie queries and the settings context rehydrate from the restored state.
+		location.reload();
+	}
 </script>
 
 <svelte:head>
@@ -264,16 +354,79 @@
 	</section>
 
 	<section
-		aria-labelledby="settings-cloud-sync-heading"
+		aria-labelledby="settings-backup-heading"
 		class="space-y-5 rounded-2xl border border-border bg-card p-5 shadow-sm"
 	>
 		<div class="space-y-1">
-			<h2 id="settings-cloud-sync-heading" class="text-lg font-semibold text-foreground">
-				Cloud & Sync
+			<h2 id="settings-backup-heading" class="text-lg font-semibold text-foreground">
+				Backup & Restore
 			</h2>
-			<p class="text-sm text-muted-foreground">Back up and sync your data</p>
+			<p class="text-sm text-muted-foreground">
+				Save a full copy of your data as a file, or restore one. Everything stays on your device.
+			</p>
 		</div>
-		<p class="text-sm text-muted-foreground">Coming soon</p>
+
+		<div class="space-y-3">
+			<button
+				type="button"
+				onclick={handleDownloadBackup}
+				class="inline-flex min-h-11 items-center justify-center rounded-xl bg-accent px-5 py-3 text-sm font-semibold text-accent-foreground"
+			>
+				Download backup
+			</button>
+
+			<div class="space-y-1">
+				<label for="settings-restore-file" class="text-sm font-medium text-foreground">
+					Restore from a backup
+				</label>
+				<input
+					id="settings-restore-file"
+					bind:this={fileInput}
+					type="file"
+					accept=".json,application/json"
+					onchange={handleRestoreFileChange}
+					class="block w-full text-sm text-foreground file:mr-3 file:min-h-11 file:rounded-xl file:border file:border-border file:bg-muted/60 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-foreground"
+				/>
+			</div>
+		</div>
+
+		{#if showRestoreConfirm}
+			<div
+				role="alertdialog"
+				aria-labelledby="settings-restore-confirm-heading"
+				aria-describedby="settings-restore-confirm-body"
+				class="space-y-3 rounded-xl border border-destructive/40 bg-destructive/5 p-4"
+			>
+				<h3 id="settings-restore-confirm-heading" class="text-sm font-semibold text-foreground">
+					Replace all data?
+				</h3>
+				<p id="settings-restore-confirm-body" class="text-sm text-muted-foreground">
+					This REPLACES all current data and settings with the backup. This cannot be undone.
+				</p>
+				<div class="flex flex-wrap gap-2">
+					<button
+						type="button"
+						onclick={confirmRestore}
+						class="inline-flex min-h-11 items-center justify-center rounded-xl bg-destructive px-5 py-3 text-sm font-semibold text-destructive-foreground"
+					>
+						Replace all
+					</button>
+					<button
+						type="button"
+						onclick={cancelRestore}
+						class="inline-flex min-h-11 items-center justify-center rounded-xl border border-border px-5 py-3 text-sm font-semibold text-foreground hover:bg-muted/60"
+					>
+						Cancel
+					</button>
+				</div>
+			</div>
+		{/if}
+
+		{#if backupErrorMessage}
+			<p role="alert" class="text-sm text-destructive">{backupErrorMessage}</p>
+		{:else if backupStatusMessage}
+			<p role="status" class="text-sm text-muted-foreground">{backupStatusMessage}</p>
+		{/if}
 	</section>
 
 	<section

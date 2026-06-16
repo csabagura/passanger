@@ -29,6 +29,11 @@ export const SUFFIX_CURRENCIES = new Set(['FT', 'HUF', 'KR', 'ZŁ', 'KČ']);
 export const DB_NAME = 'passangerDB'; // Note: double-a brand name — NOT 'passengerDB'
 export const DB_VERSION = 4;
 
+// Full-dataset JSON backup. `BACKUP_APP_ID` tags exported files so a restore can reject a
+// foreign file; the schemaVersion in a backup reuses DB_VERSION (exact-match on restore).
+export const BACKUP_APP_ID = 'passanger';
+export const BACKUP_FILENAME_PREFIX = 'passanger-backup';
+
 export const MAX_VEHICLES = 5;
 
 // Service-reminder "due soon" thresholds — a reminder switches from ok → due-soon once
