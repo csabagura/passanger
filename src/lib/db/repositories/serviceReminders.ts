@@ -1,6 +1,7 @@
 import { db } from '../db';
 import { ok, err } from '$lib/utils/result';
 import type { Result } from '$lib/utils/result';
+import { notifyDataChanged } from '$lib/utils/tabSync';
 import type { ServiceReminder, NewServiceReminder } from '../schema';
 import { isQuotaExceededError, QUOTA_EXCEEDED_CODE, QUOTA_EXCEEDED_MESSAGE } from '../dbErrors';
 
@@ -81,6 +82,7 @@ export class ServiceReminderRepository {
 			const id = await db.serviceReminders.add({ ...reminder } as ServiceReminder);
 			const saved = await db.serviceReminders.get(id as number);
 			if (!saved) return err('SAVE_FAILED', 'Record not found after insert');
+			notifyDataChanged();
 			return ok(saved);
 		} catch (e) {
 			if (isQuotaExceededError(e)) return err(QUOTA_EXCEEDED_CODE, QUOTA_EXCEEDED_MESSAGE);
@@ -118,6 +120,7 @@ export class ServiceReminderRepository {
 			if (count === 0) return err('NOT_FOUND', `ServiceReminder ${id} not found`);
 			const updated = await db.serviceReminders.get(id);
 			if (!updated) return err('UPDATE_FAILED', 'Record not found after update');
+			notifyDataChanged();
 			return ok(updated);
 		} catch (e) {
 			if (isQuotaExceededError(e)) return err(QUOTA_EXCEEDED_CODE, QUOTA_EXCEEDED_MESSAGE);
@@ -128,6 +131,7 @@ export class ServiceReminderRepository {
 	async deleteServiceReminder(id: number): Promise<Result<void>> {
 		try {
 			await db.serviceReminders.delete(id);
+			notifyDataChanged();
 			return ok(undefined);
 		} catch (e) {
 			return err('DELETE_FAILED', String(e));

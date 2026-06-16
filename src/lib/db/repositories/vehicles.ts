@@ -1,6 +1,7 @@
 import { db } from '../db';
 import { ok, err } from '$lib/utils/result';
 import type { Result } from '$lib/utils/result';
+import { notifyDataChanged } from '$lib/utils/tabSync';
 import type { Vehicle, NewVehicle } from '../schema';
 import { MAX_VEHICLES } from '$lib/config';
 import { isQuotaExceededError, QUOTA_EXCEEDED_CODE, QUOTA_EXCEEDED_MESSAGE } from '../dbErrors';
@@ -56,6 +57,7 @@ export class VehicleRepository {
 			const id = await db.vehicles.add({ ...vehicle } as Vehicle);
 			const saved = await db.vehicles.get(id as number);
 			if (!saved) return err('SAVE_FAILED', 'Record not found after insert');
+			notifyDataChanged();
 			return ok(saved);
 		} catch (e) {
 			if (isQuotaExceededError(e)) return err(QUOTA_EXCEEDED_CODE, QUOTA_EXCEEDED_MESSAGE);
@@ -90,6 +92,7 @@ export class VehicleRepository {
 			if (count === 0) return err('NOT_FOUND', `Vehicle ${id} not found`);
 			const updated = await db.vehicles.get(id);
 			if (!updated) return err('UPDATE_FAILED', 'Record not found after update');
+			notifyDataChanged();
 			return ok(updated);
 		} catch (e) {
 			if (isQuotaExceededError(e)) return err(QUOTA_EXCEEDED_CODE, QUOTA_EXCEEDED_MESSAGE);
@@ -100,6 +103,7 @@ export class VehicleRepository {
 	async deleteVehicle(id: number): Promise<Result<void>> {
 		try {
 			await db.vehicles.delete(id);
+			notifyDataChanged();
 			return ok(undefined);
 		} catch (e) {
 			return err('DELETE_FAILED', String(e));
