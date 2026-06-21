@@ -23,6 +23,10 @@
 	--accent-foreground: #1a1917;
 	--destructive: #dc2626;
 	--success: #16a34a;
+	/* DEC-15 (UX-DR3): the in-between "due-soon" amber. `due-soon` is for TEXT (≈4.6:1 on white);
+	   `due-soon-accent` is the brighter amber for accent bar/icon ONLY (UI 3:1) — never text. */
+	--due-soon: #b45309;
+	--due-soon-accent: #d97706;
 	--border: #e5e7eb;
 	--input: #e5e7eb;
 	--ring: #2563eb;
@@ -49,8 +53,10 @@
 	--card-foreground: oklch(0.985 0 0);
 	--popover: oklch(0.21 0.006 285.885);
 	--popover-foreground: oklch(0.985 0 0);
-	--primary: oklch(0.92 0.004 286.32);
-	--primary-foreground: oklch(0.21 0.006 285.885);
+	/* DEC-14 (UX-DR2): brand blue stays recognizably blue in dark — a lighter tint —
+	   NOT shadcn's near-white primary inversion. ~4.9:1 on card-dark (marginal AA; OK for UI/large). */
+	--primary: #5b97f6;
+	--primary-foreground: #0a1a2a;
 	--secondary: oklch(0.274 0.006 286.033);
 	--secondary-foreground: oklch(0.985 0 0);
 	--muted: oklch(0.274 0.006 286.033);
@@ -59,6 +65,9 @@
 	--accent-foreground: oklch(0.985 0 0);
 	--destructive: oklch(0.704 0.191 22.216);
 	--success: oklch(0.723 0.191 149.579);
+	/* DEC-15: dark-mode due-soon amber (text). Accent bar/icon keeps the bright amber. */
+	--due-soon: #fbbf24;
+	--due-soon-accent: #d97706;
 	--border: oklch(1 0 0 / 10%);
 	--input: oklch(1 0 0 / 15%);
 	--ring: oklch(0.552 0.016 285.938);
@@ -124,6 +133,39 @@
 	--color-success: var(--success);
 	--color-error: var(--destructive);
 	--color-text-disabled: var(--text-disabled);
+	/* DEC-15 due-soon status palette (dark cascades via the vars above) → text-due-soon, bg-due-soon-accent, border-due-soon-accent */
+	--color-due-soon: var(--due-soon);
+	--color-due-soon-accent: var(--due-soon-accent);
+
+	/* Type ramp (UX-DR1 / DESIGN.md). Tailwind v4 --text-* → text-stat … text-meta, each carrying
+	   its paired line-height / weight / tracking. System font stack only (no web fonts). */
+	--text-stat: 2rem; /* 32px — Hero Metric number */
+	--text-stat--line-height: 1.05;
+	--text-stat--font-weight: 600;
+	--text-stat--letter-spacing: -0.01em;
+	--text-display: 1.75rem; /* 28px — rare hero / empty-state */
+	--text-display--line-height: 1.15;
+	--text-display--font-weight: 600;
+	--text-title: 1.25rem; /* 20px — screen title (h1) */
+	--text-title--line-height: 1.2;
+	--text-title--font-weight: 600;
+	--text-section: 1rem; /* 16px — card / section heading (h2) */
+	--text-section--line-height: 1.3;
+	--text-section--font-weight: 600;
+	--text-body: 1rem; /* 16px — body + ALL inputs (prevents iOS zoom-on-focus) */
+	--text-body--line-height: 1.5;
+	--text-body--font-weight: 400;
+	--text-label: 0.75rem; /* 12px — uppercase field/affordance labels */
+	--text-label--line-height: 1.2;
+	--text-label--font-weight: 600;
+	--text-label--letter-spacing: 0.16em;
+	--text-meta: 0.875rem; /* 14px — secondary / muted captions */
+	--text-meta--line-height: 1.4;
+	--text-meta--font-weight: 400;
+
+	/* Spacing scale (DESIGN.md §Layout & Spacing): 4 / 8 / 12 / 16 / 24 / 32 / 48 / 64 — the
+	   canonical scale. Already provided by Tailwind v4's default 4px-based --spacing, i.e.
+	   p-1=4 p-2=8 p-3=12 p-4=16 p-6=24 p-8=32 p-12=48 p-16=64. No redefinition needed; use these. */
 
 	/* System font stack — zero web font downloads */
 	--font-sans:
