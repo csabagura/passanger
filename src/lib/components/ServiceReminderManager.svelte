@@ -5,7 +5,7 @@
 		deleteServiceReminder
 	} from '$lib/db/repositories/serviceReminders';
 	import type { ServiceReminder } from '$lib/db/schema';
-	import { computeReminderStatus, type ReminderStatus } from '$lib/utils/serviceReminder';
+	import { computeReminderStatus, REMINDER_STATUS_PRESENTATION } from '$lib/utils/serviceReminder';
 	import ServiceReminderForm from './ServiceReminderForm.svelte';
 
 	type ViewState =
@@ -34,15 +34,6 @@
 	let addButtonEl = $state<HTMLButtonElement | null>(null);
 
 	const deletePromptVisible = $derived(deleteState === 'armed' || deleteState === 'loading');
-
-	const STATUS_STYLES: Record<ReminderStatus, { badge: string; label: string }> = {
-		overdue: {
-			badge: 'border-destructive/30 bg-destructive/10 text-destructive',
-			label: 'Overdue'
-		},
-		'due-soon': { badge: 'border-amber-500/30 bg-amber-500/10 text-amber-600', label: 'Due soon' },
-		ok: { badge: 'border-border bg-muted/40 text-muted-foreground', label: 'On track' }
-	};
 
 	async function loadReminders() {
 		const result = await getServiceRemindersForVehicle(vehicleId);
@@ -178,7 +169,7 @@
 	<ul class="space-y-3" aria-label="Service reminders" bind:this={listContainerEl}>
 		{#each reminders as reminder (reminder.id)}
 			{@const status = computeReminderStatus(reminder, currentOdometer, today)}
-			{@const styles = STATUS_STYLES[status.status]}
+			{@const styles = REMINDER_STATUS_PRESENTATION[status.status]}
 			{@const isDeleteTarget = deleteTarget?.id === reminder.id && deletePromptVisible}
 			{@const deleteDialogId = `delete-reminder-dialog-${reminder.id}`}
 			<li class="rounded-xl border border-border p-4" data-reminder-id={reminder.id}>

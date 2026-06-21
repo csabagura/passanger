@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
 	computeReminderStatus,
+	selectDueReminders,
 	REMINDER_DUE_SOON_KM,
 	REMINDER_DUE_SOON_DAYS
 } from './serviceReminder';
@@ -208,5 +209,42 @@ describe('computeReminderStatus', () => {
 			expect(result.kmRemaining).toBe(REMINDER_DUE_SOON_KM + 1);
 			expect(result.status).toBe('ok');
 		});
+	});
+});
+
+describe('selectDueReminders', () => {
+	// All km-based; evaluated at currentOdometer = 60000.
+	// due = lastServiceOdometer + intervalKm.
+	const overdueA = makeReminder({ id: 1, intervalKm: 5000, lastServiceOdometer: 50000 }); // due 55000 → -5000
+	const dueSoonB = makeReminder({ id: 2, intervalKm: 10300, lastServiceOdometer: 50000 }); // due 60300 → 300
+	const okC = makeReminder({ id: 3, intervalKm: 20000, lastServiceOdometer: 50000 }); // due 70000 → 10000
+	const overdueD = makeReminder({ id: 4, intervalKm: 8000, lastServiceOdometer: 50000 }); // due 58000 → -2000
+
+	it('filters out ok reminders, keeping only overdue and due-soon', () => {
+		const result = selectDueReminders([overdueA, dueSoonB, okC], 60000, TODAY);
+		expect(result.map((d) => d.reminder.id)).not.toContain(okC.id);
+		expect(result).toHaveLength(2);
+		expect(result.map((d) => d.status.status)).toEqual(['overdue', 'due-soon']);
+	});
+
+	it('orders overdue before due-soon, stable within each group', () => {
+		// Input order: overdueA, dueSoonB, okC, overdueD.
+		const result = selectDueReminders([overdueA, dueSoonB, okC, overdueD], 60000, TODAY);
+		// Overdue first (input order preserved: A then D), then due-soon (B).
+		expect(result.map((d) => d.reminder.id)).toEqual([overdueA.id, overdueD.id, dueSoonB.id]);
+	});
+
+	it('carries the computed status result (label + status) for each kept reminder', () => {
+		const result = selectDueReminders([overdueA], 60000, TODAY);
+		expect(result[0].status.status).toBe('overdue');
+		expect(result[0].status.label).toBe('Overdue by 5,000 km');
+	});
+
+	it('returns an empty array when nothing is due', () => {
+		expect(selectDueReminders([okC], 60000, TODAY)).toEqual([]);
+	});
+
+	it('returns an empty array for empty input', () => {
+		expect(selectDueReminders([], 60000, TODAY)).toEqual([]);
 	});
 });

@@ -56,3 +56,50 @@ test('reminders smoke: add a service reminder and see its due status', async ({ 
 	await expect(reminderItem.getByText('Due soon')).toBeVisible();
 	await expect(reminderItem.getByText(/Due in .*7 days/)).toBeVisible();
 });
+
+test('due-soon card: an overdue reminder surfaces on /log and taps through to Settings', async ({
+	page
+}) => {
+	await createVehicle(page, 'Trail Wagon');
+
+	// Add an overdue reminder via Settings: 7-day interval, last serviced 60 days ago.
+	await page.getByRole('link', { name: 'Settings' }).click();
+	await page.waitForLoadState('networkidle');
+	await page.getByRole('button', { name: /Add reminder/i }).click();
+
+	await page.getByLabel('Title').fill('Oil change');
+	await page.getByLabel('Every (days)').fill('7');
+
+	const sixtyDaysAgo = await page.evaluate(() => {
+		const d = new Date();
+		d.setDate(d.getDate() - 60);
+		const month = String(d.getMonth() + 1).padStart(2, '0');
+		const day = String(d.getDate()).padStart(2, '0');
+		return `${d.getFullYear()}-${month}-${day}`;
+	});
+	await page.getByLabel(/^Last service date/).fill(sixtyDaysAgo);
+	await page.getByRole('button', { name: 'Save reminder' }).click();
+
+	// Confirm it saved as overdue in the Settings list before leaving.
+	const settingsList = page.getByRole('list', { name: 'Service reminders' });
+	const settingsItem = settingsList.getByRole('listitem').filter({ hasText: 'Oil change' });
+	await expect(settingsItem).toBeVisible();
+	await expect(settingsItem.getByText('Overdue', { exact: true })).toBeVisible();
+
+	// Navigate to /log — the due card lists the overdue reminder above the Fuel/Service toggle.
+	await page.goto('/log');
+	await page.waitForLoadState('networkidle');
+
+	const dueCard = page.getByRole('list', { name: 'Due reminders' });
+	await expect(dueCard).toBeVisible();
+	const dueRow = dueCard.getByRole('listitem').filter({ hasText: 'Oil change' });
+	await expect(dueRow).toBeVisible();
+	await expect(dueRow.getByText('Overdue by 53 days')).toBeVisible();
+	await expect(dueRow.getByText('Overdue', { exact: true })).toBeVisible();
+
+	// Tapping the row deep-links to the Settings reminders section.
+	await dueRow.getByRole('button').click();
+	await page.waitForLoadState('networkidle');
+	await expect(page).toHaveURL(/\/settings/);
+	await expect(page.getByRole('heading', { name: 'Reminders' })).toBeVisible();
+});

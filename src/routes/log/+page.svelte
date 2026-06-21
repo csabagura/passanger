@@ -4,6 +4,7 @@
 	import VehicleForm from '$lib/components/VehicleForm.svelte';
 	import FuelEntryForm from '$lib/components/FuelEntryForm.svelte';
 	import MaintenanceForm from '$lib/components/MaintenanceForm.svelte';
+	import RemindersDueCard from '$lib/components/RemindersDueCard.svelte';
 	import InstallPrompt from '$lib/components/InstallPrompt.svelte';
 	import OnboardingSurvey from '$lib/components/OnboardingSurvey.svelte';
 	import type { Vehicle } from '$lib/db/schema';
@@ -27,6 +28,9 @@
 	let installPromptHiddenByInteraction = $state(false);
 	let activeMode = $state<LogMode>('fuel');
 	let onboardingSurveyEligible = $state(shouldShowOnboardingSurvey());
+	// Bumped on a same-tab fuel save so the due-soon card re-evaluates km-based reminders
+	// (the posting tab never receives its own BroadcastChannel message).
+	let remindersRefreshKey = $state(0);
 
 	const installPromptCtx = getContext<InstallPromptContext>('installPrompt');
 	const showInstallPrompt = $derived(
@@ -96,6 +100,8 @@
 	<VehicleForm onSave={handleVehicleSaved} />
 {:else if currentVehicle}
 	<div class="px-4 pt-4">
+		<RemindersDueCard vehicleId={currentVehicle.id} refreshSignal={remindersRefreshKey} />
+
 		<!-- svelte-ignore a11y_interactive_supports_focus -->
 		<div
 			role="radiogroup"
@@ -135,7 +141,7 @@
 			{#if activeMode === 'fuel'}
 				<FuelEntryForm
 					vehicleId={currentVehicle.id}
-					onSave={() => {}}
+					onSave={() => (remindersRefreshKey += 1)}
 					onFirstCreateSave={handleFirstCreateSave}
 				>
 					{#snippet successRegionAddon()}
