@@ -19,6 +19,29 @@ export interface ReminderStatusResult {
 	label: string;
 }
 
+/**
+ * Badge presentation (Tailwind classes + short badge label) per status. Shared by the
+ * Settings reminders list and the /log due-soon card so the styling stays in one place.
+ * Note: `label` here is the short badge word ("Overdue"), distinct from the per-reminder
+ * human label on `ReminderStatusResult` ("Overdue by 120 km").
+ */
+export const REMINDER_STATUS_PRESENTATION: Record<
+	ReminderStatus,
+	{ badge: string; label: string }
+> = {
+	overdue: {
+		badge: 'border-destructive/30 bg-destructive/10 text-destructive',
+		label: 'Overdue'
+	},
+	'due-soon': { badge: 'border-amber-500/30 bg-amber-500/10 text-amber-600', label: 'Due soon' },
+	ok: { badge: 'border-border bg-muted/40 text-muted-foreground', label: 'On track' }
+};
+
+export interface DueReminder {
+	reminder: ServiceReminder;
+	status: ReminderStatusResult;
+}
+
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 /** Whole-day difference between two dates, counted from local midnight (ignores time-of-day). */
@@ -132,4 +155,27 @@ function buildLabel(
 		parts.push(`${formatCount(daysRemaining)} ${pluralizeDays(daysRemaining)}`);
 	}
 	return `Due in ${parts.join(' / ')}`;
+}
+
+/**
+ * Select the reminders that need attention — `overdue` and `due-soon` only (never `ok`) —
+ * ordered overdue-first then due-soon, preserving the input order within each group.
+ * Deterministic without comparing across units (km vs days).
+ */
+export function selectDueReminders(
+	reminders: ServiceReminder[],
+	currentOdometer: number | undefined,
+	today: Date
+): DueReminder[] {
+	const overdue: DueReminder[] = [];
+	const dueSoon: DueReminder[] = [];
+	for (const reminder of reminders) {
+		const status = computeReminderStatus(reminder, currentOdometer, today);
+		if (status.status === 'overdue') {
+			overdue.push({ reminder, status });
+		} else if (status.status === 'due-soon') {
+			dueSoon.push({ reminder, status });
+		}
+	}
+	return [...overdue, ...dueSoon];
 }
