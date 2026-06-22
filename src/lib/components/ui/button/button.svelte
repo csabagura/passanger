@@ -65,7 +65,6 @@
 </script>
 
 {#if href}
-	<!-- eslint-disable svelte/no-navigation-without-resolve -- generic UI primitive: href is a passthrough prop; the caller is responsible for passing a resolved path -->
 	<a
 		bind:this={ref}
 		data-slot="button"
@@ -78,7 +77,6 @@
 	>
 		{@render children?.()}
 	</a>
-	<!-- eslint-enable svelte/no-navigation-without-resolve -->
 {:else}
 	<button
 		bind:this={ref}

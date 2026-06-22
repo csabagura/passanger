@@ -52,6 +52,36 @@ if (typeof window !== 'undefined' && typeof window.matchMedia !== 'function') {
 		}) as unknown as MediaQueryList;
 }
 
+// jsdom implements neither IntersectionObserver nor ResizeObserver. bits-ui's Sheet/Dialog (Epic 2's
+// global Capture Sheet, story 2-1) and observer-driven UI (LiveQuery-backed lists, intersection/resize
+// effects in Epic 2/3) construct them on mount and would throw under jsdom. Stub both with inert no-ops.
+// Added AHEAD of the Sheet/draft tests per Epic 1 retro AI-5 (proactive, not reactive). Focus-trap needs
+// no stub — bits-ui drives focus via real DOM APIs jsdom supports.
+if (typeof globalThis.IntersectionObserver !== 'function') {
+	class IntersectionObserverStub {
+		readonly root = null;
+		readonly rootMargin = '';
+		readonly thresholds: readonly number[] = [];
+		observe(): void {}
+		unobserve(): void {}
+		disconnect(): void {}
+		takeRecords(): IntersectionObserverEntry[] {
+			return [];
+		}
+	}
+	globalThis.IntersectionObserver =
+		IntersectionObserverStub as unknown as typeof IntersectionObserver;
+}
+
+if (typeof globalThis.ResizeObserver !== 'function') {
+	class ResizeObserverStub {
+		observe(): void {}
+		unobserve(): void {}
+		disconnect(): void {}
+	}
+	globalThis.ResizeObserver = ResizeObserverStub as unknown as typeof ResizeObserver;
+}
+
 const _originalToLocaleString = Number.prototype.toLocaleString;
 Number.prototype.toLocaleString = function (
 	locales?: Intl.LocalesArgument,

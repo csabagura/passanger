@@ -64,5 +64,15 @@ export default defineConfig(
 				}
 			]
 		}
+	},
+	// Generated shadcn-svelte primitives pass `href` through as an opaque prop (the caller resolves
+	// the path), so svelte/no-navigation-without-resolve fires inside ui/button. Scope the rule off
+	// the generated primitive layer instead of an inline eslint-disable that a shadcn regen would
+	// silently drop. See docs/adr/004-generated-ui-primitive-edits.md.
+	{
+		files: ['src/lib/components/ui/**/*.svelte'],
+		rules: {
+			'svelte/no-navigation-without-resolve': 'off'
+		}
 	}
 );
