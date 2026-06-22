@@ -199,4 +199,14 @@
 		transition: none !important;
 		animation: none !important;
 	}
+
+	/* NFR-3 (Story 2.1): degrade the Capture sheet's slide/fade to an instant state change. bits-ui
+	   animates [data-slot='sheet-content'] via the slide-in/out + fade utilities; killing transition +
+	   animation removes the motion. As with the sonner rule above, do NOT add `transform: none` —
+	   bits-ui drives the sheet's resting/slide position through `transform`, so blanking it would
+	   break the sheet's positioning. */
+	[data-slot='sheet-content'] {
+		transition: none !important;
+		animation: none !important;
+	}
 }

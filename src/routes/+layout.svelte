@@ -1,9 +1,15 @@
 <script lang="ts">
 	import '../app.css';
 	import { setContext } from 'svelte';
+	import { page } from '$app/state';
+	import { replaceState } from '$app/navigation';
 	import UpdatePrompt from '$lib/components/UpdatePrompt.svelte';
 	import AppHeader from '$lib/components/AppHeader.svelte';
 	import NavBar from '$lib/components/NavBar.svelte';
+	import Fab from '$lib/components/Fab.svelte';
+	import CaptureSheet from '$lib/components/capture/CaptureSheet.svelte';
+	import { createCaptureSheet } from '$lib/state/captureSheet.svelte';
+	import { consumeCaptureDeepLink } from '$lib/state/captureDeepLink';
 	import StorageProtectionNotice from '$lib/components/StorageProtectionNotice.svelte';
 	import TabSyncNotice from '$lib/components/TabSyncNotice.svelte';
 	import { Toaster } from '$lib/components/ui/sonner';
@@ -46,6 +52,21 @@
 	// AD-2/AD-4b: the single toast+undo channel, mounted once below and shared via context
 	// (string key 'toast', matching the existing settings/vehicles convention). No state library.
 	setContext('toast', toast);
+
+	// AD-3/AD-4b: the global Capture sheet state, provided once here and consumed by <Fab>, the
+	// <CaptureSheet> (both mounted below), and the deep-link $effect. String key 'captureSheet'.
+	const captureSheet = createCaptureSheet();
+	setContext('captureSheet', captureSheet);
+
+	// `?capture=fuel|expense` deep link: open the sheet on the matching segment, then strip the param
+	// via replaceState so closing / reload / back doesn't re-trigger it and the URL reflects real state.
+	// Route-agnostic (reads the current URL), so it works before the legacy redirects are retired (3.2).
+	$effect(() => {
+		consumeCaptureDeepLink(page.url, captureSheet, (cleaned) =>
+			// eslint-disable-next-line svelte/no-navigation-without-resolve -- `cleaned` is the current page.url with the `capture` query param removed; it is already base-path-resolved, so resolve() does not apply.
+			replaceState(cleaned, page.state)
+		);
+	});
 
 	let settings = $state<AppSettings>(getSettings());
 
@@ -361,4 +382,6 @@
 	</div>
 </main>
 <NavBar />
+<Fab />
+<CaptureSheet />
 <Toaster />

@@ -7,7 +7,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, cleanup } from '@testing-library/svelte';
 import { createRawSnippet, flushSync } from 'svelte';
-import { SHELL_NAVBAR_HEIGHT, UPDATE_PROMPT_CLEARANCE } from '$lib/config';
+import { SHELL_NAVBAR_HEIGHT, UPDATE_PROMPT_CLEARANCE, SHELL_FAB_CLEARANCE } from '$lib/config';
 import Layout from '../../routes/+layout.svelte';
 
 let mockPathname = '/fuel-entry';
@@ -64,11 +64,12 @@ describe('Layout shell (real +layout.svelte)', () => {
 		expect(nav).toBeTruthy();
 	});
 
-	it('main element has correct padding-bottom to clear NavBar + safe area', () => {
+	it('main element has correct padding-bottom to clear NavBar + FAB + safe area', () => {
 		render(Layout, { children: childrenSnippet });
 		const main = document.querySelector('main');
 		const style = main?.getAttribute('style') ?? '';
-		expectSafeAreaOffset(style, SHELL_NAVBAR_HEIGHT);
+		// content clears both the nav and the floating Capture FAB (story 2.1)
+		expectSafeAreaOffset(style, sumRemOffsets(SHELL_NAVBAR_HEIGHT, SHELL_FAB_CLEARANCE));
 	});
 
 	it('main element contains a desktop-centered container with max-width 480px at lg breakpoint only', () => {
@@ -109,7 +110,10 @@ describe('Layout shell (real +layout.svelte)', () => {
 
 		const main = document.querySelector('main');
 		const style = main?.getAttribute('style') ?? '';
-		expectSafeAreaOffset(style, sumRemOffsets(SHELL_NAVBAR_HEIGHT, UPDATE_PROMPT_CLEARANCE));
+		expectSafeAreaOffset(
+			style,
+			sumRemOffsets(SHELL_NAVBAR_HEIGHT, UPDATE_PROMPT_CLEARANCE, SHELL_FAB_CLEARANCE)
+		);
 	});
 
 	it('NavBar (z-40) has lower z-index than UpdatePrompt (z-50)', () => {
