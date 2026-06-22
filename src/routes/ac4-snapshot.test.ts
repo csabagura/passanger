@@ -11,7 +11,7 @@
  * A test that only asserts snapshot exports exist cannot detect this gap.
  *
  * THE CORRECT PATTERN:
- * `src/lib/stores/draft.ts` provides module-level plain objects whose values
+ * `src/lib/state/draftStore.ts` provides module-level plain objects whose values
  * persist for the full app session regardless of history state. Any tab-navigation
  * pattern (forward, backward, repeated) finds the draft intact because the module
  * is never re-evaluated between navigations.
@@ -26,7 +26,7 @@ import {
 	maintenanceDraft,
 	clearFuelDraft,
 	clearMaintenanceDraft
-} from '$lib/stores/draft';
+} from '$lib/state/draftStore';
 
 beforeEach(() => {
 	// Isolate tests — reset shared module state before each run

@@ -3,7 +3,11 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/svelte';
 import { flushSync } from 'svelte';
 import type { Expense } from '$lib/db/schema';
 import { QUOTA_EXCEEDED_MESSAGE } from '$lib/db/dbErrors';
-import { clearMaintenanceDraft, maintenanceDraft, setLastUsedCurrency } from '$lib/stores/draft';
+import {
+	clearMaintenanceDraft,
+	maintenanceDraft,
+	setLastUsedCurrency
+} from '$lib/state/draftStore';
 import { getTodayDateInputValue } from '$lib/utils/date';
 import type { AppSettings } from '$lib/utils/settings';
 import MaintenanceForm from './MaintenanceForm.svelte';
@@ -43,6 +47,9 @@ describe('MaintenanceForm', () => {
 
 	beforeEach(() => {
 		vi.clearAllMocks();
+		// Story 2.3: the sync $effect now writes through to localStorage — clear it so a draft
+		// (or its stale flag) from a prior test can't bleed into this one.
+		localStorage.clear();
 		clearMaintenanceDraft();
 		mockSettings.value = {
 			fuelUnit: 'L/100km',

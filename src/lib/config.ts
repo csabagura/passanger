@@ -81,3 +81,16 @@ export const CAPTURE_DEEP_LINK_PARAM = 'capture';
 // always allowed. In the entry's distance unit (km or mi).
 export const ODOMETER_IMPLAUSIBLE_DELTA_MULTIPLIER = 5;
 export const ODOMETER_IMPLAUSIBLE_MIN_DELTA = 2000;
+
+// Durable Capture drafts (Story 2.3 / FR-5, AD-6): the in-progress Fuel/Expense forms are
+// written through to localStorage (synchronously, last-keystroke-durable) so a reload, a
+// backgrounded tab, or a PWA cold-start never loses a half-typed entry. Each key stores
+// `{ fields, updatedAt }`. Follows the `passanger_<area>_<name>` key convention above.
+export const DRAFT_FUEL_STORAGE_KEY = 'passanger_draft_fuel'; // localStorage key for the fuel draft
+export const DRAFT_EXPENSE_STORAGE_KEY = 'passanger_draft_expense'; // localStorage key for the expense draft
+export const DRAFT_CURRENCY_STORAGE_KEY = 'passanger_capture_currency'; // localStorage key for durable currency memory
+// A restored draft older than this re-validates its odometer (and, for expense, its date)
+// rather than silently resurfacing a stale reading. 7 days: long enough that a normal
+// interrupted-then-resumed entry restores verbatim, short enough that a genuinely abandoned
+// half-entry re-derives a fresh suggestion. Pure tuning knob (Story 2.3 Open Question 1).
+export const DRAFT_STALE_DAYS = 7;

@@ -7,10 +7,11 @@
 	import {
 		fuelDraft,
 		clearFuelDraft,
+		consumeFuelDraftStale,
 		getLastUsedCurrency,
 		setLastUsedCurrency,
 		getRecentCurrencies
-	} from '$lib/stores/draft';
+	} from '$lib/state/draftStore';
 	import { RESULT_CARD_DISMISS_MS, PRESET_CURRENCIES } from '$lib/config';
 	import CurrencyChips from '$lib/components/capture/CurrencyChips.svelte';
 	import {
@@ -70,6 +71,11 @@
 
 	const settingsCtx = getContext<{ settings: AppSettings }>('settings');
 	const isEditMode = $derived(mode === 'edit' && initialFuelLog !== undefined);
+
+	// Story 2.3 (AC-4): a draft restored after DRAFT_STALE_DAYS had its odometer dropped and
+	// re-suggested. Show a calm, non-blocking notice ONCE per stale restore, create path only —
+	// consume() resets the flag so it does not re-fire on remount / Fuel↔Expense segment toggle.
+	const showStaleDraftNotice = getInitialLog() ? false : consumeFuelDraftStale();
 
 	function getInitialLog(): FuelLog | undefined {
 		return mode === 'edit' ? initialFuelLog : undefined;
@@ -692,6 +698,13 @@
 	}}
 	class="space-y-5"
 >
+	{#if showStaleDraftNotice}
+		<!-- Story 2.3 (AC-4): calm, non-blocking stale-restore notice. Polite live region, NO
+		     role="alert"; neutral text-muted-foreground (informational, not the amber warning). -->
+		<p aria-live="polite" class="text-sm text-muted-foreground">
+			We kept your earlier draft — double-check the odometer.
+		</p>
+	{/if}
 	<div>
 		<label for="odometer" class="block text-sm font-medium text-foreground">
 			Odometer ({currentDistanceUnit})

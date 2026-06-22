@@ -7,10 +7,11 @@
 	import {
 		clearMaintenanceDraft,
 		maintenanceDraft,
+		consumeMaintenanceDraftStale,
 		getLastUsedCurrency,
 		setLastUsedCurrency,
 		getRecentCurrencies
-	} from '$lib/stores/draft';
+	} from '$lib/state/draftStore';
 	import CurrencyChips from '$lib/components/capture/CurrencyChips.svelte';
 	import {
 		formatLocalCalendarDate,
@@ -58,6 +59,11 @@
 	const settingsCtx = getContext<{ settings: AppSettings }>('settings');
 
 	const isEditMode = $derived(mode === 'edit' && initialExpense !== undefined);
+
+	// Story 2.3 (AC-4): a draft restored after DRAFT_STALE_DAYS had its odometer + date dropped
+	// and re-validated (date → today). Show a calm, non-blocking notice ONCE per stale restore,
+	// create path only — consume() resets the flag so it does not re-fire on remount.
+	const showStaleDraftNotice = getInitialExpense() ? false : consumeMaintenanceDraftStale();
 	const odometerHelpId = 'maintenance-odometer-help';
 
 	function getInitialExpense(): Expense | undefined {
@@ -299,6 +305,13 @@
 	}}
 	class="space-y-5"
 >
+	{#if showStaleDraftNotice}
+		<!-- Story 2.3 (AC-4): calm, non-blocking stale-restore notice. Polite live region, NO
+		     role="alert"; neutral text-muted-foreground (informational, not the amber warning). -->
+		<p aria-live="polite" class="text-sm text-muted-foreground">
+			We kept your earlier draft — double-check the odometer and date.
+		</p>
+	{/if}
 	<div>
 		<label for="maintenance-date" class="block text-sm font-medium text-foreground">Date</label>
 		<input

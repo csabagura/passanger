@@ -4,7 +4,7 @@ import { flushSync } from 'svelte';
 import FuelEntryForm from './FuelEntryForm.svelte';
 import type { FuelLog } from '$lib/db/schema';
 import { QUOTA_EXCEEDED_MESSAGE } from '$lib/db/dbErrors';
-import { fuelDraft, clearFuelDraft, setLastUsedCurrency } from '$lib/stores/draft';
+import { fuelDraft, clearFuelDraft, setLastUsedCurrency } from '$lib/state/draftStore';
 import type { AppSettings } from '$lib/utils/settings';
 
 // Mock fuel logs repository
@@ -81,6 +81,9 @@ describe('FuelEntryForm component — review fixes validation', () => {
 			currency: '€',
 			theme: 'system'
 		};
+		// Story 2.3: the sync $effect now writes through to localStorage — clear it so a draft
+		// (or its stale flag) from a prior test can't bleed into this one.
+		localStorage.clear();
 		clearFuelDraft();
 
 		// Default: no previous fuel logs
