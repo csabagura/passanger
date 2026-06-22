@@ -46,4 +46,30 @@ describe('Field', () => {
 		expect(b).toBeTruthy();
 		expect(a).not.toBe(b);
 	});
+
+	it('announces the error via role="alert"', () => {
+		render(Field, { props: { label: 'Cost', error: 'Cost is required' } });
+		const alert = screen.getByRole('alert');
+		expect(alert.textContent).toBe('Cost is required');
+	});
+
+	it('keeps the error wiring and merges a caller-supplied aria-describedby', () => {
+		render(Field, {
+			props: { label: 'Cost', error: 'Cost is required', 'aria-describedby': 'hint-1' }
+		});
+		const input = screen.getByLabelText('Cost');
+		const errorId = `${input.getAttribute('id')}-error`;
+		const describedBy = input.getAttribute('aria-describedby') ?? '';
+		// Controlled error linkage survives the passthrough, and the caller hint is preserved too.
+		expect(describedBy.split(' ')).toContain(errorId);
+		expect(describedBy.split(' ')).toContain('hint-1');
+		expect(input.getAttribute('aria-invalid')).toBe('true');
+	});
+
+	it('forwards type and round-trips the bound value', () => {
+		render(Field, { props: { label: 'Quantity', type: 'number', value: 42 } });
+		const input = screen.getByLabelText('Quantity') as HTMLInputElement;
+		expect(input.getAttribute('type')).toBe('number');
+		expect(input.value).toBe('42');
+	});
 });

@@ -7,7 +7,8 @@ const routes = [
 	{ name: 'Fuel Entry', path: '/fuel-entry' },
 	{ name: 'Maintenance', path: '/maintenance' },
 	{ name: 'History', path: '/history' },
-	{ name: 'Export', path: '/export' }
+	{ name: 'Export', path: '/export' },
+	{ name: 'Settings', path: '/settings' }
 ];
 
 for (const route of routes) {

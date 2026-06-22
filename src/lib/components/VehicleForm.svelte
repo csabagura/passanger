@@ -3,6 +3,8 @@
 	import { saveVehicle, updateVehicle } from '$lib/db/repositories/vehicles';
 	import type { Vehicle } from '$lib/db/schema';
 	import type { AppError } from '$lib/utils/result';
+	import { Button } from '$lib/components/ui/button';
+	import { Field } from '$lib/components/ui/field';
 
 	type AsyncState<T> =
 		| { status: 'idle' }
@@ -31,10 +33,11 @@
 	let modelError = $state('');
 	let yearError = $state('');
 
-	let displayNameInput: HTMLInputElement | undefined;
-	let makeInput: HTMLInputElement | undefined;
-	let modelInput: HTMLInputElement | undefined;
-	let yearInput: HTMLInputElement | undefined;
+	// Field wraps its own input and does not forward a ref, so focus recovery targets the
+	// stable ids passed to each Field.
+	function focusField(id: string): void {
+		document.getElementById(id)?.focus();
+	}
 
 	let saveState = $state<AsyncState<Vehicle>>({ status: 'idle' });
 	let toastMessage = $state('');
@@ -98,10 +101,10 @@
 
 		if (displayNameError || makeError || modelError || yearError) {
 			// Move focus to first invalid field for keyboard recovery (UX spec requirement)
-			if (displayNameError) displayNameInput?.focus();
-			else if (makeError) makeInput?.focus();
-			else if (modelError) modelInput?.focus();
-			else if (yearError) yearInput?.focus();
+			if (displayNameError) focusField('displayName');
+			else if (makeError) focusField('make');
+			else if (modelError) focusField('model');
+			else if (yearError) focusField('year');
 			return;
 		}
 
@@ -163,126 +166,84 @@
 		{isEditMode ? 'Edit Vehicle' : 'Add Vehicle'}
 	</h1>
 
-	<div>
-		<label for="displayName" class="block text-sm font-medium text-foreground">Display Name</label>
-		<input
-			id="displayName"
-			type="text"
-			bind:this={displayNameInput}
-			bind:value={displayName}
-			oninput={() => {
-				if (displayName.trim() !== '') displayNameError = '';
-			}}
-			onblur={validateDisplayName}
-			aria-invalid={displayNameError ? 'true' : undefined}
-			aria-describedby={displayNameError ? 'displayName-error' : undefined}
-			class="mt-1 w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring"
-			placeholder="e.g. My Honda"
-		/>
-		{#if displayNameError}
-			<p id="displayName-error" role="alert" class="mt-1 text-sm text-destructive">
-				{displayNameError}
-			</p>
-		{/if}
-	</div>
+	<Field
+		id="displayName"
+		label="Display Name"
+		type="text"
+		bind:value={displayName}
+		error={displayNameError}
+		placeholder="e.g. My Honda"
+		oninput={() => {
+			if (displayName.trim() !== '') displayNameError = '';
+		}}
+		onblur={validateDisplayName}
+	/>
 
-	<div>
-		<label for="make" class="block text-sm font-medium text-foreground">Make</label>
-		<input
-			id="make"
-			type="text"
-			bind:this={makeInput}
-			bind:value={make}
-			oninput={() => {
-				if (make.trim() !== '') makeError = '';
-			}}
-			onblur={validateMake}
-			aria-invalid={makeError ? 'true' : undefined}
-			aria-describedby={makeError ? 'make-error' : undefined}
-			class="mt-1 w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring"
-			placeholder="e.g. Toyota"
-		/>
-		{#if makeError}
-			<p id="make-error" role="alert" class="mt-1 text-sm text-destructive">{makeError}</p>
-		{/if}
-	</div>
+	<Field
+		id="make"
+		label="Make"
+		type="text"
+		bind:value={make}
+		error={makeError}
+		placeholder="e.g. Toyota"
+		oninput={() => {
+			if (make.trim() !== '') makeError = '';
+		}}
+		onblur={validateMake}
+	/>
 
-	<div>
-		<label for="model" class="block text-sm font-medium text-foreground">Model</label>
-		<input
-			id="model"
-			type="text"
-			bind:this={modelInput}
-			bind:value={model}
-			oninput={() => {
-				if (model.trim() !== '') modelError = '';
-			}}
-			onblur={validateModel}
-			aria-invalid={modelError ? 'true' : undefined}
-			aria-describedby={modelError ? 'model-error' : undefined}
-			class="mt-1 w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring"
-			placeholder="e.g. Corolla"
-		/>
-		{#if modelError}
-			<p id="model-error" role="alert" class="mt-1 text-sm text-destructive">{modelError}</p>
-		{/if}
-	</div>
+	<Field
+		id="model"
+		label="Model"
+		type="text"
+		bind:value={model}
+		error={modelError}
+		placeholder="e.g. Corolla"
+		oninput={() => {
+			if (model.trim() !== '') modelError = '';
+		}}
+		onblur={validateModel}
+	/>
 
-	<div>
-		<label for="year" class="block text-sm font-medium text-foreground">
-			Year <span class="text-muted-foreground">(optional)</span>
-		</label>
-		<input
-			id="year"
-			type="text"
-			inputmode="numeric"
-			pattern="[0-9]*"
-			bind:this={yearInput}
-			bind:value={yearStr}
-			oninput={() => {
-				const trimmed = yearStr.trim();
-				if (trimmed === '') {
-					yearError = '';
-				} else if (!/^\d+$/.test(trimmed)) {
-					yearError = `Enter a valid year (1900–${currentYear})`;
-				} else {
-					const n = parseInt(trimmed, 10);
-					yearError =
-						n >= 1900 && n <= currentYear ? '' : `Enter a valid year (1900–${currentYear})`;
-				}
-			}}
-			onblur={validateYear}
-			aria-invalid={yearError ? 'true' : undefined}
-			aria-describedby={yearError ? 'year-error' : undefined}
-			class="mt-1 w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring"
-			placeholder="e.g. 2020"
-		/>
-		{#if yearError}
-			<p id="year-error" role="alert" class="mt-1 text-sm text-destructive">{yearError}</p>
-		{/if}
-	</div>
+	<Field
+		id="year"
+		label="Year (optional)"
+		type="text"
+		inputmode="numeric"
+		pattern="[0-9]*"
+		bind:value={yearStr}
+		error={yearError}
+		placeholder="e.g. 2020"
+		oninput={() => {
+			const trimmed = yearStr.trim();
+			if (trimmed === '') {
+				yearError = '';
+			} else if (!/^\d+$/.test(trimmed)) {
+				yearError = `Enter a valid year (1900–${currentYear})`;
+			} else {
+				const n = parseInt(trimmed, 10);
+				yearError = n >= 1900 && n <= currentYear ? '' : `Enter a valid year (1900–${currentYear})`;
+			}
+		}}
+		onblur={validateYear}
+	/>
 
 	<div class="flex gap-3">
 		{#if onCancel}
-			<button
-				type="button"
-				onclick={onCancel}
-				class="rounded-xl border border-border px-4 py-3 text-sm font-semibold text-foreground"
-			>
-				Cancel
-			</button>
+			<Button variant="outline" onclick={onCancel}>Cancel</Button>
 		{/if}
-		<button
+		<Button
 			type="submit"
+			size="lg"
+			class="flex-1"
 			disabled={!isFormValid || saveState.status === 'loading'}
 			aria-busy={saveState.status === 'loading'}
-			class="flex-1 rounded-xl bg-accent px-4 py-3 text-sm font-semibold text-accent-foreground disabled:opacity-50"
 		>
 			{#if saveState.status === 'loading'}
 				Saving…
 			{:else}
 				{isEditMode ? 'Save changes' : 'Save vehicle'}
 			{/if}
-		</button>
+		</Button>
 	</div>
 </form>

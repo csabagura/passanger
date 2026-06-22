@@ -70,7 +70,9 @@
 	--due-soon-accent: #d97706;
 	--border: oklch(1 0 0 / 10%);
 	--input: oklch(1 0 0 / 15%);
-	--ring: oklch(0.552 0.016 285.938);
+	/* Brand-blue focus ring in dark mode, matching the dark --primary (#5b97f6 from story 1.2),
+	   so migrated <Button> CTAs show a blue focus ring instead of neutral gray. */
+	--ring: #5b97f6;
 	--chart-1: oklch(0.488 0.243 264.376);
 	--chart-2: oklch(0.696 0.17 162.48);
 	--chart-3: oklch(0.769 0.188 70.08);
@@ -184,5 +186,17 @@
 	body {
 		@apply bg-background text-foreground;
 		font-family: var(--font-sans);
+	}
+}
+
+/* NFR-3: neutralize the sonner toast enter/leave motion under reduced-motion. sonner animates its
+   toasts via the `transition`/`animation` on [data-sonner-toast]; disabling those stops the slide
+   and fade. We must NOT also force `transform: none` — sonner drives each toast's resting and
+   stacked position through `transform: var(--y)`, so blanking it would collapse multi-toast
+   stacking (they'd overlap). Killing only transition + animation removes the motion, not the layout. */
+@media (prefers-reduced-motion: reduce) {
+	[data-sonner-toast] {
+		transition: none !important;
+		animation: none !important;
 	}
 }

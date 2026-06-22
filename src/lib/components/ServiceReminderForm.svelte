@@ -12,6 +12,9 @@
 	} from '$lib/utils/date';
 	import { parsePositiveNumeric } from '$lib/utils/numberInput';
 	import type { AppError } from '$lib/utils/result';
+	import { Button } from '$lib/components/ui/button';
+	import { Field } from '$lib/components/ui/field';
+	import { Label } from '$lib/components/ui/label';
 
 	type AsyncState<T> =
 		| { status: 'idle' }
@@ -51,10 +54,11 @@
 	let lastServiceOdometerError = $state('');
 	let lastServiceDateError = $state('');
 
-	let titleInput: HTMLInputElement | undefined = $state();
-	let intervalKmInput: HTMLInputElement | undefined = $state();
-	let lastServiceOdometerInput: HTMLInputElement | undefined = $state();
-	let lastServiceDateInput: HTMLInputElement | undefined = $state();
+	// Field wraps its own input and does not forward a ref, so focus recovery targets the
+	// stable ids passed to each Field.
+	function focusField(id: string): void {
+		document.getElementById(id)?.focus();
+	}
 
 	let saveState = $state<AsyncState<ServiceReminder>>({ status: 'idle' });
 	let toastMessage = $state('');
@@ -133,10 +137,10 @@
 		validateLastServiceDate();
 
 		if (titleError || intervalError || lastServiceOdometerError || lastServiceDateError) {
-			if (titleError) titleInput?.focus();
-			else if (intervalError) intervalKmInput?.focus();
-			else if (lastServiceOdometerError) lastServiceOdometerInput?.focus();
-			else if (lastServiceDateError) lastServiceDateInput?.focus();
+			if (titleError) focusField('reminder-title');
+			else if (intervalError) focusField('reminder-interval-km');
+			else if (lastServiceOdometerError) focusField('reminder-last-odometer');
+			else if (lastServiceDateError) focusField('reminder-last-date');
 			return;
 		}
 
@@ -210,28 +214,18 @@
 		{isEditMode ? 'Edit reminder' : 'Add reminder'}
 	</h3>
 
-	<div>
-		<label for="reminder-title" class="block text-sm font-medium text-foreground">Title</label>
-		<input
-			id="reminder-title"
-			type="text"
-			bind:this={titleInput}
-			bind:value={title}
-			oninput={() => {
-				if (title.trim() !== '') titleError = '';
-			}}
-			onblur={validateTitle}
-			aria-invalid={titleError ? 'true' : undefined}
-			aria-describedby={titleError ? 'reminder-title-error' : undefined}
-			class="mt-1 w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring"
-			placeholder="e.g. Oil change"
-		/>
-		{#if titleError}
-			<p id="reminder-title-error" role="alert" class="mt-1 text-sm text-destructive">
-				{titleError}
-			</p>
-		{/if}
-	</div>
+	<Field
+		id="reminder-title"
+		label="Title"
+		type="text"
+		bind:value={title}
+		error={titleError}
+		placeholder="e.g. Oil change"
+		oninput={() => {
+			if (title.trim() !== '') titleError = '';
+		}}
+		onblur={validateTitle}
+	/>
 
 	<fieldset
 		aria-describedby={intervalError ? 'reminder-interval-error' : 'reminder-interval-help'}
@@ -242,43 +236,32 @@
 			Set a distance interval, a time interval, or both.
 		</p>
 		<div class="grid gap-3 sm:grid-cols-2">
-			<div>
-				<label for="reminder-interval-km" class="block text-xs font-medium text-muted-foreground">
-					Every (km)
-				</label>
-				<input
-					id="reminder-interval-km"
-					type="text"
-					inputmode="numeric"
-					bind:this={intervalKmInput}
-					bind:value={intervalKmStr}
-					oninput={() => {
-						if (intervalError) intervalError = '';
-					}}
-					onblur={validateIntervals}
-					aria-invalid={intervalError ? 'true' : undefined}
-					class="mt-1 w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring"
-					placeholder="e.g. 10000"
-				/>
-			</div>
-			<div>
-				<label for="reminder-interval-days" class="block text-xs font-medium text-muted-foreground">
-					Every (days)
-				</label>
-				<input
-					id="reminder-interval-days"
-					type="text"
-					inputmode="numeric"
-					bind:value={intervalDaysStr}
-					oninput={() => {
-						if (intervalError) intervalError = '';
-					}}
-					onblur={validateIntervals}
-					aria-invalid={intervalError ? 'true' : undefined}
-					class="mt-1 w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring"
-					placeholder="e.g. 365"
-				/>
-			</div>
+			<!-- km/days share one fieldset-level error region, so the error stays below; the Fields
+			     carry only the input chrome (no per-field error prop). -->
+			<Field
+				id="reminder-interval-km"
+				label="Every (km)"
+				type="text"
+				inputmode="numeric"
+				bind:value={intervalKmStr}
+				placeholder="e.g. 10000"
+				oninput={() => {
+					if (intervalError) intervalError = '';
+				}}
+				onblur={validateIntervals}
+			/>
+			<Field
+				id="reminder-interval-days"
+				label="Every (days)"
+				type="text"
+				inputmode="numeric"
+				bind:value={intervalDaysStr}
+				placeholder="e.g. 365"
+				oninput={() => {
+					if (intervalError) intervalError = '';
+				}}
+				onblur={validateIntervals}
+			/>
 		</div>
 		{#if intervalError}
 			<p id="reminder-interval-error" role="alert" class="text-sm text-destructive">
@@ -287,91 +270,60 @@
 		{/if}
 	</fieldset>
 
-	<div>
-		<label for="reminder-last-odometer" class="block text-sm font-medium text-foreground">
-			Last service odometer <span class="text-muted-foreground">(optional)</span>
-		</label>
-		<input
-			id="reminder-last-odometer"
-			type="text"
-			inputmode="numeric"
-			bind:this={lastServiceOdometerInput}
-			bind:value={lastServiceOdometerStr}
-			oninput={() => {
-				if (lastServiceOdometerError) lastServiceOdometerError = '';
-			}}
-			onblur={validateLastServiceOdometer}
-			aria-invalid={lastServiceOdometerError ? 'true' : undefined}
-			aria-describedby={lastServiceOdometerError ? 'reminder-last-odometer-error' : undefined}
-			class="mt-1 w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring"
-			placeholder="e.g. 50000"
-		/>
-		{#if lastServiceOdometerError}
-			<p id="reminder-last-odometer-error" role="alert" class="mt-1 text-sm text-destructive">
-				{lastServiceOdometerError}
-			</p>
-		{/if}
-	</div>
+	<Field
+		id="reminder-last-odometer"
+		label="Last service odometer (optional)"
+		type="text"
+		inputmode="numeric"
+		bind:value={lastServiceOdometerStr}
+		error={lastServiceOdometerError}
+		placeholder="e.g. 50000"
+		oninput={() => {
+			if (lastServiceOdometerError) lastServiceOdometerError = '';
+		}}
+		onblur={validateLastServiceOdometer}
+	/>
 
-	<div>
-		<label for="reminder-last-date" class="block text-sm font-medium text-foreground">
-			Last service date <span class="text-muted-foreground">(optional)</span>
-		</label>
-		<input
-			id="reminder-last-date"
-			type="date"
-			max={todayValue}
-			bind:this={lastServiceDateInput}
-			bind:value={lastServiceDateStr}
-			oninput={() => {
-				if (lastServiceDateError) lastServiceDateError = '';
-			}}
-			onblur={validateLastServiceDate}
-			aria-invalid={lastServiceDateError ? 'true' : undefined}
-			aria-describedby={lastServiceDateError ? 'reminder-last-date-error' : undefined}
-			class="mt-1 w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring"
-		/>
-		{#if lastServiceDateError}
-			<p id="reminder-last-date-error" role="alert" class="mt-1 text-sm text-destructive">
-				{lastServiceDateError}
-			</p>
-		{/if}
-	</div>
+	<Field
+		id="reminder-last-date"
+		label="Last service date (optional)"
+		type="date"
+		max={todayValue}
+		bind:value={lastServiceDateStr}
+		error={lastServiceDateError}
+		oninput={() => {
+			if (lastServiceDateError) lastServiceDateError = '';
+		}}
+		onblur={validateLastServiceDate}
+	/>
 
-	<div>
-		<label for="reminder-notes" class="block text-sm font-medium text-foreground">
-			Notes <span class="text-muted-foreground">(optional)</span>
-		</label>
+	<div class="flex flex-col gap-2">
+		<Label for="reminder-notes" class="text-foreground">Notes (optional)</Label>
 		<textarea
 			id="reminder-notes"
 			bind:value={notes}
 			rows="2"
-			class="mt-1 w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring"
+			class="w-full rounded-md border border-border bg-card px-3 py-2 text-base text-foreground outline-none focus:ring-2 focus:ring-ring"
 			placeholder="Anything to remember"
 		></textarea>
 	</div>
 
 	<div class="flex gap-3">
 		{#if onCancel}
-			<button
-				type="button"
-				onclick={onCancel}
-				class="rounded-xl border border-border px-4 py-3 text-sm font-semibold text-foreground"
-			>
-				Cancel
-			</button>
+			<Button variant="outline" onclick={onCancel}>Cancel</Button>
 		{/if}
-		<button
+		<Button
 			type="submit"
+			size="lg"
+			class="flex-1"
 			disabled={!isFormValid || saveState.status === 'loading'}
 			aria-busy={saveState.status === 'loading'}
-			class="flex-1 rounded-xl bg-accent px-4 py-3 text-sm font-semibold text-accent-foreground disabled:opacity-50"
 		>
 			{#if saveState.status === 'loading'}
 				Saving…
 			{:else}
 				{isEditMode ? 'Save changes' : 'Save reminder'}
 			{/if}
-		</button>
+		</Button>
 	</div>
 </form>

@@ -7,6 +7,7 @@
 	import type { ServiceReminder } from '$lib/db/schema';
 	import { computeReminderStatus, REMINDER_STATUS_PRESENTATION } from '$lib/utils/serviceReminder';
 	import ServiceReminderForm from './ServiceReminderForm.svelte';
+	import { Button } from '$lib/components/ui/button';
 
 	type ViewState =
 		| { mode: 'list' }
@@ -31,7 +32,7 @@
 	let loadError = $state('');
 
 	let listContainerEl = $state<HTMLElement | null>(null);
-	let addButtonEl = $state<HTMLButtonElement | null>(null);
+	let addButtonEl = $state<HTMLElement | null>(null);
 
 	const deletePromptVisible = $derived(deleteState === 'armed' || deleteState === 'loading');
 
@@ -156,14 +157,7 @@
 		<p class="text-sm text-muted-foreground">
 			No reminders yet. Add one to track when maintenance is due.
 		</p>
-		<button
-			type="button"
-			onclick={handleCreateClick}
-			bind:this={addButtonEl}
-			class="inline-flex min-h-11 items-center justify-center rounded-xl bg-accent px-5 py-3 text-sm font-semibold text-accent-foreground"
-		>
-			+ Add reminder
-		</button>
+		<Button bind:ref={addButtonEl} onclick={handleCreateClick}>+ Add reminder</Button>
 	</div>
 {:else}
 	<ul class="space-y-3" aria-label="Service reminders" bind:this={listContainerEl}>
@@ -186,23 +180,23 @@
 						<p class="mt-1 text-sm text-muted-foreground">{status.label}</p>
 					</div>
 					<div class="flex gap-2">
-						<button
-							type="button"
+						<Button
+							variant="outline"
+							size="icon"
 							onclick={() => handleEditClick(reminder)}
 							aria-label="Edit {reminder.title}"
-							class="min-h-11 min-w-11 rounded-xl border border-border px-3 py-2 text-sm font-semibold text-foreground"
 						>
 							Edit
-						</button>
-						<button
-							type="button"
+						</Button>
+						<Button
+							variant="destructive"
+							size="icon"
 							disabled={deletePromptVisible}
 							onclick={() => handleDeleteRequest(reminder)}
 							aria-label="Delete {reminder.title}"
-							class="min-h-11 min-w-11 rounded-xl border border-destructive/20 px-3 py-2 text-sm font-semibold text-destructive disabled:cursor-not-allowed disabled:opacity-70"
 						>
 							Delete
-						</button>
+						</Button>
 					</div>
 				</div>
 
@@ -226,22 +220,20 @@
 						{/if}
 
 						<div class="mt-3 flex flex-wrap justify-end gap-2">
-							<button
-								type="button"
+							<Button
+								variant="outline"
 								disabled={deleteState === 'loading'}
 								onclick={handleDeleteCancel}
-								class="rounded-xl border border-destructive/20 px-3 py-2 text-sm font-semibold text-destructive disabled:cursor-not-allowed disabled:opacity-70"
 							>
 								Cancel
-							</button>
-							<button
-								type="button"
+							</Button>
+							<Button
+								variant="destructive"
 								disabled={deleteState === 'loading'}
 								onclick={handleDeleteConfirm}
-								class="rounded-xl bg-destructive px-3 py-2 text-sm font-semibold text-destructive-foreground disabled:cursor-not-allowed disabled:opacity-70"
 							>
 								{deleteState === 'loading' ? 'Deleting…' : 'Confirm delete'}
-							</button>
+							</Button>
 						</div>
 					</div>
 				{/if}
@@ -250,13 +242,6 @@
 	</ul>
 
 	<div class="mt-4">
-		<button
-			type="button"
-			onclick={handleCreateClick}
-			bind:this={addButtonEl}
-			class="inline-flex min-h-11 items-center justify-center rounded-xl bg-accent px-5 py-3 text-sm font-semibold text-accent-foreground"
-		>
-			+ Add reminder
-		</button>
+		<Button bind:ref={addButtonEl} onclick={handleCreateClick}>+ Add reminder</Button>
 	</div>
 {/if}

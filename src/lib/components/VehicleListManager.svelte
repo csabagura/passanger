@@ -5,6 +5,7 @@
 	import { safeSetItem, safeRemoveItem } from '$lib/utils/vehicleStorage';
 	import type { Vehicle } from '$lib/db/schema';
 	import VehicleForm from './VehicleForm.svelte';
+	import { Button } from '$lib/components/ui/button';
 
 	type ViewState = { mode: 'list' } | { mode: 'create' } | { mode: 'edit'; vehicle: Vehicle };
 	type DeleteState = 'idle' | 'armed' | 'loading';
@@ -26,7 +27,7 @@
 	let loadError = $state('');
 
 	let listContainerEl = $state<HTMLElement | null>(null);
-	let addButtonEl = $state<HTMLButtonElement | null>(null);
+	let addButtonEl = $state<HTMLElement | null>(null);
 
 	const deletePromptVisible = $derived(deleteState === 'armed' || deleteState === 'loading');
 	const canAddVehicle = $derived(vehicleCount < MAX_VEHICLES);
@@ -162,14 +163,7 @@
 		<p class="text-sm text-muted-foreground">
 			No vehicles yet. Add your first vehicle to get started.
 		</p>
-		<button
-			type="button"
-			onclick={handleCreateClick}
-			bind:this={addButtonEl}
-			class="inline-flex min-h-11 items-center justify-center rounded-xl bg-accent px-5 py-3 text-sm font-semibold text-accent-foreground"
-		>
-			+ Add vehicle
-		</button>
+		<Button bind:ref={addButtonEl} onclick={handleCreateClick}>+ Add vehicle</Button>
 	</div>
 {:else}
 	<ul class="space-y-3" aria-label="Vehicle list" bind:this={listContainerEl}>
@@ -202,23 +196,23 @@
 						</p>
 					</div>
 					<div class="flex gap-2">
-						<button
-							type="button"
+						<Button
+							variant="outline"
+							size="icon"
 							onclick={() => handleEditClick(vehicle)}
 							aria-label="Edit {vehicle.name}"
-							class="min-h-11 min-w-11 rounded-xl border border-border px-3 py-2 text-sm font-semibold text-foreground"
 						>
 							Edit
-						</button>
-						<button
-							type="button"
+						</Button>
+						<Button
+							variant="destructive"
+							size="icon"
 							disabled={deletePromptVisible}
 							onclick={() => handleDeleteRequest(vehicle)}
 							aria-label="Delete {vehicle.name}"
-							class="min-h-11 min-w-11 rounded-xl border border-destructive/20 px-3 py-2 text-sm font-semibold text-destructive disabled:cursor-not-allowed disabled:opacity-70"
 						>
 							Delete
-						</button>
+						</Button>
 					</div>
 				</div>
 
@@ -243,22 +237,20 @@
 						{/if}
 
 						<div class="mt-3 flex flex-wrap justify-end gap-2">
-							<button
-								type="button"
+							<Button
+								variant="outline"
 								disabled={deleteState === 'loading'}
 								onclick={handleDeleteCancel}
-								class="rounded-xl border border-destructive/20 px-3 py-2 text-sm font-semibold text-destructive disabled:cursor-not-allowed disabled:opacity-70"
 							>
 								Cancel
-							</button>
-							<button
-								type="button"
+							</Button>
+							<Button
+								variant="destructive"
 								disabled={deleteState === 'loading'}
 								onclick={handleDeleteConfirm}
-								class="rounded-xl bg-destructive px-3 py-2 text-sm font-semibold text-destructive-foreground disabled:cursor-not-allowed disabled:opacity-70"
 							>
 								{deleteState === 'loading' ? 'Deleting…' : 'Confirm delete'}
-							</button>
+							</Button>
 						</div>
 					</div>
 				{/if}
@@ -268,14 +260,7 @@
 
 	<div class="mt-4 space-y-2">
 		{#if canAddVehicle}
-			<button
-				type="button"
-				onclick={handleCreateClick}
-				bind:this={addButtonEl}
-				class="inline-flex min-h-11 items-center justify-center rounded-xl bg-accent px-5 py-3 text-sm font-semibold text-accent-foreground"
-			>
-				+ Add vehicle
-			</button>
+			<Button bind:ref={addButtonEl} onclick={handleCreateClick}>+ Add vehicle</Button>
 		{:else}
 			<p class="text-sm text-muted-foreground">
 				Maximum {MAX_VEHICLES} vehicles reached. Delete a vehicle to add a new one.
