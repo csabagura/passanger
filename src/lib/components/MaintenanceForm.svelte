@@ -8,8 +8,10 @@
 		clearMaintenanceDraft,
 		maintenanceDraft,
 		getLastUsedCurrency,
-		setLastUsedCurrency
+		setLastUsedCurrency,
+		getRecentCurrencies
 	} from '$lib/stores/draft';
+	import CurrencyChips from '$lib/components/capture/CurrencyChips.svelte';
 	import {
 		formatLocalCalendarDate,
 		getTodayDateInputValue,
@@ -89,6 +91,11 @@
 		const presets = PRESET_CURRENCIES as readonly string[];
 		return presets.includes(currency) ? [...presets] : [currency, ...presets];
 	});
+	// Story 2.2: recent-currency chips. The module store isn't a Svelte store, so a version
+	// counter (bumped after each save) makes the read reactive. CurrencyChips filters out the
+	// currently-selected value and renders nothing when the remainder is empty.
+	let recentCurrenciesVersion = $state(0);
+	const recentCurrencies = $derived(recentCurrenciesVersion >= 0 ? getRecentCurrencies() : []);
 	let notesValue = $state(
 		getInitialExpense() ? (getInitialExpense()!.notes ?? '') : (maintenanceDraft['notes'] ?? '')
 	);
@@ -256,6 +263,7 @@
 		}
 
 		setLastUsedCurrency(currency);
+		recentCurrenciesVersion += 1;
 
 		saveState = { status: 'success', data: result.data };
 		const resultCurrency = result.data.currency ?? settingsCtx.settings.currency;
@@ -389,6 +397,7 @@
 				{/each}
 			</select>
 		</div>
+		<CurrencyChips recent={recentCurrencies} selected={currency} onpick={(c) => (currency = c)} />
 		{#if costError}
 			<p id="maintenance-cost-error" role="alert" class="mt-1 text-sm text-destructive">
 				{costError}

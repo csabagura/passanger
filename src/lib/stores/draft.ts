@@ -45,12 +45,44 @@ export function clearMaintenanceDraft(): void {
  */
 let lastUsedCurrency: string | null = null;
 
+/**
+ * Story 2.2: the most-recently-used currencies this session, most-recent-first, capped and
+ * deduped. Powers the recent-currency chips so a road-trip's currencies are one tap away
+ * without opening the `<select>`. Session-scoped + NOT cleared on submit (same lifetime as
+ * `lastUsedCurrency`); durable cross-reload persistence is Story 2-3's concern (AD-6).
+ */
+const RECENT_CURRENCIES_CAP = 3;
+let recentCurrencies: string[] = [];
+
 /** The remembered entry currency, or `null` if the user hasn't picked one this session. */
 export function getLastUsedCurrency(): string | null {
 	return lastUsedCurrency;
 }
 
-/** Remember the currency the user just logged in, for the next new entry. */
+/**
+ * Remember the currency the user just logged in, for the next new entry, and promote it to
+ * the front of the recent list (deduped verbatim — no trim/case-fold, matching the app's
+ * currency-key identity rule — and capped to the most recent few).
+ */
 export function setLastUsedCurrency(currency: string): void {
 	lastUsedCurrency = currency;
+	recentCurrencies = [currency, ...recentCurrencies.filter((c) => c !== currency)].slice(
+		0,
+		RECENT_CURRENCIES_CAP
+	);
+}
+
+/** The recent currencies this session, most-recent-first (empty until the user picks one). */
+export function getRecentCurrencies(): string[] {
+	return [...recentCurrencies];
+}
+
+/**
+ * Reset the session currency memory (`lastUsedCurrency` + the recent list) to its initial
+ * empty state. There is no runtime caller — currency memory lives for the whole session —
+ * but tests need a real reset since the list is module-level singleton state.
+ */
+export function clearSessionCurrencyMemory(): void {
+	lastUsedCurrency = null;
+	recentCurrencies = [];
 }

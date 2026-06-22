@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/svelte';
 import { flushSync } from 'svelte';
 import type { Expense } from '$lib/db/schema';
 import { QUOTA_EXCEEDED_MESSAGE } from '$lib/db/dbErrors';
-import { clearMaintenanceDraft, maintenanceDraft } from '$lib/stores/draft';
+import { clearMaintenanceDraft, maintenanceDraft, setLastUsedCurrency } from '$lib/stores/draft';
 import { getTodayDateInputValue } from '$lib/utils/date';
 import type { AppSettings } from '$lib/utils/settings';
 import MaintenanceForm from './MaintenanceForm.svelte';
@@ -587,5 +587,23 @@ describe('MaintenanceForm', () => {
 		expect(mockSaveExpense).toHaveBeenCalledTimes(1);
 		expect(mockSaveExpense.mock.calls[0][0].odometer).toBe(12.34);
 		expect(screen.queryByText(/grouping separators/i)).toBeNull();
+	});
+
+	// Story 2.2 (AC-2/AC-6): recent-currency chips work identically in the Expense form.
+	it('renders a recent-currency chip and applies it on tap', async () => {
+		setLastUsedCurrency('$');
+		setLastUsedCurrency('€');
+
+		render(MaintenanceForm, { vehicleId: 7, onSave: onSaveSpy });
+		flushSync();
+
+		const currencySelect = screen.getByLabelText(/currency/i) as HTMLSelectElement;
+		expect(currencySelect.value).toBe('€');
+
+		const dollarChip = screen.getByRole('button', { name: '$' });
+		await fireEvent.click(dollarChip);
+		flushSync();
+
+		expect(currencySelect.value).toBe('$');
 	});
 });
