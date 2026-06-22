@@ -35,6 +35,23 @@ class StableNumberFormat extends OriginalNumberFormat {
 // @ts-expect-error: intentionally replacing global Intl.NumberFormat for test stability
 globalThis.Intl.NumberFormat = StableNumberFormat;
 
+// jsdom has no `window.matchMedia`. The app guards it (layout theme $effect), but svelte-sonner's
+// Toaster — now mounted in the root layout (story 1.4) — calls it unconditionally, so any test that
+// renders the layout or the Toaster needs a stub. Provide a minimal no-match implementation.
+if (typeof window !== 'undefined' && typeof window.matchMedia !== 'function') {
+	window.matchMedia = (query: string) =>
+		({
+			matches: false,
+			media: query,
+			onchange: null,
+			addEventListener: () => {},
+			removeEventListener: () => {},
+			addListener: () => {},
+			removeListener: () => {},
+			dispatchEvent: () => false
+		}) as unknown as MediaQueryList;
+}
+
 const _originalToLocaleString = Number.prototype.toLocaleString;
 Number.prototype.toLocaleString = function (
 	locales?: Intl.LocalesArgument,

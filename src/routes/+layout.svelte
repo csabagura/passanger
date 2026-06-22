@@ -6,6 +6,8 @@
 	import NavBar from '$lib/components/NavBar.svelte';
 	import StorageProtectionNotice from '$lib/components/StorageProtectionNotice.svelte';
 	import TabSyncNotice from '$lib/components/TabSyncNotice.svelte';
+	import { Toaster } from '$lib/components/ui/sonner';
+	import { toast } from '$lib/state/toast';
 	import {
 		APP_SHELL_MAIN_PADDING,
 		APP_SHELL_MAIN_PADDING_WITH_UPDATE_PROMPT,
@@ -40,6 +42,10 @@
 	} from '$lib/utils/installPrompt';
 
 	let { children } = $props();
+
+	// AD-2/AD-4b: the single toast+undo channel, mounted once below and shared via context
+	// (string key 'toast', matching the existing settings/vehicles convention). No state library.
+	setContext('toast', toast);
 
 	let settings = $state<AppSettings>(getSettings());
 
@@ -355,3 +361,4 @@
 	</div>
 </main>
 <NavBar />
+<Toaster />

@@ -15,6 +15,8 @@
 	import type { VehiclesContext } from '$lib/utils/vehicleContext';
 	import VehicleListManager from '$lib/components/VehicleListManager.svelte';
 	import ServiceReminderManager from '$lib/components/ServiceReminderManager.svelte';
+	import { Button } from '$lib/components/ui/button';
+	import { Field } from '$lib/components/ui/field';
 
 	let activeVehicleId = $state<number | null>(readStoredVehicleId());
 
@@ -72,7 +74,6 @@
 
 	const fuelUnitHelpId = 'settings-fuel-unit-help';
 	const currencyHelpId = 'settings-currency-help';
-	const currencyErrorId = 'settings-currency-error';
 
 	// Currencies offered for a rate: non-home presets plus any currency already saved with a
 	// rate (so custom currencies stay editable), minus the home currency (always implicitly 1).
@@ -318,13 +319,13 @@
 					onclick={() => handleThemeChange(option.value)}
 					class="flex flex-col items-center gap-1 rounded-xl border px-3 py-3 text-sm transition-colors {settingsCtx
 						.settings.theme === option.value
-						? 'border-accent bg-accent/10 font-semibold text-accent'
+						? 'border-accent bg-accent/5 font-semibold text-accent'
 						: 'border-border text-foreground hover:bg-muted/60'}"
 				>
 					<span class="font-medium">{option.label}</span>
 					<span
 						class="text-xs {settingsCtx.settings.theme === option.value
-							? 'text-accent/80'
+							? 'text-accent'
 							: 'text-muted-foreground'}">{option.description}</span
 					>
 				</button>
@@ -376,25 +377,20 @@
 		</div>
 
 		<div class="space-y-3">
-			<button
-				type="button"
-				onclick={handleDownloadBackup}
-				class="inline-flex min-h-11 items-center justify-center rounded-xl bg-accent px-5 py-3 text-sm font-semibold text-accent-foreground"
-			>
-				Download backup
-			</button>
+			<Button onclick={handleDownloadBackup}>Download backup</Button>
 
 			<div class="space-y-1">
 				<label for="settings-restore-file" class="text-sm font-medium text-foreground">
 					Restore from a backup
 				</label>
+				<!-- File input stays a raw input: Field omits type=file/files. Restyle only; keep the id. -->
 				<input
 					id="settings-restore-file"
 					bind:this={fileInput}
 					type="file"
 					accept=".json,application/json"
 					onchange={handleRestoreFileChange}
-					class="block w-full text-sm text-foreground file:mr-3 file:min-h-11 file:rounded-xl file:border file:border-border file:bg-muted/60 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-foreground"
+					class="block w-full text-base text-foreground file:mr-3 file:min-h-11 file:rounded-md file:border file:border-border file:bg-muted/60 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-foreground"
 				/>
 			</div>
 		</div>
@@ -413,20 +409,8 @@
 					This REPLACES all current data and settings with the backup. This cannot be undone.
 				</p>
 				<div class="flex flex-wrap gap-2">
-					<button
-						type="button"
-						onclick={confirmRestore}
-						class="inline-flex min-h-11 items-center justify-center rounded-xl bg-destructive px-5 py-3 text-sm font-semibold text-destructive-foreground"
-					>
-						Replace all
-					</button>
-					<button
-						type="button"
-						onclick={cancelRestore}
-						class="inline-flex min-h-11 items-center justify-center rounded-xl border border-border px-5 py-3 text-sm font-semibold text-foreground hover:bg-muted/60"
-					>
-						Cancel
-					</button>
+					<Button variant="destructive" onclick={confirmRestore}>Replace all</Button>
+					<Button variant="outline" onclick={cancelRestore}>Cancel</Button>
 				</div>
 			</div>
 		{/if}
@@ -471,44 +455,31 @@
 			</fieldset>
 
 			<div class="space-y-3">
-				<div class="space-y-1">
-					<label for="settings-currency" class="text-sm font-medium text-foreground">
-						Currency prefix
-					</label>
-					<p id={currencyHelpId} class="text-sm text-muted-foreground">
-						Choose a preset or enter a custom value such as `EUR `.
-					</p>
-				</div>
+				<p id={currencyHelpId} class="text-sm text-muted-foreground">
+					Choose a preset or enter a custom value such as `EUR `.
+				</p>
 
 				<div class="flex flex-wrap gap-2">
 					{#each PRESET_CURRENCIES as presetCurrency (presetCurrency)}
-						<button
-							type="button"
-							onclick={() => handlePresetCurrencySelect(presetCurrency)}
+						<Button
+							variant="outline"
 							aria-pressed={settingsCurrency === presetCurrency}
-							class="inline-flex min-h-11 items-center justify-center rounded-xl border border-border px-4 text-sm font-semibold text-foreground transition-colors hover:bg-muted/60"
+							onclick={() => handlePresetCurrencySelect(presetCurrency)}
 						>
 							{presetCurrency}
-						</button>
+						</Button>
 					{/each}
 				</div>
 
-				<input
-					id="settings-currency"
-					bind:value={settingsCurrency}
+				<Field
+					label="Currency prefix"
 					type="text"
 					inputmode="text"
+					bind:value={settingsCurrency}
+					error={currencyError}
+					aria-describedby={currencyHelpId}
 					oninput={handleCurrencyInput}
-					aria-invalid={currencyError ? 'true' : undefined}
-					aria-describedby={currencyError ? `${currencyHelpId} ${currencyErrorId}` : currencyHelpId}
-					class="block h-[52px] w-full rounded-xl border border-border px-3 py-2 text-base focus:outline-none focus:ring-2 focus:ring-ring"
 				/>
-
-				{#if currencyError}
-					<p id={currencyErrorId} role="alert" class="text-sm text-destructive">
-						{currencyError}
-					</p>
-				{/if}
 			</div>
 
 			<fieldset class="space-y-3">
@@ -520,22 +491,19 @@
 
 				<div class="space-y-2">
 					{#each exchangeRateCurrencies as rateCurrency (rateCurrency)}
-						<div class="flex items-center gap-3">
-							<label for={`settings-exchange-rate-${rateCurrency}`} class="text-sm text-foreground">
-								1 {rateCurrency} =
-							</label>
-							<input
-								id={`settings-exchange-rate-${rateCurrency}`}
-								bind:value={exchangeRateDrafts[rateCurrency]}
+						<div class="flex items-end gap-3">
+							<Field
+								label={`1 ${rateCurrency} =`}
 								type="number"
 								inputmode="decimal"
 								min="0"
 								step="any"
-								oninput={handleExchangeRateInput}
+								bind:value={exchangeRateDrafts[rateCurrency]}
 								aria-describedby="settings-exchange-rates-help"
-								class="h-11 w-32 rounded-xl border border-border px-3 py-2 text-base focus:outline-none focus:ring-2 focus:ring-ring"
+								oninput={handleExchangeRateInput}
+								class="w-32"
 							/>
-							<span class="text-sm text-muted-foreground"
+							<span class="pb-3 text-sm text-muted-foreground"
 								>{settingsCurrency.trim() || settingsCurrency}</span
 							>
 						</div>
@@ -544,12 +512,7 @@
 			</fieldset>
 
 			<div class="border-t border-border pt-4">
-				<button
-					type="submit"
-					class="inline-flex min-h-11 items-center justify-center rounded-xl bg-accent px-5 py-3 text-sm font-semibold text-accent-foreground"
-				>
-					Save settings
-				</button>
+				<Button type="submit" size="lg">Save settings</Button>
 			</div>
 
 			{#if settingsErrorMessage}
