@@ -23,7 +23,12 @@ vi.mock('virtual:pwa-register', () => ({
 }));
 
 vi.mock('$app/state', () => ({
-	page: { url: { pathname: '/fuel-entry' } }
+	// real URL so the layout's `?capture=` deep-link $effect can read searchParams (story 2.1)
+	page: { url: new URL('http://localhost/fuel-entry'), state: {} }
+}));
+
+vi.mock('$app/navigation', () => ({
+	replaceState: vi.fn()
 }));
 
 vi.mock('$app/paths', () => ({

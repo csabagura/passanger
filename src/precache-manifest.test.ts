@@ -256,12 +256,16 @@ describe('Performance budget — bundle size', () => {
 		//   150KB → 175KB  (multi-currency, Analytics page, service reminders)
 		//   175KB → 200KB  (Epic 1 design-system foundation: the svelte-sonner toast channel now
 		//                   ships in the layout node + the Button/Field primitives are imported).
+		//   200KB → 225KB  (Story 2.1 global Capture sheet: FIRST consumer of bits-ui Dialog (ui/sheet)
+		//                   and bits-ui Tabs (ui/tabs) — both were previously tree-shaken out. The two
+		//                   primitives are load-bearing for the Capture flow and can't be trimmed; this
+		//                   re-baseline was anticipated by the prior note. Footprint jumped ~193KB→208KB.)
 		// This is TOTAL JS across all (lazy-loaded) routes, NOT the initial payload — actual load
 		// performance is gated separately by the Lighthouse FCP/TTI/score budgets in
-		// .lighthouserc.cjs (the real perf contract). Current footprint ~193KB; 200KB is tight by
-		// design to keep guardrail pressure. Epic 2's Capture Sheet may need another re-baseline; a
-		// tracked follow-up to lazy-load the <Toaster> would reclaim initial-load weight first.
-		const MAX_GZIPPED_JS_BYTES = 200 * 1024; // 200KB gzipped (NFR4) — see re-baseline log above
+		// .lighthouserc.cjs (the real perf contract). Current footprint ~208KB; 225KB is tight by
+		// design to keep guardrail pressure. A tracked follow-up to lazy-load the <Toaster> (and/or
+		// dynamic-import the Capture sheet) would reclaim initial-load weight if pressure grows.
+		const MAX_GZIPPED_JS_BYTES = 225 * 1024; // 225KB gzipped (NFR4) — see re-baseline log above
 
 		let totalGzippedBytes = 0;
 		for (const dir of [chunksDir, entryDir, nodesDir]) {

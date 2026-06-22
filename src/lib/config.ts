@@ -58,6 +58,17 @@ export const TAB_SYNC_CHANNEL = 'passanger_tab_sync'; // BroadcastChannel name f
 export const TAB_SYNC_CUE_DURATION_MS = 4000; // auto-dismiss duration for the "updated in another tab" cue
 export const SHELL_NAVBAR_HEIGHT = '4rem';
 export const UPDATE_PROMPT_CLEARANCE = '4rem';
-export const APP_SHELL_MAIN_PADDING = `calc(${SHELL_NAVBAR_HEIGHT} + env(safe-area-inset-bottom, 0px))`;
-export const APP_SHELL_MAIN_PADDING_WITH_UPDATE_PROMPT = `calc(${SHELL_NAVBAR_HEIGHT} + ${UPDATE_PROMPT_CLEARANCE} + env(safe-area-inset-bottom, 0px))`;
-export const UPDATE_PROMPT_BOTTOM_OFFSET = APP_SHELL_MAIN_PADDING;
+// Story 2.1: the global Capture FAB (56px) floats ~12px above the nav, so it pokes ~68px above the
+// nav line. Page content must reserve that band as bottom padding, otherwise the last control on a
+// page (e.g. a form's Save button) sits underneath the FAB and can't be tapped. 5rem clears the
+// FAB's top edge with a little breathing room.
+export const SHELL_FAB_CLEARANCE = '5rem';
+export const APP_SHELL_MAIN_PADDING = `calc(${SHELL_NAVBAR_HEIGHT} + ${SHELL_FAB_CLEARANCE} + env(safe-area-inset-bottom, 0px))`;
+export const APP_SHELL_MAIN_PADDING_WITH_UPDATE_PROMPT = `calc(${SHELL_NAVBAR_HEIGHT} + ${UPDATE_PROMPT_CLEARANCE} + ${SHELL_FAB_CLEARANCE} + env(safe-area-inset-bottom, 0px))`;
+// The update banner sits directly above the nav (NOT above the FAB), so its offset stays nav-only —
+// decoupled from the content padding, which now also carries the FAB clearance.
+export const UPDATE_PROMPT_BOTTOM_OFFSET = `calc(${SHELL_NAVBAR_HEIGHT} + env(safe-area-inset-bottom, 0px))`;
+
+// Capture (Story 2.1): query param that deep-links the global Capture sheet open on a segment,
+// e.g. /history?capture=fuel. Stripped from the URL via replaceState right after opening.
+export const CAPTURE_DEEP_LINK_PARAM = 'capture';
