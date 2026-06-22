@@ -8,9 +8,16 @@
 		fuelDraft,
 		clearFuelDraft,
 		getLastUsedCurrency,
-		setLastUsedCurrency
+		setLastUsedCurrency,
+		getRecentCurrencies
 	} from '$lib/stores/draft';
 	import { RESULT_CARD_DISMISS_MS, PRESET_CURRENCIES } from '$lib/config';
+	import CurrencyChips from '$lib/components/capture/CurrencyChips.svelte';
+	import {
+		classifyOdometer,
+		medianDelta,
+		suggestNextOdometer
+	} from '$lib/utils/odometerSuggestion';
 	import {
 		calculateConsumption,
 		formatConsumptionForDisplay,
@@ -21,7 +28,8 @@
 	import {
 		buildFuelLogUpdatePlan,
 		getFuelLogPredecessor,
-		getFuelLogSuccessor
+		getFuelLogSuccessor,
+		sortFuelLogsForTimeline
 	} from '$lib/utils/fuelLogTimeline';
 	import {
 		getLocaleNumberSeparators,
@@ -214,6 +222,106 @@
 		});
 	}
 
+	// --- Story 2.2: smart defaults (suggestion + non-blocking sanity warning) ---
+
+	// Unit-comparable historical inter-fill deltas: walk consecutive timeline pairs whose
+	// distanceUnit both match the current entry's unit, collecting positive odometer jumps.
+	// Never mixes km/mi (same rule the form applies via hasComparablePreviousOdometer).
+	const comparableDeltas = $derived.by(() => {
+		const sorted = sortFuelLogsForTimeline(timelineLogs);
+		const deltas: number[] = [];
+		for (let index = 1; index < sorted.length; index += 1) {
+			const previous = sorted[index - 1];
+			const next = sorted[index];
+			if (
+				previous.distanceUnit !== currentDistanceUnit ||
+				next.distanceUnit !== currentDistanceUnit
+			) {
+				continue;
+			}
+			const delta = next.odometer - previous.odometer;
+			if (delta > 0) {
+				deltas.push(delta);
+			}
+		}
+		return deltas;
+	});
+
+	const comparablePreviousForSuggestion = $derived(
+		hasComparablePreviousOdometer(currentDistanceUnit) ? previousOdometer : undefined
+	);
+
+	// The typical inter-fill delta — used both to suggest the next reading and to decide when
+	// a reading is implausibly far above the last one.
+	const typicalDelta = $derived(medianDelta(comparableDeltas));
+
+	let hasSeededSuggestion = $state(false);
+
+	// Pre-fill the odometer with `last + median delta` exactly once per open, create-mode only,
+	// and only when the field (and any in-progress draft) is empty — so it never clobbers a
+	// typed/draft value and stands down the moment the user edits. The odometer $state is
+	// initialised at component construction BEFORE history loads, so this lives in an $effect
+	// keyed on the timeline; it waits (returns without latching) until a suggestion is
+	// computable, then seeds once. 0/1 prior logs ⇒ no suggestion ever ⇒ field stays empty.
+	$effect(() => {
+		if (isEditMode || hasSeededSuggestion) {
+			return;
+		}
+		if (odometer || fuelDraft['odometer']) {
+			// A user/draft value already occupies the field — never seed this open.
+			hasSeededSuggestion = true;
+			return;
+		}
+		const suggestion = suggestNextOdometer(comparablePreviousForSuggestion, comparableDeltas);
+		if (suggestion === undefined) {
+			// History not loaded yet, or too few logs — try again when the timeline updates.
+			return;
+		}
+		odometer = String(suggestion);
+		hasSeededSuggestion = true;
+	});
+
+	// Live, NON-blocking sanity classification of the entered odometer. Create-mode only — the
+	// edit path keeps its hard predecessor/successor bounds. Drives the amber warning text.
+	const odometerWarning = $derived.by(() => {
+		if (isEditMode) {
+			return '';
+		}
+		const parsed = parsePositiveNumeric(odometer);
+		if (parsed === null) {
+			return '';
+		}
+		// A thousands-grouped value (e.g. "88,500") parses to a misleading small number
+		// (88.5) and would flash a spurious below-previous warning while typing. The save
+		// path rejects grouped input with a hard error, so stay silent here until then.
+		if (odometerLooksGrouped(odometer, parsed)) {
+			return '';
+		}
+		const anomaly = classifyOdometer(parsed, comparablePreviousForSuggestion, typicalDelta);
+		if (anomaly === 'below-previous') {
+			return 'This is at or below your last reading — you can still save, but efficiency won’t be calculated for this fill.';
+		}
+		if (anomaly === 'implausibly-high') {
+			return 'That’s a much bigger jump than usual — double-check the reading, or save it as-is.';
+		}
+		return '';
+	});
+
+	const odometerDescribedBy = $derived(
+		[
+			odometerError ? 'odometer-error' : null,
+			odometerWarning && !odometerError ? 'odometer-warning' : null
+		]
+			.filter(Boolean)
+			.join(' ') || undefined
+	);
+
+	// Recent-currency chips: re-read the session list after each save (the module store isn't a
+	// Svelte store, so a version counter makes the read reactive). CurrencyChips filters out the
+	// currently-selected value and renders nothing when the remainder is empty.
+	let recentCurrenciesVersion = $state(0);
+	const recentCurrencies = $derived(recentCurrenciesVersion >= 0 ? getRecentCurrencies() : []);
+
 	function normalizeLastLogLoadError(error?: AppError | null): AppError {
 		return {
 			code: error?.code ?? 'GET_FAILED',
@@ -338,8 +446,10 @@
 			resultFormattedText = `✓ ${prefix} — ${formatted} | ${formatCurrency(parsedCost, log.currency ?? settingsCtx.settings.currency)} | ${parsedQuantity.toFixed(1)} ${log.unit === 'L' ? 'L' : 'gal'}`;
 		}
 
-		// Remember the chosen currency for the next new entry (travel convenience).
+		// Remember the chosen currency for the next new entry (travel convenience) and refresh
+		// the recent-currency chip list.
 		setLastUsedCurrency(currency);
+		recentCurrenciesVersion += 1;
 
 		saveState = { status: 'success', data: log };
 		showResultCard = true;
@@ -432,7 +542,16 @@
 			return;
 		}
 
-		if (comparablePreviousOdometer !== undefined && parsedOdometer <= comparablePreviousOdometer) {
+		// Story 2.2: the create path no longer HARD-BLOCKS a below-previous reading — it shows a
+		// non-blocking amber warning (odometerWarning) and falls through to Save. Integrity is
+		// preserved because calculateConsumption returns 0 for a non-positive distance
+		// (calculations.ts) — the same honest "can't compute" sentinel used for first entries.
+		// The EDIT path keeps its hard predecessor bound unchanged.
+		if (
+			isEditMode &&
+			comparablePreviousOdometer !== undefined &&
+			parsedOdometer <= comparablePreviousOdometer
+		) {
 			saveState = { status: 'idle' };
 			odometerError = 'Enter an odometer reading higher than the last logged value';
 			odometerInput?.focus();
@@ -546,6 +665,9 @@
 		odometer = '';
 		quantity = '';
 		cost = '';
+		// Allow the next entry in a long session to re-seed its odometer suggestion from the
+		// freshly-updated timeline (the field was just cleared).
+		hasSeededSuggestion = false;
 		Promise.resolve().then(() => {
 			suppressDraftSync = false;
 		});
@@ -580,7 +702,7 @@
 			type="text"
 			inputmode="decimal"
 			id="odometer"
-			aria-describedby={odometerError ? 'odometer-error' : undefined}
+			aria-describedby={odometerDescribedBy}
 			aria-invalid={!!odometerError}
 			class="mt-1 block h-[52px] w-full rounded-lg border border-border px-3 py-2 text-base focus:outline-none focus:ring-2 focus:ring-ring"
 		/>
@@ -593,6 +715,12 @@
 		{#if odometerError}
 			<p id="odometer-error" role="alert" class="mt-1 text-sm text-destructive">
 				{odometerError}
+			</p>
+		{:else if odometerWarning}
+			<!-- Story 2.2: non-blocking sanity warning. Soft amber (text-due-soon, DEC-15), polite
+			     live region, NO role="alert" — distinct from the destructive odometerError. -->
+			<p id="odometer-warning" aria-live="polite" class="mt-1 text-sm text-due-soon">
+				{odometerWarning}
 			</p>
 		{/if}
 	</div>
@@ -641,6 +769,7 @@
 				{/each}
 			</select>
 		</div>
+		<CurrencyChips recent={recentCurrencies} selected={currency} onpick={(c) => (currency = c)} />
 		{#if costError}
 			<p id="cost-error" role="alert" class="mt-1 text-sm text-destructive">
 				{costError}

@@ -72,3 +72,12 @@ export const UPDATE_PROMPT_BOTTOM_OFFSET = `calc(${SHELL_NAVBAR_HEIGHT} + env(sa
 // Capture (Story 2.1): query param that deep-links the global Capture sheet open on a segment,
 // e.g. /history?capture=fuel. Stripped from the URL via replaceState right after opening.
 export const CAPTURE_DEEP_LINK_PARAM = 'capture';
+
+// Capture smart defaults (Story 2.2 / FR-4): thresholds for the NON-blocking "implausibly
+// high" odometer sanity warning. A reading warns (never blocks) when the delta above the
+// previous reading exceeds max(typicalDelta * MULTIPLIER, MIN_DELTA). The multiplier scales
+// with the vehicle's own median inter-fill delta; the floor keeps low-mileage vehicles and
+// the no-history case from false-warning. Both only gate the SOFT amber warning — Save is
+// always allowed. In the entry's distance unit (km or mi).
+export const ODOMETER_IMPLAUSIBLE_DELTA_MULTIPLIER = 5;
+export const ODOMETER_IMPLAUSIBLE_MIN_DELTA = 2000;

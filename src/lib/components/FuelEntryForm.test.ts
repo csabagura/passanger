@@ -4,7 +4,7 @@ import { flushSync } from 'svelte';
 import FuelEntryForm from './FuelEntryForm.svelte';
 import type { FuelLog } from '$lib/db/schema';
 import { QUOTA_EXCEEDED_MESSAGE } from '$lib/db/dbErrors';
-import { fuelDraft, clearFuelDraft } from '$lib/stores/draft';
+import { fuelDraft, clearFuelDraft, setLastUsedCurrency } from '$lib/stores/draft';
 import type { AppSettings } from '$lib/utils/settings';
 
 // Mock fuel logs repository
@@ -1283,7 +1283,10 @@ describe('FuelEntryForm component — review fixes validation', () => {
 			expect(onSaveSpy).toHaveBeenCalled();
 		});
 
-		it('rejects non-increasing odometer readings instead of saving them', async () => {
+		// Story 2.2 (AC-3): a below-previous reading on the CREATE path is no longer hard-blocked.
+		// It shows a non-blocking amber warning and STILL saves, storing calculatedConsumption=0
+		// (the honest "can't compute" sentinel) so the timeline stays consistent.
+		it('warns but still saves a below-previous odometer with consumption=0 (non-blocking)', async () => {
 			mockGetAllFuelLogs.mockResolvedValue({
 				data: [
 					{
@@ -1301,6 +1304,21 @@ describe('FuelEntryForm component — review fixes validation', () => {
 				],
 				error: null
 			});
+			mockSaveFuelLog.mockResolvedValue({
+				data: {
+					id: 2,
+					vehicleId: 1,
+					date: new Date(),
+					odometer: 87399,
+					quantity: 42,
+					unit: 'L',
+					distanceUnit: 'km',
+					totalCost: 78,
+					calculatedConsumption: 0,
+					notes: ''
+				} as FuelLog,
+				error: null
+			});
 
 			render(FuelEntryForm, { props: { vehicleId: 1, onSave: onSaveSpy } });
 			await new Promise((r) => setTimeout(r, 0));
@@ -1315,13 +1333,22 @@ describe('FuelEntryForm component — review fixes validation', () => {
 			await fireEvent.input(costInput, { target: { value: '78' } });
 			flushSync();
 
+			// The non-blocking amber warning appears as the user types a below-previous value...
+			expect(screen.getByText(/at or below your last reading/i)).toBeTruthy();
+			// ...and it is NOT the destructive role="alert" hard error.
+			expect(
+				screen.queryByText(/enter an odometer reading higher than the last logged value/i)
+			).toBeNull();
+
 			await fireEvent.click(screen.getByRole('button', { name: /save/i }));
+			await new Promise((r) => setTimeout(r, 100));
 			flushSync();
 
-			expect(
-				screen.getByText(/enter an odometer reading higher than the last logged value/i)
-			).toBeTruthy();
-			expect(mockSaveFuelLog).not.toHaveBeenCalled();
+			// Save proceeds (not blocked) and the persisted entry carries consumption=0.
+			expect(mockSaveFuelLog).toHaveBeenCalled();
+			const savedEntry = mockSaveFuelLog.mock.calls[0][0];
+			expect(savedEntry.calculatedConsumption).toBe(0);
+			expect(onSaveSpy).toHaveBeenCalled();
 		});
 	});
 
@@ -2409,6 +2436,147 @@ describe('FuelEntryForm component — review fixes validation', () => {
 			expect((screen.getByLabelText(/odometer/i) as HTMLInputElement).value).toBe('87400');
 			expect((screen.getByLabelText(/total cost/i) as HTMLInputElement).value).toBe('78');
 			expect(onSaveSpy).not.toHaveBeenCalled();
+		});
+	});
+
+	// Story 2.2 (FR-4): smart defaults — odometer suggestion, sanity warning, currency chips.
+	describe('Story 2.2: smart defaults on Capture', () => {
+		function logAt(id: number, odometer: number, isoDate: string): FuelLog {
+			return {
+				id,
+				vehicleId: 1,
+				date: new Date(isoDate),
+				odometer,
+				quantity: 40,
+				unit: 'L',
+				distanceUnit: 'km',
+				totalCost: 70,
+				calculatedConsumption: 6,
+				notes: ''
+			} as FuelLog;
+		}
+
+		it('seeds the odometer to last + median delta when >=2 comparable prior logs exist', async () => {
+			// deltas 500, 500 → median 500; last reading 88000 → suggest 88500
+			mockGetAllFuelLogs.mockResolvedValue({
+				data: [
+					logAt(1, 87000, '2026-03-01T10:00:00Z'),
+					logAt(2, 87500, '2026-03-08T10:00:00Z'),
+					logAt(3, 88000, '2026-03-15T10:00:00Z')
+				],
+				error: null
+			});
+
+			render(FuelEntryForm, { props: { vehicleId: 1, onSave: onSaveSpy } });
+			await new Promise((r) => setTimeout(r, 0));
+			flushSync();
+
+			expect((screen.getByLabelText(/odometer/i) as HTMLInputElement).value).toBe('88500');
+		});
+
+		it('does not seed a suggestion with only one prior log (no delta history)', async () => {
+			mockGetAllFuelLogs.mockResolvedValue({
+				data: [logAt(1, 87000, '2026-03-01T10:00:00Z')],
+				error: null
+			});
+
+			render(FuelEntryForm, { props: { vehicleId: 1, onSave: onSaveSpy } });
+			await new Promise((r) => setTimeout(r, 0));
+			flushSync();
+
+			expect((screen.getByLabelText(/odometer/i) as HTMLInputElement).value).toBe('');
+		});
+
+		it('never clobbers an in-progress draft odometer with a suggestion', async () => {
+			fuelDraft['odometer'] = '99999';
+			mockGetAllFuelLogs.mockResolvedValue({
+				data: [
+					logAt(1, 87000, '2026-03-01T10:00:00Z'),
+					logAt(2, 87500, '2026-03-08T10:00:00Z'),
+					logAt(3, 88000, '2026-03-15T10:00:00Z')
+				],
+				error: null
+			});
+
+			render(FuelEntryForm, { props: { vehicleId: 1, onSave: onSaveSpy } });
+			await new Promise((r) => setTimeout(r, 0));
+			flushSync();
+
+			expect((screen.getByLabelText(/odometer/i) as HTMLInputElement).value).toBe('99999');
+		});
+
+		it('shows an implausibly-high warning that clears when the reading is corrected', async () => {
+			// median delta 500 → 5x = 2500, floor 2000 → threshold 2500; last 88000.
+			mockGetAllFuelLogs.mockResolvedValue({
+				data: [
+					logAt(1, 87000, '2026-03-01T10:00:00Z'),
+					logAt(2, 87500, '2026-03-08T10:00:00Z'),
+					logAt(3, 88000, '2026-03-15T10:00:00Z')
+				],
+				error: null
+			});
+
+			render(FuelEntryForm, { props: { vehicleId: 1, onSave: onSaveSpy } });
+			await new Promise((r) => setTimeout(r, 0));
+			flushSync();
+
+			const odometerInput = screen.getByLabelText(/odometer/i) as HTMLInputElement;
+
+			// 88000 + 3000 = 91000 → delta 3000 > 2500 → implausibly-high warning
+			await fireEvent.input(odometerInput, { target: { value: '91000' } });
+			flushSync();
+			expect(screen.getByText(/bigger jump than usual/i)).toBeTruthy();
+
+			// Correct to a normal forward reading → warning clears
+			await fireEvent.input(odometerInput, { target: { value: '88500' } });
+			flushSync();
+			expect(screen.queryByText(/bigger jump than usual/i)).toBeNull();
+		});
+
+		it('does not flash a sanity warning while a thousands-grouped value is being typed', async () => {
+			// Last reading 88000; "88,500" parses to 88.5 (comma→decimal), which would look
+			// below-previous and wrongly trip the amber warning. The grouped value is rejected
+			// by the hard error on save instead, so the live warning must stay silent.
+			mockGetAllFuelLogs.mockResolvedValue({
+				data: [
+					logAt(1, 87000, '2026-03-01T10:00:00Z'),
+					logAt(2, 87500, '2026-03-08T10:00:00Z'),
+					logAt(3, 88000, '2026-03-15T10:00:00Z')
+				],
+				error: null
+			});
+
+			render(FuelEntryForm, { props: { vehicleId: 1, onSave: onSaveSpy } });
+			await new Promise((r) => setTimeout(r, 0));
+			flushSync();
+
+			const odometerInput = screen.getByLabelText(/odometer/i) as HTMLInputElement;
+			await fireEvent.input(odometerInput, { target: { value: '88,500' } });
+			flushSync();
+
+			expect(screen.queryByText(/at or below your last reading/i)).toBeNull();
+			expect(screen.queryByText(/bigger jump than usual/i)).toBeNull();
+		});
+
+		it('renders recent-currency chips and applies one on tap', async () => {
+			// Seed two recent currencies; last-used is € (so the form defaults to €) and the $
+			// chip is offered (recent minus the selected €).
+			setLastUsedCurrency('$');
+			setLastUsedCurrency('€');
+			mockGetAllFuelLogs.mockResolvedValue({ data: [], error: null });
+
+			render(FuelEntryForm, { props: { vehicleId: 1, onSave: onSaveSpy } });
+			await new Promise((r) => setTimeout(r, 0));
+			flushSync();
+
+			const currencySelect = screen.getByLabelText(/currency/i) as HTMLSelectElement;
+			expect(currencySelect.value).toBe('€');
+
+			const dollarChip = screen.getByRole('button', { name: '$' });
+			await fireEvent.click(dollarChip);
+			flushSync();
+
+			expect(currencySelect.value).toBe('$');
 		});
 	});
 });
