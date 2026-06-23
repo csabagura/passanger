@@ -3,7 +3,7 @@
 	import { createLiveQuery } from '$lib/state/liveQuery.svelte';
 	import { getAllFuelLogs } from '$lib/db/repositories/fuelLogs';
 	import { getAllExpenses } from '$lib/db/repositories/expenses';
-	import RemindersDueCard from '$lib/components/RemindersDueCard.svelte';
+	import UpNextCard from '$lib/components/UpNextCard.svelte';
 	import HeroMetric from '$lib/components/HeroMetric.svelte';
 	import HomeSkeleton from '$lib/components/HomeSkeleton.svelte';
 	import type { FuelLog, Expense } from '$lib/db/schema';
@@ -103,10 +103,11 @@
 		     `stat`. Reads the 'settings' context itself; fed the already-loaded fuelLogs. -->
 		<HeroMetric {fuelLogs} />
 
-		<!-- Up-Next slot (priority 3) — the existing RemindersDueCard stands in until the rich card
-		     (status bar + "Log this service") lands in Story 3.5. Stays calm/hidden when none are due.
-		     refreshSignal = fuelCount so a same-tab fuel Capture re-evaluates km-based reminders. -->
-		<RemindersDueCard {vehicleId} refreshSignal={fuelCount} />
+		<!-- Up-Next slot (priority 3) — Story 3.5's rich card: the single most-urgent reminder with a
+		     status accent bar, "Log this service", and a dismiss control. Stays calm/hidden when none
+		     are due. Fed the already-loaded fuelLogs so a same-tab fuel Capture re-derives the current
+		     odometer (and any newly-due km reminder) without a refresh signal. -->
+		<UpNextCard {vehicleId} {fuelLogs} />
 
 		<!-- Last-fill recency (may sit below the fold) -->
 		{#if recencyText}

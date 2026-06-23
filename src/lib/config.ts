@@ -59,6 +59,7 @@ export const STORAGE_PERSISTENCE_OUTCOME_KEY = 'passanger_storage_outcome'; // l
 export const STORAGE_NOTICE_DISMISSED_KEY = 'passanger_storage_notice_dismissed'; // localStorage key for notice dismissal
 export const INSTALL_PROMPT_DISMISSED_KEY = 'passanger_install_prompt_dismissed'; // localStorage key for install prompt dismissal
 export const ONBOARDING_SURVEY_STORAGE_KEY = 'passanger_onboarding_survey'; // localStorage key for onboarding survey state
+export const REMINDER_DISMISSED_STORAGE_KEY = 'passanger_reminder_dismissed'; // localStorage key for the Up-Next reminder dismissal map (Story 3.5 / DEC-8, AD-8)
 export const SESSION_COUNT_STORAGE_KEY = 'passanger_session_count'; // localStorage key for session count (install nudge timing)
 export const TAB_SYNC_CHANNEL = 'passanger_tab_sync'; // BroadcastChannel name for cross-tab reconciliation
 export const TAB_SYNC_CUE_DURATION_MS = 4000; // auto-dismiss duration for the "updated in another tab" cue

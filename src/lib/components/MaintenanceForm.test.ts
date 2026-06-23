@@ -88,6 +88,22 @@ describe('MaintenanceForm', () => {
 		expect(screen.getByLabelText(/notes/i)).toBeTruthy();
 	});
 
+	it('seeds the Type field from initialType in create mode (Log this service prefill)', () => {
+		render(MaintenanceForm, { vehicleId: 7, onSave: onSaveSpy, initialType: 'Oil change' });
+		expect((screen.getByLabelText(/^type$/i) as HTMLInputElement).value).toBe('Oil change');
+	});
+
+	it('lets the initialType prefill win over a stale durable draft type', () => {
+		maintenanceDraft['type'] = 'Tyres';
+		render(MaintenanceForm, { vehicleId: 7, onSave: onSaveSpy, initialType: 'Oil change' });
+		expect((screen.getByLabelText(/^type$/i) as HTMLInputElement).value).toBe('Oil change');
+	});
+
+	it('keeps the empty/draft Type behavior when no initialType is given', () => {
+		render(MaintenanceForm, { vehicleId: 7, onSave: onSaveSpy });
+		expect((screen.getByLabelText(/^type$/i) as HTMLInputElement).value).toBe('');
+	});
+
 	it('uses the saved currency in success feedback', async () => {
 		mockSettings.value = {
 			fuelUnit: 'L/100km',

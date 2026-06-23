@@ -81,6 +81,7 @@
 							onSave={() => {}}
 							{onFirstCreateSave}
 							onSuccessFeedbackComplete={() => capture.close()}
+							initialType={capture.prefill?.expenseType}
 						/>
 					{/if}
 				</Tabs.Content>

@@ -73,6 +73,20 @@ describe('CaptureSheet', () => {
 		expect(screen.getByText(/^Type$/)).toBeTruthy();
 	});
 
+	it('prefills the Expense Type from the capture prefill (Log this service)', () => {
+		const capture = createCaptureSheet();
+		capture.openSheet('expense', { expenseType: 'Oil change' });
+		render(CaptureSheet, {
+			context: new Map<string, unknown>([
+				['captureSheet', capture],
+				['vehicles', vehiclesCtx(1)],
+				['settings', { settings }]
+			])
+		});
+		flushSync();
+		expect((screen.getByLabelText(/^type$/i) as HTMLInputElement).value).toBe('Oil change');
+	});
+
 	it('renders a calm CTA instead of a broken form when no vehicle exists', () => {
 		renderSheet({ open: true, vehicleId: null });
 		expect(screen.getByText(/add your car to get started/i)).toBeTruthy();
