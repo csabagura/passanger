@@ -159,6 +159,39 @@ describe('MaintenanceForm', () => {
 		expect(mockSaveExpense).not.toHaveBeenCalled();
 	});
 
+	describe('Dual-mount focus scoping (Story 3.2 code-review regression)', () => {
+		it('focuses the submitted instance own field when a duplicate-id form is co-mounted', async () => {
+			// /history can keep an inline edit MaintenanceForm mounted while the global Capture sheet
+			// mounts a SECOND MaintenanceForm with the SAME hardcoded ids (id="maintenance-type", ...).
+			// First-invalid-field focus must target the SUBMITTED form's own input — not the first
+			// match in document order, which a document-wide getElementById would wrongly return.
+			render(MaintenanceForm, { vehicleId: 7, onSave: onSaveSpy });
+			render(MaintenanceForm, { vehicleId: 7, onSave: onSaveSpy });
+			await Promise.resolve();
+			flushSync();
+
+			// Both instances coexist in document.body with the SAME ids — the collision is the point.
+			const types = document.querySelectorAll<HTMLInputElement>('[id="maintenance-type"]');
+			const forms = document.querySelectorAll('form');
+			expect(types.length).toBe(2);
+			expect(forms.length).toBe(2);
+			const firstType = types[0];
+			const secondType = types[1];
+
+			// Park focus on the FIRST instance, then submit the SECOND empty (Type is the first invalid
+			// field — Date is pre-filled). The fix must MOVE focus into the second form; the pre-fix
+			// global lookup would leave focus on the first instance's Type input (first in tree order).
+			firstType.focus();
+			expect(document.activeElement).toBe(firstType);
+
+			await fireEvent.submit(forms[1] as HTMLFormElement);
+			await Promise.resolve();
+			flushSync();
+
+			expect(document.activeElement).toBe(secondType);
+		});
+	});
+
 	it('saves valid create-mode data, clears the draft, and resets to a fresh state', async () => {
 		const savedExpense: Expense = {
 			id: 11,

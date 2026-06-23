@@ -13,6 +13,8 @@
 		getRecentCurrencies
 	} from '$lib/state/draftStore';
 	import CurrencyChips from '$lib/components/capture/CurrencyChips.svelte';
+	import { Field } from '$lib/components/ui/field';
+	import { Label } from '$lib/components/ui/label';
 	import {
 		formatLocalCalendarDate,
 		getTodayDateInputValue,
@@ -115,10 +117,17 @@
 	let odometerError = $state('');
 	let costError = $state('');
 
-	let dateInput: HTMLInputElement | undefined = $state();
-	let typeInput: HTMLInputElement | undefined = $state();
-	let odometerInput: HTMLInputElement | undefined = $state();
-	let costInput: HTMLInputElement | undefined = $state();
+	// Field wraps its own input and forwards no element ref, so first-invalid-field focus targets
+	// the stable id passed to each Field (the proven story-1-5 migration pattern). We scope the lookup
+	// to THIS form (formEl), NOT document.getElementById: /history (and /log) can keep an inline form
+	// mounted while the global Capture sheet mounts a SECOND instance with the SAME ids, so a
+	// document-wide lookup would resolve to whichever is first in tree order and mis-target focus.
+	let formEl: HTMLFormElement | undefined = $state();
+	function focusField(id: string): void {
+		// `[id="…"]` (not `#id`) so the lookup stays scoped to formEl in every engine — jsdom's nwsapi
+		// resolves `#id` document-wide via a getElementById fast-path, which would defeat the scoping.
+		formEl?.querySelector<HTMLElement>(`[id="${id}"]`)?.focus();
+	}
 
 	let saveState = $state<SaveState>({ status: 'idle' });
 	// Story 2.4 (AC-7): the confirmation persists until dismissed or another action starts — NO
@@ -212,19 +221,19 @@
 		}
 
 		if (dateError) {
-			dateInput?.focus();
+			focusField('maintenance-date');
 			return;
 		}
 		if (typeError) {
-			typeInput?.focus();
+			focusField('maintenance-type');
 			return;
 		}
 		if (odometerError) {
-			odometerInput?.focus();
+			focusField('maintenance-odometer');
 			return;
 		}
 		if (costError) {
-			costInput?.focus();
+			focusField('maintenance-cost');
 			return;
 		}
 
@@ -302,6 +311,7 @@
 </script>
 
 <form
+	bind:this={formEl}
 	onsubmit={(event) => {
 		event.preventDefault();
 		handleSubmit();
@@ -315,98 +325,68 @@
 			We kept your earlier draft — double-check the odometer and date.
 		</p>
 	{/if}
-	<div>
-		<label for="maintenance-date" class="block text-sm font-medium text-foreground">Date</label>
-		<input
-			bind:this={dateInput}
-			bind:value={dateValue}
-			id="maintenance-date"
-			type="date"
-			aria-invalid={dateError ? 'true' : undefined}
-			aria-describedby={dateError ? 'maintenance-date-error' : undefined}
-			oninput={clearAsyncFeedback}
-			class="mt-1 block h-[52px] w-full rounded-lg border border-border bg-card px-3 py-2 text-base text-foreground outline-none focus:ring-2 focus:ring-ring"
-		/>
-		{#if dateError}
-			<p id="maintenance-date-error" role="alert" class="mt-1 text-sm text-destructive">
-				{dateError}
-			</p>
-		{/if}
-	</div>
+	<Field
+		id="maintenance-date"
+		label="Date"
+		type="date"
+		bind:value={dateValue}
+		error={dateError}
+		oninput={clearAsyncFeedback}
+	/>
 
 	<div>
-		<label for="maintenance-type" class="block text-sm font-medium text-foreground">Type</label>
-		<input
-			bind:this={typeInput}
-			bind:value={typeValue}
+		<Field
 			id="maintenance-type"
+			label="Type"
 			type="text"
 			list="maintenance-type-suggestions"
 			placeholder="e.g. Oil Change"
-			aria-invalid={typeError ? 'true' : undefined}
-			aria-describedby={typeError ? 'maintenance-type-error' : undefined}
+			bind:value={typeValue}
+			error={typeError}
 			oninput={clearAsyncFeedback}
-			class="mt-1 block h-[52px] w-full rounded-lg border border-border bg-card px-3 py-2 text-base text-foreground outline-none focus:ring-2 focus:ring-ring"
 		/>
 		<datalist id="maintenance-type-suggestions">
 			{#each TYPE_SUGGESTIONS as suggestion (suggestion)}
 				<option value={suggestion}></option>
 			{/each}
 		</datalist>
-		{#if typeError}
-			<p id="maintenance-type-error" role="alert" class="mt-1 text-sm text-destructive">
-				{typeError}
-			</p>
-		{/if}
 	</div>
 
 	<div>
-		<label for="maintenance-odometer" class="block text-sm font-medium text-foreground">
-			Odometer <span class="text-muted-foreground">(optional)</span>
-		</label>
-		<input
-			bind:this={odometerInput}
-			bind:value={odometerValue}
+		<Field
 			id="maintenance-odometer"
+			label="Odometer (optional)"
 			type="text"
 			inputmode="decimal"
 			placeholder="e.g. 87400"
-			aria-invalid={odometerError ? 'true' : undefined}
-			aria-describedby={odometerError
-				? `${odometerHelpId} maintenance-odometer-error`
-				: odometerHelpId}
+			bind:value={odometerValue}
+			error={odometerError}
+			aria-describedby={odometerHelpId}
 			oninput={clearAsyncFeedback}
-			class="mt-1 block h-[52px] w-full rounded-lg border border-border bg-card px-3 py-2 text-base text-foreground outline-none focus:ring-2 focus:ring-ring"
 		/>
-		<p id={odometerHelpId} class="mt-1 text-sm text-muted-foreground">
+		<p id={odometerHelpId} class="mt-2 text-sm text-muted-foreground">
 			Maintenance entries keep the odometer value exactly as entered. Settings do not relabel it.
 		</p>
-		{#if odometerError}
-			<p id="maintenance-odometer-error" role="alert" class="mt-1 text-sm text-destructive">
-				{odometerError}
-			</p>
-		{/if}
 	</div>
 
 	<div>
-		<label for="maintenance-cost" class="block text-sm font-medium text-foreground"> Cost </label>
-		<div class="mt-1 flex gap-2">
-			<input
-				bind:this={costInput}
-				bind:value={costValue}
-				id="maintenance-cost"
-				type="text"
-				inputmode="decimal"
-				placeholder="e.g. 78.00"
-				aria-invalid={costError ? 'true' : undefined}
-				aria-describedby={costError ? 'maintenance-cost-error' : undefined}
-				oninput={clearAsyncFeedback}
-				class="block h-[52px] w-full rounded-lg border border-border bg-card px-3 py-2 text-base text-foreground outline-none focus:ring-2 focus:ring-ring"
-			/>
+		<div class="flex items-start gap-2">
+			<div class="flex-1">
+				<Field
+					id="maintenance-cost"
+					label="Cost"
+					type="text"
+					inputmode="decimal"
+					placeholder="e.g. 78.00"
+					bind:value={costValue}
+					error={costError}
+					oninput={clearAsyncFeedback}
+				/>
+			</div>
 			<select
 				bind:value={currency}
 				aria-label="Currency"
-				class="h-[52px] shrink-0 rounded-lg border border-border bg-card px-2 text-base text-foreground outline-none focus:ring-2 focus:ring-ring"
+				class="mt-7 h-13 shrink-0 rounded-md border border-border bg-background px-2 text-base text-foreground outline-none focus:ring-2 focus:ring-ring"
 			>
 				{#each currencyOptions as option (option)}
 					<option value={option}>{option}</option>
@@ -414,24 +394,19 @@
 			</select>
 		</div>
 		<CurrencyChips recent={recentCurrencies} selected={currency} onpick={(c) => (currency = c)} />
-		{#if costError}
-			<p id="maintenance-cost-error" role="alert" class="mt-1 text-sm text-destructive">
-				{costError}
-			</p>
-		{/if}
 	</div>
 
-	<div>
-		<label for="maintenance-notes" class="block text-sm font-medium text-foreground">
-			Notes <span class="text-muted-foreground">(optional)</span>
-		</label>
+	<div class="flex flex-col gap-2">
+		<Label for="maintenance-notes" class="text-label text-muted-foreground uppercase">
+			Notes (optional)
+		</Label>
 		<textarea
 			bind:value={notesValue}
 			id="maintenance-notes"
 			rows="4"
 			placeholder="Add any details worth remembering"
 			oninput={clearAsyncFeedback}
-			class="mt-1 block w-full rounded-lg border border-border bg-card px-3 py-2 text-base text-foreground outline-none focus:ring-2 focus:ring-ring"
+			class="w-full rounded-md border border-border bg-card px-3 py-2 text-base text-foreground outline-none focus:ring-2 focus:ring-ring"
 		></textarea>
 	</div>
 
