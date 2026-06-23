@@ -45,9 +45,12 @@
 	let loaded = $state(false);
 
 	$effect(() => {
-		// Reactive deps: active vehicle + cross-tab data revision. Fuel reactivity rides the prop, so
-		// `currentOdometer` is read inside the async body (not a top-level effect dep) — re-deriving
-		// `visible` handles the odometer-change case without re-reading the DB.
+		// Reactive deps: active vehicle, cross-tab data revision, AND currentOdometer (read synchronously
+		// below). currentOdometer being a top-level dep is intentional and load-bearing for AC6:
+		// selectDueReminders computes each reminder's status FROM the odometer, so a new fuel Capture that
+		// bumps currentOdometer must re-run this read to recompute due-soon/overdue. Do NOT move the read
+		// into the async body to "avoid a DB re-read" — that drops it as a dep and leaves km-reminder
+		// statuses stale (silent AC6 regression).
 		const id = vehicleId;
 		void tabSyncCtx?.dataRevision;
 		const odometer = currentOdometer;

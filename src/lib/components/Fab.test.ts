@@ -8,6 +8,7 @@ function renderFab() {
 	const capture: CaptureSheetContext = {
 		open: false,
 		mode: 'fuel',
+		prefill: null,
 		openSheet,
 		setMode: vi.fn(),
 		close: vi.fn()
