@@ -28,7 +28,8 @@ vi.mock('$app/state', () => ({
 }));
 
 vi.mock('$app/navigation', () => ({
-	replaceState: vi.fn()
+	replaceState: vi.fn(),
+	afterNavigate: vi.fn()
 }));
 
 vi.mock('$app/paths', () => ({

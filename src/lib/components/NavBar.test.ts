@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/svelte';
 import NavBar from './NavBar.svelte';
 
-let mockPathname = '/log';
+let mockPathname = '/';
 let mockBasePath = '';
 
 vi.mock('$app/state', () => ({
@@ -19,41 +19,41 @@ vi.mock('$app/paths', () => ({
 
 describe('NavBar', () => {
 	beforeEach(() => {
-		mockPathname = '/log';
+		mockPathname = '/';
 		mockBasePath = '';
 	});
 
-	describe('rendering', () => {
+	describe('rendering (DEC-1 5-item model: Home · Understand · [FAB] · History · Maintain)', () => {
 		it('renders a nav with "Main navigation" label', () => {
 			render(NavBar);
 			const nav = screen.getByRole('navigation', { name: /main navigation/i });
 			expect(nav).toBeTruthy();
 		});
 
-		it('renders 4 links with correct labels', () => {
+		it('renders 4 links (the FAB centre slot is not a link)', () => {
 			render(NavBar);
 			const links = screen.getAllByRole('link');
 			expect(links).toHaveLength(4);
 
-			expect(screen.getByText('Log')).toBeTruthy();
+			expect(screen.getByText('Home')).toBeTruthy();
+			expect(screen.getByText('Understand')).toBeTruthy();
 			expect(screen.getByText('History')).toBeTruthy();
-			expect(screen.getByText('Analytics')).toBeTruthy();
-			expect(screen.getByText('Export')).toBeTruthy();
+			expect(screen.getByText('Maintain')).toBeTruthy();
 		});
 
-		it('links point to correct routes', () => {
+		it('links point to correct routes (Understand→/analytics, Maintain→/settings interim)', () => {
 			render(NavBar);
 			const links = screen.getAllByRole('link');
-			expect(links[0].getAttribute('href')).toBe('/log');
-			expect(links[1].getAttribute('href')).toBe('/history');
-			expect(links[2].getAttribute('href')).toBe('/analytics');
-			expect(links[3].getAttribute('href')).toBe('/export');
+			expect(links[0].getAttribute('href')).toBe('/');
+			expect(links[1].getAttribute('href')).toBe('/analytics');
+			expect(links[2].getAttribute('href')).toBe('/history');
+			expect(links[3].getAttribute('href')).toBe('/settings');
 		});
 	});
 
 	describe('active state', () => {
-		it('marks Log tab as current page on /log', () => {
-			mockPathname = '/log';
+		it('marks Home tab as current page on /', () => {
+			mockPathname = '/';
 			render(NavBar);
 			const links = screen.getAllByRole('link');
 			expect(links[0].getAttribute('aria-current')).toBe('page');
@@ -62,30 +62,29 @@ describe('NavBar', () => {
 			expect(links[3].getAttribute('aria-current')).toBeNull();
 		});
 
-		it('marks History tab as current page on /history', () => {
-			mockPathname = '/history';
+		it('marks Understand tab as current page on /analytics', () => {
+			mockPathname = '/analytics';
 			render(NavBar);
 			const links = screen.getAllByRole('link');
-			expect(links[0].getAttribute('aria-current')).toBeNull();
 			expect(links[1].getAttribute('aria-current')).toBe('page');
 		});
 
-		it('marks Analytics tab as current page on /analytics', () => {
-			mockPathname = '/analytics';
+		it('marks History tab as current page on /history', () => {
+			mockPathname = '/history';
 			render(NavBar);
 			const links = screen.getAllByRole('link');
 			expect(links[2].getAttribute('aria-current')).toBe('page');
 		});
 
-		it('marks Export tab as current page on /export', () => {
-			mockPathname = '/export';
+		it('marks Maintain tab as current page on /settings', () => {
+			mockPathname = '/settings';
 			render(NavBar);
 			const links = screen.getAllByRole('link');
 			expect(links[3].getAttribute('aria-current')).toBe('page');
 		});
 	});
 
-	describe('keyboard navigation', () => {
+	describe('keyboard navigation (arrow nav iterates the 4 links, skipping the FAB slot)', () => {
 		it('ArrowRight moves focus to next link', () => {
 			render(NavBar);
 			const links = screen.getAllByRole('link');
@@ -154,22 +153,22 @@ describe('NavBar', () => {
 	describe('active tab scroll-to-top (UX spec)', () => {
 		it('scrolls to top instantly when clicking the already-active tab (NFR18 <=150ms)', () => {
 			const scrollToSpy = vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
-			mockPathname = '/log';
+			mockPathname = '/';
 			render(NavBar);
 			const links = screen.getAllByRole('link');
 
-			fireEvent.click(links[0]); // Log is active
+			fireEvent.click(links[0]); // Home is active
 			expect(scrollToSpy).toHaveBeenCalledWith({ top: 0, behavior: 'instant' });
 			scrollToSpy.mockRestore();
 		});
 
 		it('does not scroll when clicking an inactive tab', () => {
 			const scrollToSpy = vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
-			mockPathname = '/log';
+			mockPathname = '/';
 			render(NavBar);
 			const links = screen.getAllByRole('link');
 
-			fireEvent.click(links[1]); // History is inactive
+			fireEvent.click(links[2]); // History is inactive
 			expect(scrollToSpy).not.toHaveBeenCalled();
 			scrollToSpy.mockRestore();
 		});
@@ -178,7 +177,7 @@ describe('NavBar', () => {
 			const scrollToSpy = vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
 			vi.stubGlobal('matchMedia', vi.fn().mockReturnValue({ matches: true } as MediaQueryList));
 
-			mockPathname = '/log';
+			mockPathname = '/';
 			render(NavBar);
 			const links = screen.getAllByRole('link');
 
@@ -190,36 +189,36 @@ describe('NavBar', () => {
 		});
 
 		it('prevents default navigation on active-tab click (scroll-only, no router side effect)', () => {
-			mockPathname = '/log';
+			mockPathname = '/';
 			render(NavBar);
 			const links = screen.getAllByRole('link');
 
 			const clickEvent = new MouseEvent('click', { bubbles: true, cancelable: true });
-			const propagated = links[0].dispatchEvent(clickEvent); // Log is active
+			const propagated = links[0].dispatchEvent(clickEvent); // Home is active
 			expect(propagated).toBe(false); // false → preventDefault was called
 		});
 
 		it('does not prevent default navigation on inactive-tab click', () => {
-			mockPathname = '/log';
+			mockPathname = '/';
 			render(NavBar);
 			const links = screen.getAllByRole('link');
 
 			const clickEvent = new MouseEvent('click', { bubbles: true, cancelable: true });
-			const propagated = links[1].dispatchEvent(clickEvent); // History is inactive
+			const propagated = links[2].dispatchEvent(clickEvent); // History is inactive
 			expect(propagated).toBe(true); // true → preventDefault was NOT called
 		});
 	});
 
 	describe('token contract (AC2 — active tab color must not drift)', () => {
 		it('active tab uses text-accent class (--color-accent: var(--primary) = #2563eb per app.css)', () => {
-			mockPathname = '/log';
+			mockPathname = '/';
 			render(NavBar);
 			const links = screen.getAllByRole('link');
 			expect(links[0].className).toContain('text-accent');
 		});
 
 		it('inactive tabs use text-text-disabled class (--color-text-disabled: #9ca3af per app.css)', () => {
-			mockPathname = '/log';
+			mockPathname = '/';
 			render(NavBar);
 			const links = screen.getAllByRole('link');
 			expect(links[1].className).toContain('text-text-disabled');
@@ -231,7 +230,7 @@ describe('NavBar', () => {
 			mockPathname = '/history';
 			render(NavBar);
 			const links = screen.getAllByRole('link');
-			expect(links[1].className).toContain('text-accent');
+			expect(links[2].className).toContain('text-accent');
 			expect(links[0].className).toContain('text-text-disabled');
 		});
 	});
@@ -239,11 +238,11 @@ describe('NavBar', () => {
 	describe('base-path support', () => {
 		it('resolves hrefs with base path prefix', () => {
 			mockBasePath = '/app';
-			mockPathname = '/app/log';
+			mockPathname = '/app/';
 			render(NavBar);
 			const links = screen.getAllByRole('link');
-			expect(links[0].getAttribute('href')).toBe('/app/log');
-			expect(links[1].getAttribute('href')).toBe('/app/history');
+			expect(links[0].getAttribute('href')).toBe('/app/');
+			expect(links[2].getAttribute('href')).toBe('/app/history');
 		});
 
 		it('marks active tab correctly with base path', () => {
@@ -252,14 +251,12 @@ describe('NavBar', () => {
 			render(NavBar);
 			const links = screen.getAllByRole('link');
 			expect(links[0].getAttribute('aria-current')).toBeNull();
-			expect(links[1].getAttribute('aria-current')).toBe('page');
-			expect(links[2].getAttribute('aria-current')).toBeNull();
-			expect(links[3].getAttribute('aria-current')).toBeNull();
+			expect(links[2].getAttribute('aria-current')).toBe('page');
 		});
 
 		it('no tab is active when pathname does not match any resolved route', () => {
 			mockBasePath = '/app';
-			mockPathname = '/log'; // Missing base path
+			mockPathname = '/history'; // Missing base path
 			render(NavBar);
 			const links = screen.getAllByRole('link');
 			links.forEach((link) => {

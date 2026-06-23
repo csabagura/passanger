@@ -1,9 +1,9 @@
 import { test, expect, type Page } from '@playwright/test';
 
-// Fresh context per test → empty IndexedDB → first-run state on /log.
+// Fresh context per test → empty IndexedDB → first-run state on Home (/).
 
 async function createVehicle(page: Page, name: string): Promise<void> {
-	await page.goto('/log');
+	await page.goto('/');
 	await page.waitForLoadState('networkidle');
 
 	await expect(page.getByRole('heading', { name: 'No vehicle yet' })).toBeVisible();
@@ -14,7 +14,7 @@ async function createVehicle(page: Page, name: string): Promise<void> {
 	await page.getByLabel('Model').fill('Outback');
 	await page.getByRole('button', { name: 'Save vehicle' }).click();
 
-	await expect(page.getByRole('radiogroup', { name: 'Log mode' })).toBeVisible();
+	await expect(page.getByText(/No entries yet for/i)).toBeVisible();
 }
 
 test('reminders smoke: add a service reminder and see its due status', async ({ page }) => {
@@ -86,8 +86,8 @@ test('due-soon card: an overdue reminder surfaces on /log and taps through to Se
 	await expect(settingsItem).toBeVisible();
 	await expect(settingsItem.getByText('Overdue', { exact: true })).toBeVisible();
 
-	// Navigate to /log — the due card lists the overdue reminder above the Fuel/Service toggle.
-	await page.goto('/log');
+	// Story 3.3: the due card now lives in Home's Up-Next slot (the /log surface is retired).
+	await page.goto('/');
 	await page.waitForLoadState('networkidle');
 
 	const dueCard = page.getByRole('list', { name: 'Due reminders' });

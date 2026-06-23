@@ -13,8 +13,8 @@ vi.mock('$app/paths', () => ({
 	resolve: (path: string) => path
 }));
 
-describe('Maintenance backward-compatibility redirect', () => {
-	it('redirects /maintenance to /?capture=expense with 307 status (Capture sheet on Expense)', async () => {
+describe('Log backward-compatibility redirect (Story 3.3)', () => {
+	it('redirects /log to /?capture=fuel with 307 status (Capture sheet on Fuel)', async () => {
 		const { load } = await import('./+page');
 
 		try {
@@ -23,9 +23,9 @@ describe('Maintenance backward-compatibility redirect', () => {
 		} catch (e: unknown) {
 			const err = e as { status: number; location: string };
 			expect(err.status).toBe(307);
-			expect(err.location).toBe('/?capture=expense');
+			expect(err.location).toBe('/?capture=fuel');
 		}
 
-		expect(mockRedirect).toHaveBeenCalledWith(307, '/?capture=expense');
+		expect(mockRedirect).toHaveBeenCalledWith(307, '/?capture=fuel');
 	});
 });

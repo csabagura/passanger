@@ -16,6 +16,15 @@
 	const capture = getContext<CaptureSheetContext>('captureSheet');
 	const vehicles = getContext<VehiclesContext>('vehicles');
 
+	interface Props {
+		// Story 3.3 (AC-7): forwarded to both capture forms so the first successful Capture still fires
+		// the install-prompt / onboarding-survey gate (FR40). Pre-3.3 this fired on the now-retired /log
+		// inline forms' `onFirstCreateSave`; the layout owns the gate and renders the prompt/survey.
+		onFirstCreateSave?: () => void;
+	}
+
+	let { onFirstCreateSave = () => {} }: Props = $props();
+
 	// User-facing label is "Expense" (DEC-5) but it renders the existing MaintenanceForm writing to the
 	// expenses repository — the internal entity stays "maintenance" (renaming is out of scope).
 </script>
@@ -60,6 +69,7 @@
 						<FuelEntryForm
 							vehicleId={vehicles.activeVehicleId}
 							onSave={() => {}}
+							{onFirstCreateSave}
 							onSuccessFeedbackComplete={() => capture.close()}
 						/>
 					{/if}
@@ -69,6 +79,7 @@
 						<MaintenanceForm
 							vehicleId={vehicles.activeVehicleId}
 							onSave={() => {}}
+							{onFirstCreateSave}
 							onSuccessFeedbackComplete={() => capture.close()}
 						/>
 					{/if}

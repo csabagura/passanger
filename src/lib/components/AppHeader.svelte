@@ -4,8 +4,11 @@
 	import SettingsIcon from '@lucide/svelte/icons/settings';
 	import VehicleSwitcher from '$lib/components/VehicleSwitcher.svelte';
 
+	// Story 3.3: `/` is Home (the default surface); `/log` is retired (it now redirects to the Capture
+	// sheet). The interim nav points Understand→/analytics and Maintain→/settings, so those routes keep
+	// their own page titles (Analytics/Settings) until the /understand + /maintain bodies land in Epic 4.
 	const resolvedTitles: Array<[string, string]> = [
-		[resolve('/log'), 'Log'],
+		[resolve('/'), 'Home'],
 		[resolve('/history'), 'History'],
 		[resolve('/analytics'), 'Analytics'],
 		[resolve('/export'), 'Export'],

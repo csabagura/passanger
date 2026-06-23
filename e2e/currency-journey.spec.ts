@@ -1,9 +1,10 @@
 import { test, expect, type Page } from '@playwright/test';
 
-// Fresh context per test → empty IndexedDB → first-run state on /log.
+// Fresh context per test → empty IndexedDB → first-run state on Home (/). Story 3.3: capture happens
+// in the global Capture sheet opened by the FAB.
 
 async function createVehicle(page: Page, name: string): Promise<void> {
-	await page.goto('/log');
+	await page.goto('/');
 	await page.waitForLoadState('networkidle');
 
 	await expect(page.getByRole('heading', { name: 'No vehicle yet' })).toBeVisible();
@@ -14,26 +15,27 @@ async function createVehicle(page: Page, name: string): Promise<void> {
 	await page.getByLabel('Model').fill('Civic');
 	await page.getByRole('button', { name: 'Save vehicle' }).click();
 
-	await expect(page.getByRole('radiogroup', { name: 'Log mode' })).toBeVisible();
+	await expect(page.getByText(/No entries yet for/i)).toBeVisible();
 }
 
 async function addFuelLog(
 	page: Page,
 	values: { odometer: string; quantity: string; cost: string; currency: string }
 ): Promise<void> {
-	const fuelRadio = page.getByRole('radio', { name: 'Fuel' });
-	if ((await fuelRadio.getAttribute('aria-checked')) !== 'true') {
-		await fuelRadio.click();
-	}
+	await page.getByRole('button', { name: /Log a fill-up or expense/i }).click();
+	const sheet = page.getByRole('dialog');
+	await expect(sheet.getByRole('tab', { name: 'Fuel', selected: true })).toBeVisible();
 
-	await page.getByLabel(/^Odometer/).fill(values.odometer);
-	await page.getByLabel(/^Quantity/).fill(values.quantity);
-	await page.getByLabel('Total Cost').fill(values.cost);
+	await sheet.getByLabel(/^Odometer/).fill(values.odometer);
+	await sheet.getByLabel(/^Quantity/).fill(values.quantity);
+	await sheet.getByLabel('Total Cost').fill(values.cost);
 	// The currency picker sits next to the cost field; the entry is stored in this currency.
-	await page.getByLabel('Currency').selectOption(values.currency);
-	await page.getByRole('button', { name: 'Save', exact: true }).click();
+	await sheet.getByLabel('Currency').selectOption(values.currency);
+	await sheet.getByRole('button', { name: 'Save', exact: true }).click();
 
-	await expect(page.getByRole('status').filter({ hasText: /Saved|log one more/i })).toBeVisible();
+	await expect(sheet.getByRole('status').filter({ hasText: /Saved|log one more/i })).toBeVisible();
+	await sheet.getByRole('button', { name: 'Done', exact: true }).click();
+	await expect(page.getByText('Log an entry')).toHaveCount(0);
 }
 
 async function gotoHistory(page: Page): Promise<void> {
@@ -66,10 +68,11 @@ test('multi-currency: forint formatting and segmented totals', async ({ page }) 
 	await expect(entriesList(page).getByText('20000 Ft', { exact: true })).toBeVisible();
 	await expect(page.getByText(/Ft20000|Ft 20000/)).toHaveCount(0);
 
-	// Add a second fill-up in euro (€). Euro keeps two decimals and a prefix symbol.
+	// Add a second fill-up in euro (€). Euro keeps two decimals and a prefix symbol. The Capture sheet
+	// is reachable from any surface via the FAB, so navigate Home first, then open it.
 	await page
 		.getByRole('navigation', { name: 'Main navigation' })
-		.getByRole('link', { name: 'Log' })
+		.getByRole('link', { name: 'Home' })
 		.click();
 	await page.waitForLoadState('networkidle');
 	await addFuelLog(page, { odometer: '50400', quantity: '38', cost: '50', currency: '€' });

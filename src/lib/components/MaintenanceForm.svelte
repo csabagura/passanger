@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { getContext, onDestroy } from 'svelte';
 	import { PRESET_CURRENCIES } from '$lib/config';
-	import { saveExpense, updateExpense } from '$lib/db/repositories/expenses';
+	import { saveExpense, updateExpense, getAllExpenses } from '$lib/db/repositories/expenses';
 	import { saveErrorMessage } from '$lib/utils/saveErrorMessage';
 	import type { Expense, NewExpense } from '$lib/db/schema';
 	import {
@@ -65,6 +65,27 @@
 	const toast = getContext<ToastApi | undefined>('toast');
 
 	const isEditMode = $derived(mode === 'edit' && initialExpense !== undefined);
+
+	// Story 3.3 (code-review AC-7): the install/survey gate must fire only on the user's FIRST-EVER
+	// expense, not once per Capture-sheet open. The global sheet remounts this form on every open, so
+	// the instance flag alone re-arms each session. Seed it from the DB — mirroring the fuel form's
+	// `timelineLogs.length === 0` guard — so a vehicle that already has expenses never re-fires. The
+	// seed only ever SETS the flag true, so it stays FR40-safe: if the read has not resolved by save
+	// time the guard is still false and the gate fires. Create mode only.
+	$effect(() => {
+		if (isEditMode) {
+			return;
+		}
+		let cancelled = false;
+		getAllExpenses(vehicleId).then((result) => {
+			if (!cancelled && !result.error && result.data.length > 0) {
+				hasCreatedFirstSave = true;
+			}
+		});
+		return () => {
+			cancelled = true;
+		};
+	});
 
 	// Story 2.3 (AC-4): a draft restored after DRAFT_STALE_DAYS had its odometer + date dropped
 	// and re-validated (date → today). Show a calm, non-blocking notice ONCE per stale restore,

@@ -1,11 +1,12 @@
 import { test, expect, type Page } from '@playwright/test';
 
-// Fresh context per test → empty IndexedDB → first-run state on /log.
+// Fresh context per test → empty IndexedDB → first-run state on Home (/). Story 3.3: capture happens
+// in the global Capture sheet opened by the FAB (reachable from any surface, incl. /settings).
 // Real round-trip: seed data, download a backup, mutate after the backup, then restore and assert
 // the post-backup mutation is gone (proving the destructive replace-all restore works end to end).
 
 async function createVehicle(page: Page, name: string): Promise<void> {
-	await page.goto('/log');
+	await page.goto('/');
 	await page.waitForLoadState('networkidle');
 
 	await expect(page.getByRole('heading', { name: 'No vehicle yet' })).toBeVisible();
@@ -16,28 +17,26 @@ async function createVehicle(page: Page, name: string): Promise<void> {
 	await page.getByLabel('Model').fill('Civic');
 	await page.getByRole('button', { name: 'Save vehicle' }).click();
 
-	await expect(page.getByRole('radiogroup', { name: 'Log mode' })).toBeVisible();
+	await expect(page.getByText(/No entries yet for/i)).toBeVisible();
 }
 
 async function addFuelLog(
 	page: Page,
 	values: { odometer: string; quantity: string; cost: string; currency: string }
 ): Promise<void> {
-	await page.goto('/log');
-	await page.waitForLoadState('networkidle');
+	await page.getByRole('button', { name: /Log a fill-up or expense/i }).click();
+	const sheet = page.getByRole('dialog');
+	await expect(sheet.getByRole('tab', { name: 'Fuel', selected: true })).toBeVisible();
 
-	const fuelRadio = page.getByRole('radio', { name: 'Fuel' });
-	if ((await fuelRadio.getAttribute('aria-checked')) !== 'true') {
-		await fuelRadio.click();
-	}
+	await sheet.getByLabel(/^Odometer/).fill(values.odometer);
+	await sheet.getByLabel(/^Quantity/).fill(values.quantity);
+	await sheet.getByLabel('Total Cost').fill(values.cost);
+	await sheet.getByLabel('Currency').selectOption(values.currency);
+	await sheet.getByRole('button', { name: 'Save', exact: true }).click();
 
-	await page.getByLabel(/^Odometer/).fill(values.odometer);
-	await page.getByLabel(/^Quantity/).fill(values.quantity);
-	await page.getByLabel('Total Cost').fill(values.cost);
-	await page.getByLabel('Currency').selectOption(values.currency);
-	await page.getByRole('button', { name: 'Save', exact: true }).click();
-
-	await expect(page.getByRole('status').filter({ hasText: /Saved|log one more/i })).toBeVisible();
+	await expect(sheet.getByRole('status').filter({ hasText: /Saved|log one more/i })).toBeVisible();
+	await sheet.getByRole('button', { name: 'Done', exact: true }).click();
+	await expect(page.getByText('Log an entry')).toHaveCount(0);
 }
 
 function entriesList(page: Page) {
