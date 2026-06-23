@@ -12,8 +12,9 @@
 		setLastUsedCurrency,
 		getRecentCurrencies
 	} from '$lib/state/draftStore';
-	import { RESULT_CARD_DISMISS_MS, PRESET_CURRENCIES } from '$lib/config';
+	import { PRESET_CURRENCIES } from '$lib/config';
 	import CurrencyChips from '$lib/components/capture/CurrencyChips.svelte';
+	import ConsumptionSparkline from '$lib/components/ConsumptionSparkline.svelte';
 	import {
 		classifyOdometer,
 		medianDelta,
@@ -32,6 +33,8 @@
 		getFuelLogSuccessor,
 		sortFuelLogsForTimeline
 	} from '$lib/utils/fuelLogTimeline';
+	import { consumptionTrend } from '$lib/utils/analytics';
+	import type { ToastApi } from '$lib/state/toast';
 	import {
 		getLocaleNumberSeparators,
 		isGroupedOdometerValue,
@@ -70,6 +73,9 @@
 	}: Props = $props();
 
 	const settingsCtx = getContext<{ settings: AppSettings }>('settings');
+	// AD-2: the single toast channel (Story 2.4 is its first production emitter — the save error path).
+	// Optional: the form can render outside the layout in isolated tests; guard every call with `?.`.
+	const toast = getContext<ToastApi | undefined>('toast');
 	const isEditMode = $derived(mode === 'edit' && initialFuelLog !== undefined);
 
 	// Story 2.3 (AC-4): a draft restored after DRAFT_STALE_DAYS had its odometer dropped and
@@ -122,19 +128,19 @@
 	let quantityError = $state('');
 	let costError = $state('');
 
+	// Story 2.4: save failures now surface on the toast channel (AC-4), not an inline error card, so
+	// there is no 'error' display state — the form simply returns to 'idle' (values retained).
 	type SaveState =
 		| { status: 'idle' }
 		| { status: 'loading' }
-		| { status: 'success'; data: FuelLog }
-		| { status: 'error'; error: AppError };
+		| { status: 'success'; data: FuelLog };
 
 	let saveState: SaveState = $state({ status: 'idle' });
 
-	let showResultCard = $state(false);
-	let resultCardTimeout: ReturnType<typeof setTimeout> | null = null;
-	let fadeTimeout: ReturnType<typeof setTimeout> | null = null;
-	let resultCardOpacity = $state(1);
-	let resultFormattedText = $state('');
+	// Story 2.4 (AC-1/2/6): the value-revealing confirmation persists until the user dismisses it or
+	// starts another action — NO auto-dismiss timer. The calm status sentence lives in an
+	// always-present polite live region (filled here on save), so screen readers announce the change.
+	let successText = $state('');
 	let previousOdometer = $state<number | undefined>(undefined);
 	let pendingHistoryLoad: Promise<void> | null = null;
 	let historyLoadRequestId = 0;
@@ -174,23 +180,22 @@
 		lastLogDistanceUnit = lastLog.distanceUnit;
 	}
 
-	function hideResultCard() {
-		if (resultCardTimeout) {
-			clearTimeout(resultCardTimeout);
-			resultCardTimeout = null;
-		}
-		if (fadeTimeout) {
-			clearTimeout(fadeTimeout);
-			fadeTimeout = null;
-		}
-		showResultCard = false;
-		resultCardOpacity = 1;
-	}
-
+	// "Start another action" dismissal (AC-2): clears the confirmation WITHOUT closing the sheet /
+	// edit form — editing a field or submitting again calls this. Distinct from dismissSuccess().
 	function clearSubmissionFeedback() {
-		hideResultCard();
+		successText = '';
 		if (saveState.status !== 'loading') {
 			saveState = { status: 'idle' };
+		}
+	}
+
+	// Explicit dismiss via the "Done" control (AC-2): clears the confirmation AND fires the close
+	// seam (CaptureSheet → capture.close(); history edit → clears editingEntry).
+	function dismissSuccess() {
+		successText = '';
+		if (saveState.status === 'success') {
+			saveState = { status: 'idle' };
+			onSuccessFeedbackComplete();
 		}
 	}
 
@@ -328,6 +333,15 @@
 	let recentCurrenciesVersion = $state(0);
 	const recentCurrencies = $derived(recentCurrenciesVersion >= 0 ? getRecentCurrencies() : []);
 
+	// Story 2.4 (AC-3): consumption series for the confirmation sparkline. `timelineLogs` already
+	// includes the just-saved fill (handleSubmit calls setTimelineState([...timelineLogs, saved])
+	// before showing the confirmation), so the last point IS the new fill. Reuses the existing
+	// analytics helper for data; the SVG itself is rendered by ConsumptionSparkline. Empty for the
+	// first/insufficient-data fill (consumption 0 is filtered out) — the card then shows no chart.
+	const sparklineValues = $derived(
+		consumptionTrend(timelineLogs, settingsCtx.settings.fuelUnit).map((point) => point.consumption)
+	);
+
 	function normalizeLastLogLoadError(error?: AppError | null): AppError {
 		return {
 			code: error?.code ?? 'GET_FAILED',
@@ -435,21 +449,23 @@
 		cost = String(log.totalCost);
 	}
 
-	function showSuccessResult(
-		log: FuelLog,
-		parsedQuantity: number,
-		parsedCost: number,
-		prefix: string
-	): void {
-		if (log.calculatedConsumption === 0) {
-			resultFormattedText = `✓ ${prefix} — log one more to calculate efficiency`;
+	// Story 2.4 (AC-1/5): calm, plain-voice confirmation that reveals the computed consumption + the
+	// formatted cost — never the old "✓ Logged — … | … | …" glyph/pipe form. When consumption can't
+	// be computed (first fill / unit mismatch / odometer ≤ previous), show an honest, non-alarmist
+	// state and still show the cost — never a bare "0".
+	function showSuccessResult(log: FuelLog, parsedCost: number, verb: string): void {
+		const cost = formatCurrency(parsedCost, log.currency ?? settingsCtx.settings.currency);
+		// Treat 0 / negative / non-finite consumption alike as "cannot compute" (an edited or corrupt
+		// stored value can be < 0 or NaN) so we never fall through to a bare "0.0 … this tank".
+		if (log.calculatedConsumption <= 0 || !Number.isFinite(log.calculatedConsumption)) {
+			successText = `${verb}. — log one more to see your consumption · ${cost}`;
 		} else {
-			const formatted = formatConsumptionForDisplay(
+			const consumption = formatConsumptionForDisplay(
 				log.calculatedConsumption,
 				log.unit,
 				settingsCtx.settings.fuelUnit
 			);
-			resultFormattedText = `✓ ${prefix} — ${formatted} | ${formatCurrency(parsedCost, log.currency ?? settingsCtx.settings.currency)} | ${parsedQuantity.toFixed(1)} ${log.unit === 'L' ? 'L' : 'gal'}`;
+			successText = `${verb}. — ${consumption} this tank · ${cost}`;
 		}
 
 		// Remember the chosen currency for the next new entry (travel convenience) and refresh
@@ -458,20 +474,6 @@
 		recentCurrenciesVersion += 1;
 
 		saveState = { status: 'success', data: log };
-		showResultCard = true;
-		resultCardOpacity = 1;
-
-		if (resultCardTimeout) clearTimeout(resultCardTimeout);
-		if (fadeTimeout) clearTimeout(fadeTimeout);
-		resultCardTimeout = setTimeout(() => {
-			resultCardOpacity = 0;
-			fadeTimeout = setTimeout(() => {
-				showResultCard = false;
-				resultCardOpacity = 1;
-				fadeTimeout = null;
-				onSuccessFeedbackComplete();
-			}, 150);
-		}, RESULT_CARD_DISMISS_MS);
 	}
 
 	async function handleSubmit() {
@@ -597,16 +599,13 @@
 			}
 
 			if (result.error) {
-				saveState = {
-					status: 'error',
-					error: {
-						code: result.error.code,
-						message: saveErrorMessage(
-							result.error,
-							'Could not update fuel entry. Please try again.'
-						)
-					}
-				};
+				// AC-4: surface the failure on the toast channel and RETAIN the form values (no draft
+				// clear, no field reset) so the user can fix and retry. saveErrorMessage maps quota to
+				// the specific actionable message and never leaks raw exception text.
+				toast?.error(
+					saveErrorMessage(result.error, 'Could not update fuel entry. Please try again.')
+				);
+				saveState = { status: 'idle' };
 				return;
 			}
 
@@ -620,7 +619,7 @@
 			};
 
 			setFormValuesFromLog(completedLog);
-			showSuccessResult(completedLog, parsedQuantity, parsedCost, 'Updated');
+			showSuccessResult(completedLog, parsedCost, 'Updated');
 			onSave(result.data.length > 0 ? result.data : [completedLog]);
 			return;
 		}
@@ -660,7 +659,11 @@
 		}
 
 		if (result.error) {
-			saveState = { status: 'error', error: result.error };
+			// AC-4: error → toast, and the draft is RETAINED (clearFuelDraft is only called on success
+			// below). Routing through saveErrorMessage closes the deferred "fuel ADD path shows raw
+			// exception text" item — quota gets its specific message, everything else a friendly one.
+			toast?.error(saveErrorMessage(result.error, 'Could not save fuel entry. Please try again.'));
+			saveState = { status: 'idle' };
 			return;
 		}
 
@@ -678,7 +681,7 @@
 			suppressDraftSync = false;
 		});
 
-		showSuccessResult(result.data, parsedQuantity, parsedCost, 'Logged');
+		showSuccessResult(result.data, parsedCost, 'Saved');
 		if (isFirstCreateSave) {
 			onFirstCreateSave(result.data);
 		}
@@ -687,7 +690,6 @@
 
 	onDestroy(() => {
 		isComponentMounted = false;
-		hideResultCard();
 	});
 </script>
 
@@ -712,6 +714,7 @@
 		<input
 			bind:this={odometerInput}
 			bind:value={odometer}
+			oninput={clearSubmissionFeedback}
 			type="text"
 			inputmode="decimal"
 			id="odometer"
@@ -745,6 +748,7 @@
 		<input
 			bind:this={quantityInput}
 			bind:value={quantity}
+			oninput={clearSubmissionFeedback}
 			type="text"
 			inputmode="decimal"
 			id="quantity"
@@ -765,6 +769,7 @@
 			<input
 				bind:this={costInput}
 				bind:value={cost}
+				oninput={clearSubmissionFeedback}
 				type="text"
 				inputmode="decimal"
 				id="cost"
@@ -774,6 +779,7 @@
 			/>
 			<select
 				bind:value={currency}
+				onchange={clearSubmissionFeedback}
 				aria-label="Currency"
 				class="h-[52px] shrink-0 rounded-lg border border-border bg-background px-2 text-base focus:outline-none focus:ring-2 focus:ring-ring"
 			>
@@ -790,18 +796,43 @@
 		{/if}
 	</div>
 
-	{#if showResultCard && saveState.status === 'success'}
-		<div
+	<!-- Story 2.4 (AC-1/2/3/6): the value-revealing save confirmation. The outer wrapper carries the
+	     always-present polite live region (role="status") — its text is EMPTY until a save fills it,
+	     so screen readers announce the change on save (fixes the inherited announce-on-mount pitfall).
+	     The sparkline + Done control mount only on success. Persists until the user dismisses it or
+	     starts another action; there is NO auto-dismiss timer. role="alert" stays reserved for
+	     destructive errors (handled via the toast channel). -->
+	<div
+		class={saveState.status === 'success'
+			? 'rounded-xl border border-success/30 bg-success/10 p-4'
+			: ''}
+	>
+		<p
 			role="status"
 			aria-live="polite"
-			style="opacity: {resultCardOpacity};"
-			class="rounded-xl border border-success/30 bg-success/10 p-4 motion-safe:transition-opacity motion-safe:duration-150"
+			class={saveState.status === 'success' ? 'text-success' : 'sr-only'}
 		>
-			<p class="text-success">
-				{resultFormattedText}
-			</p>
-		</div>
-	{/if}
+			{saveState.status === 'success' ? successText : ''}
+		</p>
+		{#if saveState.status === 'success'}
+			{#if !isEditMode && sparklineValues.length > 0}
+				<!-- Decorative + create-flow only: the signature point-onto-trend animation is the
+				     value-reveal reward for a NEW fill; suppressed in edit mode (no "new tank"
+				     semantic, and the timeline isn't re-derived for an edit). The accessible
+				     equivalent is the status text above. -->
+				<div aria-hidden="true" class="mt-3 text-success">
+					<ConsumptionSparkline values={sparklineValues} />
+				</div>
+			{/if}
+			<button
+				type="button"
+				onclick={dismissSuccess}
+				class="mt-3 flex h-[44px] w-full items-center justify-center rounded-lg bg-success/15 px-4 font-medium text-success hover:bg-success/25 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+			>
+				Done
+			</button>
+		{/if}
+	</div>
 
 	{@render successRegionAddon?.()}
 
@@ -828,18 +859,6 @@
 					Retry loading history
 				{/if}
 			</button>
-		</div>
-	{/if}
-
-	{#if saveState.status === 'error'}
-		<div
-			role="alert"
-			aria-live="assertive"
-			class="rounded-lg border border-destructive/20 bg-destructive/10 p-3"
-		>
-			<p class="text-sm text-destructive">
-				{saveState.error.message}
-			</p>
 		</div>
 	{/if}
 

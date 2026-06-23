@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { getContext, onDestroy } from 'svelte';
-	import { RESULT_CARD_DISMISS_MS, PRESET_CURRENCIES } from '$lib/config';
+	import { PRESET_CURRENCIES } from '$lib/config';
 	import { saveExpense, updateExpense } from '$lib/db/repositories/expenses';
 	import { saveErrorMessage } from '$lib/utils/saveErrorMessage';
 	import type { Expense, NewExpense } from '$lib/db/schema';
@@ -21,8 +21,8 @@
 	} from '$lib/utils/date';
 	import { formatCurrency } from '$lib/utils/calculations';
 	import { isGroupedOdometerValue, parseNonNegativeNumeric } from '$lib/utils/numberInput';
-	import type { AppError } from '$lib/utils/result';
 	import type { AppSettings } from '$lib/utils/settings';
+	import type { ToastApi } from '$lib/state/toast';
 
 	type FormMode = 'create' | 'edit';
 
@@ -36,11 +36,12 @@
 		onFirstCreateSave?: (expense: Expense) => void;
 	}
 
+	// Story 2.4: save failures surface on the toast channel (AC-4/7), not an inline error card, so
+	// there is no 'error' display state — the form returns to 'idle' with values retained.
 	type SaveState =
 		| { status: 'idle' }
 		| { status: 'loading' }
-		| { status: 'success'; data: Expense }
-		| { status: 'error'; error: AppError };
+		| { status: 'success'; data: Expense };
 
 	const TYPE_SUGGESTIONS = ['Tyres', 'Oil Change', 'Service', 'Insurance', 'Other'];
 
@@ -57,6 +58,9 @@
 	let hasCreatedFirstSave = $state(false);
 
 	const settingsCtx = getContext<{ settings: AppSettings }>('settings');
+	// AD-2: shared toast channel for the save-error path (AC-7). Optional — guard calls with `?.` so
+	// the form still works when rendered outside the layout (isolated tests).
+	const toast = getContext<ToastApi | undefined>('toast');
 
 	const isEditMode = $derived(mode === 'edit' && initialExpense !== undefined);
 
@@ -117,20 +121,28 @@
 	let costInput: HTMLInputElement | undefined = $state();
 
 	let saveState = $state<SaveState>({ status: 'idle' });
+	// Story 2.4 (AC-7): the confirmation persists until dismissed or another action starts — NO
+	// auto-dismiss timer. The calm message lives in an always-present polite live region.
 	let successMessage = $state('');
 	let showSuccessMessage = $state(false);
-	let successMessageTimeout: ReturnType<typeof setTimeout> | null = null;
 	let isComponentMounted = $state(true);
 
+	// "Start another action" dismissal (AC-7): clears the confirmation WITHOUT closing the sheet /
+	// edit form. Wired to every field's oninput. Distinct from dismissSuccess().
 	function clearAsyncFeedback() {
-		if (successMessageTimeout) {
-			clearTimeout(successMessageTimeout);
-			successMessageTimeout = null;
-		}
-
 		showSuccessMessage = false;
 		if (saveState.status !== 'loading') {
 			saveState = { status: 'idle' };
+		}
+	}
+
+	// Explicit dismiss via the "Done" control (AC-7): clears the confirmation AND fires the close
+	// seam (CaptureSheet → capture.close(); history edit → clears editingEntry).
+	function dismissSuccess() {
+		showSuccessMessage = false;
+		if (saveState.status === 'success') {
+			saveState = { status: 'idle' };
+			onSuccessFeedbackComplete();
 		}
 	}
 
@@ -242,18 +254,17 @@
 		}
 
 		if (result.error) {
-			saveState = {
-				status: 'error',
-				error: {
-					code: result.error.code,
-					message: saveErrorMessage(
-						result.error,
-						isEditMode
-							? 'Could not update maintenance entry. Please try again.'
-							: 'Could not save maintenance entry. Please try again.'
-					)
-				}
-			};
+			// AC-7: surface failures on the toast channel and RETAIN the form values (no draft clear,
+			// no field reset). saveErrorMessage maps quota to its specific message, never raw text.
+			toast?.error(
+				saveErrorMessage(
+					result.error,
+					isEditMode
+						? 'Could not update maintenance entry. Please try again.'
+						: 'Could not save maintenance entry. Please try again.'
+				)
+			);
+			saveState = { status: 'idle' };
 			return;
 		}
 
@@ -277,11 +288,6 @@
 			? `Updated ${result.data.type} for ${formatCurrency(result.data.cost, resultCurrency)} on ${formatLocalCalendarDate(result.data.date)}.`
 			: `Saved ${result.data.type} for ${formatCurrency(result.data.cost, resultCurrency)} on ${formatLocalCalendarDate(result.data.date)}.`;
 		showSuccessMessage = true;
-		successMessageTimeout = setTimeout(() => {
-			showSuccessMessage = false;
-			successMessageTimeout = null;
-			onSuccessFeedbackComplete();
-		}, RESULT_CARD_DISMISS_MS);
 
 		if (!isEditMode && !hasCreatedFirstSave) {
 			hasCreatedFirstSave = true;
@@ -292,9 +298,6 @@
 
 	onDestroy(() => {
 		isComponentMounted = false;
-		if (successMessageTimeout) {
-			clearTimeout(successMessageTimeout);
-		}
 	});
 </script>
 
@@ -432,25 +435,34 @@
 		></textarea>
 	</div>
 
-	{#if showSuccessMessage && saveState.status === 'success'}
-		<div
+	<!-- Story 2.4 (AC-6/7): always-present polite live region (role="status"), empty until a save
+	     fills it, so screen readers announce the change (announce-on-mount fix). Persists until the
+	     user taps Done or starts another action — no auto-dismiss timer. Expenses have no consumption,
+	     so there is no sparkline. role="alert" stays reserved for destructive errors (toast channel). -->
+	<div
+		class={showSuccessMessage && saveState.status === 'success'
+			? 'rounded-xl border border-success/30 bg-success/10 p-4'
+			: ''}
+	>
+		<p
 			role="status"
 			aria-live="polite"
-			class="rounded-xl border border-success/30 bg-success/10 p-4 text-sm text-success"
+			class={showSuccessMessage && saveState.status === 'success'
+				? 'text-sm text-success'
+				: 'sr-only'}
 		>
-			{successMessage}
-		</div>
-	{/if}
-
-	{#if saveState.status === 'error'}
-		<div
-			role="alert"
-			aria-live="assertive"
-			class="rounded-xl border border-destructive/20 bg-destructive/10 p-4"
-		>
-			<p class="text-sm text-destructive">{saveState.error.message}</p>
-		</div>
-	{/if}
+			{showSuccessMessage ? successMessage : ''}
+		</p>
+		{#if showSuccessMessage && saveState.status === 'success'}
+			<button
+				type="button"
+				onclick={dismissSuccess}
+				class="mt-3 flex h-[44px] w-full items-center justify-center rounded-lg bg-success/15 px-4 text-sm font-semibold text-success hover:bg-success/25 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+			>
+				Done
+			</button>
+		{/if}
+	</div>
 
 	<div class="flex gap-3">
 		{#if isEditMode}

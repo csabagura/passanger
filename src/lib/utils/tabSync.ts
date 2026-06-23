@@ -17,6 +17,16 @@ export interface TabSyncMessage {
 let channel: BroadcastChannel | null = null;
 let unavailable = false;
 
+// Monotonic counter bumped on every committed LOCAL mutation (see notifyDataChanged below). The
+// BroadcastChannel deliberately never self-delivers, so the cross-tab `dataRevision` signal misses
+// same-tab writes; this counter is the missing same-tab signal. The reversible-delete undo guard
+// (Story 2.5) captures it at delete time and refuses the restore if it changed by undo time.
+let localDataGeneration = 0;
+
+export function getDataGeneration(): number {
+	return localDataGeneration;
+}
+
 function getChannel(): BroadcastChannel | null {
 	if (unavailable) return null;
 	if (channel) return channel;
@@ -42,6 +52,9 @@ function isTabSyncKind(value: unknown): value is TabSyncKind {
 
 // Emitted on every committed DB mutation (manual CRUD + CSV import). Receivers refetch live data.
 export function notifyDataChanged(): void {
+	// Every committed local write funnels through here, so bumping the counter here guarantees no
+	// missed mutation site. Only LOCAL writes bump it; cross-tab writes are tracked via dataRevision.
+	localDataGeneration += 1;
 	post('data');
 }
 

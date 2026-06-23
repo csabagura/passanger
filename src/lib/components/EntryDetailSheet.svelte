@@ -5,7 +5,6 @@
 	import { formatConsumptionForDisplay, formatCurrency } from '$lib/utils/calculations';
 	import { formatLocalCalendarDate } from '$lib/utils/date';
 
-	type DeleteState = 'idle' | 'armed' | 'loading';
 	type PointerGestureLock = 'pending' | 'horizontal' | 'vertical';
 
 	type DismissGestureState = {
@@ -25,14 +24,9 @@
 		currency: string;
 		preferredFuelUnit?: FuelUnit;
 		vehicleName?: string;
-		deleteState?: DeleteState;
-		deleteDisabled?: boolean;
-		deleteErrorText?: string;
 		onClose: () => void;
 		onEdit?: (request: HistoryEntry) => void;
-		onDeleteRequest?: (request: HistoryEntry) => void;
-		onDeleteConfirm?: (request: HistoryEntry) => void;
-		onDeleteCancel?: (request: HistoryEntry) => void;
+		onDelete?: (request: HistoryEntry) => void;
 	}
 
 	const DISMISS_GESTURE_SLOP = 12;
@@ -43,14 +37,9 @@
 		currency,
 		preferredFuelUnit = 'L/100km',
 		vehicleName,
-		deleteState = 'idle',
-		deleteDisabled = false,
-		deleteErrorText = '',
 		onClose,
 		onEdit = () => {},
-		onDeleteRequest = () => {},
-		onDeleteConfirm = () => {},
-		onDeleteCancel = () => {}
+		onDelete = () => {}
 	}: Props = $props();
 
 	const FOCUSABLE_SELECTOR =
@@ -60,8 +49,6 @@
 	let dismissGesture = $state<DismissGestureState | null>(null);
 	let dragOffsetY = $state(0);
 
-	const deletePromptVisible = $derived(deleteState === 'armed' || deleteState === 'loading');
-	const closeDisabled = $derived(deleteState === 'loading');
 	const sheetStyle = $derived(
 		dragOffsetY > 0 ? `transform: translateY(${dragOffsetY}px);` : undefined
 	);
@@ -150,10 +137,6 @@
 	}
 
 	function handleClose(): void {
-		if (closeDisabled) {
-			return;
-		}
-
 		onClose();
 	}
 
@@ -162,35 +145,13 @@
 	}
 
 	function handleEdit(): void {
-		if (closeDisabled || deletePromptVisible) {
-			return;
-		}
-
 		onEdit(entry);
 	}
 
-	function handleDeleteRequest(): void {
-		if (closeDisabled || deletePromptVisible || deleteDisabled) {
-			return;
-		}
-
-		onDeleteRequest(entry);
-	}
-
-	function handleDeleteConfirm(): void {
-		if (deleteState === 'loading') {
-			return;
-		}
-
-		onDeleteConfirm(entry);
-	}
-
-	function handleDeleteCancel(): void {
-		if (deleteState === 'loading') {
-			return;
-		}
-
-		onDeleteCancel(entry);
+	// Single-action delete. The sheet is closed by History on delete; the global Undo toast remains
+	// visible after close (it renders from the layout Toaster, not this sheet).
+	function handleDelete(): void {
+		onDelete(entry);
 	}
 
 	function handleKeydown(event: KeyboardEvent): void {
@@ -251,10 +212,6 @@
 	function handleDismissHandlePointerDown(
 		event: PointerEvent & { currentTarget: EventTarget & HTMLDivElement }
 	): void {
-		if (closeDisabled) {
-			return;
-		}
-
 		dismissGesture = {
 			pointerId: event.pointerId,
 			startX: event.clientX,
@@ -339,7 +296,6 @@
 		type="button"
 		aria-label="Close entry details"
 		class="absolute inset-0 bg-black/45"
-		disabled={closeDisabled}
 		onclick={handleBackdropClick}
 	></button>
 
@@ -384,9 +340,8 @@
 
 				<button
 					type="button"
-					disabled={closeDisabled}
 					onclick={handleClose}
-					class="rounded-full border border-border px-4 py-2 text-sm font-medium text-foreground disabled:cursor-not-allowed disabled:opacity-70"
+					class="rounded-full border border-border px-4 py-2 text-sm font-medium text-foreground"
 				>
 					Close
 				</button>
@@ -408,57 +363,20 @@
 			<div class="mt-6 flex flex-wrap items-center gap-3">
 				<button
 					type="button"
-					disabled={closeDisabled || deletePromptVisible}
 					onclick={handleEdit}
-					class="min-h-11 rounded-xl border border-border px-4 py-2 text-sm font-semibold text-foreground disabled:cursor-not-allowed disabled:opacity-70"
+					class="min-h-11 rounded-xl border border-border px-4 py-2 text-sm font-semibold text-foreground"
 				>
 					Edit
 				</button>
 				<button
 					type="button"
-					disabled={closeDisabled || deletePromptVisible || deleteDisabled}
-					onclick={handleDeleteRequest}
-					class="min-h-11 rounded-xl border border-destructive/20 px-4 py-2 text-sm font-semibold text-destructive disabled:cursor-not-allowed disabled:opacity-70"
+					aria-label={`Delete ${getEntryContextLabel()}`}
+					onclick={handleDelete}
+					class="min-h-11 rounded-xl border border-destructive/20 px-4 py-2 text-sm font-semibold text-destructive"
 				>
 					Delete
 				</button>
 			</div>
-
-			{#if deletePromptVisible}
-				<div class="mt-4 rounded-2xl border border-destructive/20 bg-destructive/10 p-4">
-					<p class="text-sm font-semibold text-destructive">
-						Delete this entry? This cannot be undone.
-					</p>
-					{#if deleteErrorText}
-						<div
-							role="alert"
-							class="mt-3 rounded-xl border border-destructive/20 bg-background/80 p-3"
-						>
-							<p class="text-sm text-destructive">{deleteErrorText}</p>
-						</div>
-					{/if}
-					<div class="mt-3 flex flex-wrap justify-end gap-2">
-						<button
-							type="button"
-							disabled={deleteState === 'loading'}
-							aria-label={`Cancel deleting ${getEntryContextLabel()}`}
-							onclick={handleDeleteCancel}
-							class="rounded-xl border border-destructive/20 px-3 py-2 text-sm font-semibold text-destructive disabled:cursor-not-allowed disabled:opacity-70"
-						>
-							Cancel
-						</button>
-						<button
-							type="button"
-							disabled={deleteState === 'loading'}
-							aria-label={`Confirm delete ${getEntryContextLabel()}`}
-							onclick={handleDeleteConfirm}
-							class="rounded-xl bg-destructive px-3 py-2 text-sm font-semibold text-destructive-foreground disabled:cursor-not-allowed disabled:opacity-70"
-						>
-							{deleteState === 'loading' ? 'Deleting...' : 'Confirm delete'}
-						</button>
-					</div>
-				</div>
-			{/if}
 		</div>
 	</div>
 </div>

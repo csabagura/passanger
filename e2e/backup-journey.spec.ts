@@ -37,7 +37,7 @@ async function addFuelLog(
 	await page.getByLabel('Currency').selectOption(values.currency);
 	await page.getByRole('button', { name: 'Save', exact: true }).click();
 
-	await expect(page.getByRole('status').filter({ hasText: /Logged|log one more/i })).toBeVisible();
+	await expect(page.getByRole('status').filter({ hasText: /Saved|log one more/i })).toBeVisible();
 }
 
 function entriesList(page: Page) {

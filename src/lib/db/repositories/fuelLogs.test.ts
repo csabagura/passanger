@@ -8,9 +8,10 @@ import {
 	getAllFuelLogs,
 	updateFuelLog,
 	updateFuelLogsAtomic,
-	deleteFuelLog
+	deleteFuelLog,
+	restoreFuelLog
 } from './fuelLogs';
-import type { NewFuelLog } from '../schema';
+import type { FuelLog, NewFuelLog } from '../schema';
 
 // Factory functions — Dexie v4 mutates the input object after add() to set the id.
 // Always create fresh objects per test to avoid cross-test contamination.
@@ -395,6 +396,145 @@ describe('FuelLogRepository', () => {
 			} finally {
 				updateSpy.mockRestore();
 			}
+		});
+	});
+
+	describe('restoreFuelLog (Story 2.5 — reversible delete)', () => {
+		// Build a 3-fill timeline (first/middle/last), capture each scenario's pre-delete state, then
+		// assert a delete→restore round-trip returns the timeline byte-identical (id + consumption).
+		async function seedTimeline(): Promise<FuelLog[]> {
+			await saveFuelLog({
+				...makeLog(),
+				date: new Date('2025-01-10'),
+				odometer: 100,
+				quantity: 10,
+				totalCost: 20,
+				calculatedConsumption: 0
+			});
+			await saveFuelLog({
+				...makeLog(),
+				date: new Date('2025-01-11'),
+				odometer: 200,
+				quantity: 10,
+				totalCost: 20,
+				calculatedConsumption: 10
+			});
+			await saveFuelLog({
+				...makeLog(),
+				date: new Date('2025-01-12'),
+				odometer: 300,
+				quantity: 10,
+				totalCost: 20,
+				calculatedConsumption: 10
+			});
+			const all = await getAllFuelLogs(1);
+			return (all.data ?? []).slice().sort((a, b) => a.id - b.id);
+		}
+
+		function snapshotConsumptions(logs: FuelLog[]): Array<[number, number]> {
+			return logs
+				.slice()
+				.sort((a, b) => a.id - b.id)
+				.map((log) => [log.id, log.calculatedConsumption]);
+		}
+
+		it.each([
+			['first', 0],
+			['middle', 1],
+			['last', 2]
+		])(
+			'delete→restore of the %s fill leaves the timeline byte-identical',
+			async (_label, index) => {
+				const original = await seedTimeline();
+				const before = snapshotConsumptions(original);
+				const target = original[index];
+
+				const deleteResult = await deleteFuelLog(target.id);
+				expect(deleteResult.error).toBeNull();
+
+				const restoreResult = await restoreFuelLog(target);
+				expect(restoreResult.error).toBeNull();
+				expect(restoreResult.data?.restoredLog.id).toBe(target.id);
+
+				const after = await getAllFuelLogs(1);
+				expect(after.data).toHaveLength(3);
+				// Re-inserted at the ORIGINAL id (Dexie never reissues, put() preserves it).
+				expect(after.data?.some((log) => log.id === target.id)).toBe(true);
+				expect(snapshotConsumptions(after.data ?? [])).toEqual(before);
+			}
+		);
+
+		it('restores neighbor consumptions for a mixed-unit timeline (no cross-unit consumption)', async () => {
+			await saveFuelLog({
+				...makeLog(),
+				date: new Date('2025-03-01'),
+				odometer: 1000,
+				quantity: 10,
+				unit: 'L',
+				distanceUnit: 'km',
+				totalCost: 20,
+				calculatedConsumption: 0
+			});
+			await saveFuelLog({
+				...makeGalLog(),
+				date: new Date('2025-03-02'),
+				odometer: 1100,
+				calculatedConsumption: 0
+			});
+			await saveFuelLog({
+				...makeLog(),
+				date: new Date('2025-03-03'),
+				odometer: 1200,
+				quantity: 10,
+				unit: 'L',
+				distanceUnit: 'km',
+				totalCost: 20,
+				calculatedConsumption: 0
+			});
+
+			const original = (await getAllFuelLogs(1)).data ?? [];
+			const before = snapshotConsumptions(original);
+			const target = original.slice().sort((a, b) => a.id - b.id)[1];
+
+			expect((await deleteFuelLog(target.id)).error).toBeNull();
+			expect((await restoreFuelLog(target)).error).toBeNull();
+
+			const after = await getAllFuelLogs(1);
+			expect(snapshotConsumptions(after.data ?? [])).toEqual(before);
+		});
+
+		it('recomputes neighbor consumptions independent of the snapshot value', async () => {
+			// Guards against the round-trip masking a bug by feeding the same object back: corrupt the
+			// snapshot's OWN consumption and confirm the surviving neighbor is recomputed from
+			// odometer/quantity (not derived from the snapshot's stale field). The restored row itself
+			// is re-inserted verbatim by design — the caller's generation guard keeps that value valid.
+			const original = await seedTimeline();
+			const target = original[1]; // middle
+			const successorId = original[2].id;
+
+			expect((await deleteFuelLog(target.id)).error).toBeNull();
+
+			const corruptedSnapshot = { ...target, calculatedConsumption: 999 };
+			const restoreResult = await restoreFuelLog(corruptedSnapshot);
+			expect(restoreResult.error).toBeNull();
+
+			const after = await getAllFuelLogs(1);
+			const successor = after.data?.find((log) => log.id === successorId);
+			// Successor recomputes to its true value (10), unaffected by the corrupted snapshot field.
+			expect(successor?.calculatedConsumption).toBeCloseTo(10);
+			// The restored row carries the snapshot's value verbatim (documented put() behavior).
+			const restored = after.data?.find((log) => log.id === target.id);
+			expect(restored?.calculatedConsumption).toBe(999);
+		});
+
+		it('returns an error when the original id is already present (defensive guard)', async () => {
+			const saved = await saveFuelLog(makeLog());
+			const result = await restoreFuelLog(saved.data!);
+
+			expect(result.data).toBeNull();
+			expect(result.error?.code).toBe('SAVE_FAILED');
+			// The existing row is untouched.
+			expect((await getAllFuelLogs(1)).data).toHaveLength(1);
 		});
 	});
 

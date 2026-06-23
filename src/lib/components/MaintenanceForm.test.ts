@@ -22,6 +22,13 @@ const mockSettings = vi.hoisted(() => ({
 	} as AppSettings
 }));
 
+// Story 2.4: the save-error path emits on the toast context. Provide a spy so the form can call it.
+const mockToast = vi.hoisted(() => ({
+	success: vi.fn(),
+	error: vi.fn(),
+	action: vi.fn()
+}));
+
 vi.mock('$lib/db/repositories/expenses', () => ({
 	saveExpense: (...args: unknown[]) => mockSaveExpense(...args),
 	updateExpense: (...args: unknown[]) => mockUpdateExpense(...args)
@@ -36,6 +43,9 @@ vi.mock('svelte', async (importOriginal) => {
 				return {
 					settings: mockSettings.value
 				};
+			}
+			if (key === 'toast') {
+				return mockToast;
 			}
 			return undefined;
 		}
@@ -220,9 +230,11 @@ describe('MaintenanceForm', () => {
 		await Promise.resolve();
 		flushSync();
 
-		expect(screen.getByRole('alert').textContent).toContain(
+		// Story 2.4 (AC-7): failures surface on the toast channel, not an inline alert.
+		expect(mockToast.error).toHaveBeenCalledWith(
 			'Could not save maintenance entry. Please try again.'
 		);
+		expect(screen.queryByRole('alert')).toBeNull();
 		expect((screen.getByLabelText(/^type$/i) as HTMLInputElement).value).toBe('Insurance');
 		expect((screen.getByLabelText(/cost/i) as HTMLInputElement).value).toBe('100');
 		expect(maintenanceDraft['type']).toBe('Insurance');
@@ -249,9 +261,10 @@ describe('MaintenanceForm', () => {
 		await Promise.resolve();
 		flushSync();
 
-		const alertText = screen.getByRole('alert').textContent ?? '';
-		expect(alertText).toContain(QUOTA_EXCEEDED_MESSAGE);
-		expect(alertText).not.toContain('Please try again');
+		// Story 2.4 (AC-7): the specific quota message routes through the toast channel.
+		expect(mockToast.error).toHaveBeenCalledWith(QUOTA_EXCEEDED_MESSAGE);
+		expect(mockToast.error).not.toHaveBeenCalledWith(expect.stringContaining('Please try again'));
+		expect(screen.queryByRole('alert')).toBeNull();
 		// Input is preserved so the user can free space and retry without re-typing.
 		expect((screen.getByLabelText(/cost/i) as HTMLInputElement).value).toBe('100');
 		expect(onSaveSpy).not.toHaveBeenCalled();
@@ -285,9 +298,10 @@ describe('MaintenanceForm', () => {
 		await Promise.resolve();
 		flushSync();
 
-		const alertText = screen.getByRole('alert').textContent ?? '';
-		expect(alertText).toContain(QUOTA_EXCEEDED_MESSAGE);
-		expect(alertText).not.toContain('Please try again');
+		// Story 2.4 (AC-7): the specific quota message routes through the toast channel.
+		expect(mockToast.error).toHaveBeenCalledWith(QUOTA_EXCEEDED_MESSAGE);
+		expect(mockToast.error).not.toHaveBeenCalledWith(expect.stringContaining('Please try again'));
+		expect(screen.queryByRole('alert')).toBeNull();
 		expect((screen.getByLabelText(/cost/i) as HTMLInputElement).value).toBe('150');
 		expect(onSaveSpy).not.toHaveBeenCalled();
 	});
@@ -418,9 +432,11 @@ describe('MaintenanceForm', () => {
 		await Promise.resolve();
 		flushSync();
 
-		expect(screen.getByRole('alert').textContent).toContain(
+		// Story 2.4 (AC-7): failures surface on the toast channel, not an inline alert.
+		expect(mockToast.error).toHaveBeenCalledWith(
 			'Could not update maintenance entry. Please try again.'
 		);
+		expect(screen.queryByRole('alert')).toBeNull();
 		expect((screen.getByLabelText(/^type$/i) as HTMLInputElement).value).toBe('Insurance');
 		expect((screen.getByLabelText(/cost/i) as HTMLInputElement).value).toBe('150');
 		expect(onSaveSpy).not.toHaveBeenCalled();
@@ -612,5 +628,70 @@ describe('MaintenanceForm', () => {
 		flushSync();
 
 		expect(currencySelect.value).toBe('$');
+	});
+
+	// Story 2.4 (AC-7): the Expense confirmation persists until dismissed — no 3s auto-dismiss, a
+	// keyboard-operable Done control, calm "Saved." voice, no consumption/sparkline.
+	describe('Story 2.4: persist-until-dismissed', () => {
+		const savedExpense: Expense = {
+			id: 9,
+			vehicleId: 7,
+			date: new Date(2026, 2, 8, 12, 0, 0, 0),
+			type: 'Oil Change',
+			cost: 100,
+			currency: '€',
+			notes: ''
+		};
+
+		async function fillAndSave(onDone: () => void) {
+			render(MaintenanceForm, {
+				vehicleId: 7,
+				onSave: onSaveSpy,
+				onSuccessFeedbackComplete: onDone
+			});
+			flushSync();
+			await fireEvent.input(screen.getByLabelText(/^type$/i), { target: { value: 'Oil Change' } });
+			await fireEvent.input(screen.getByLabelText(/cost/i), { target: { value: '100' } });
+			await fireEvent.click(screen.getByRole('button', { name: /^save$/i }));
+			await Promise.resolve();
+			flushSync();
+		}
+
+		it('does NOT auto-dismiss after 3 seconds', async () => {
+			mockSaveExpense.mockResolvedValue({ data: savedExpense, error: null });
+			const onDone = vi.fn();
+			vi.useFakeTimers();
+			try {
+				await fillAndSave(onDone);
+				expect(screen.getByRole('status').textContent).toContain('Saved Oil Change');
+
+				await vi.advanceTimersByTimeAsync(5000);
+				flushSync();
+
+				expect(screen.getByRole('status').textContent).toContain('Saved Oil Change');
+				expect(onDone).not.toHaveBeenCalled();
+			} finally {
+				vi.useRealTimers();
+			}
+		});
+
+		it('Done fires onSuccessFeedbackComplete and clears the confirmation', async () => {
+			mockSaveExpense.mockResolvedValue({ data: savedExpense, error: null });
+			const onDone = vi.fn();
+			await fillAndSave(onDone);
+
+			await fireEvent.click(screen.getByRole('button', { name: /^done$/i }));
+			flushSync();
+
+			expect(onDone).toHaveBeenCalledTimes(1);
+			expect(screen.getByRole('status').textContent).toBe('');
+		});
+
+		it('shows no consumption sparkline (expenses have none)', async () => {
+			mockSaveExpense.mockResolvedValue({ data: savedExpense, error: null });
+			await fillAndSave(vi.fn());
+
+			expect(document.querySelector('svg[aria-hidden="true"]')).toBeNull();
+		});
 	});
 });

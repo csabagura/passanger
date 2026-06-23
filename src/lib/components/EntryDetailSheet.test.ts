@@ -45,28 +45,18 @@ function renderSheet(
 	props: Partial<{
 		currency: string;
 		preferredFuelUnit: 'L/100km' | 'MPG';
-		deleteState: 'idle' | 'armed' | 'loading';
-		deleteDisabled: boolean;
-		deleteErrorText: string;
 		onClose: () => void;
 		onEdit: (request: HistoryEntry) => void;
-		onDeleteRequest: (request: HistoryEntry) => void;
-		onDeleteConfirm: (request: HistoryEntry) => void;
-		onDeleteCancel: (request: HistoryEntry) => void;
+		onDelete: (request: HistoryEntry) => void;
 	}> = {}
 ) {
 	return render(EntryDetailSheet, {
 		entry,
 		currency: props.currency ?? 'EUR ',
 		preferredFuelUnit: props.preferredFuelUnit ?? 'L/100km',
-		deleteState: props.deleteState ?? 'idle',
-		deleteDisabled: props.deleteDisabled ?? false,
-		deleteErrorText: props.deleteErrorText ?? '',
 		onClose: props.onClose ?? vi.fn(),
 		onEdit: props.onEdit ?? vi.fn(),
-		onDeleteRequest: props.onDeleteRequest ?? vi.fn(),
-		onDeleteConfirm: props.onDeleteConfirm ?? vi.fn(),
-		onDeleteCancel: props.onDeleteCancel ?? vi.fn()
+		onDelete: props.onDelete ?? vi.fn()
 	});
 }
 
@@ -207,7 +197,7 @@ describe('EntryDetailSheet', () => {
 
 		const dialog = screen.getByRole('dialog', { name: 'Entry details' });
 		const closeButton = within(dialog).getByRole('button', { name: 'Close' });
-		const deleteButton = within(dialog).getByRole('button', { name: 'Delete' });
+		const deleteButton = within(dialog).getByRole('button', { name: /^Delete/ });
 
 		await waitFor(() => {
 			expect(document.activeElement).toBe(screen.getByRole('heading', { name: 'Entry details' }));
@@ -223,49 +213,19 @@ describe('EntryDetailSheet', () => {
 		expect(document.activeElement).toBe(closeButton);
 	});
 
-	it('keeps delete confirmation inline and emits delete callbacks for the selected entry', async () => {
+	it('fires onDelete in one action with no confirm step and no banned copy (AC1)', async () => {
 		const fuelEntry = createFuelEntry({ id: 17 });
-		const onDeleteRequest = vi.fn();
-		const onDeleteConfirm = vi.fn();
-		const onDeleteCancel = vi.fn();
-		const view = renderSheet(
-			{ kind: 'fuel', entry: fuelEntry },
-			{ onDeleteRequest, onDeleteConfirm, onDeleteCancel }
-		);
+		const onDelete = vi.fn();
+		renderSheet({ kind: 'fuel', entry: fuelEntry }, { onDelete });
 
-		await fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
-		expect(onDeleteRequest).toHaveBeenCalledTimes(1);
-		expect(onDeleteRequest).toHaveBeenCalledWith({ kind: 'fuel', entry: fuelEntry });
+		await fireEvent.click(screen.getByRole('button', { name: /^Delete/ }));
+		expect(onDelete).toHaveBeenCalledTimes(1);
+		expect(onDelete).toHaveBeenCalledWith({ kind: 'fuel', entry: fuelEntry });
 
-		await view.rerender({
-			entry: { kind: 'fuel', entry: fuelEntry },
-			currency: 'EUR ',
-			deleteState: 'armed',
-			deleteDisabled: false,
-			onClose: vi.fn(),
-			onEdit: vi.fn(),
-			onDeleteRequest,
-			onDeleteConfirm,
-			onDeleteCancel
-		});
-
-		expect(screen.getByText('Delete this entry? This cannot be undone.')).toBeTruthy();
-
-		await fireEvent.click(
-			screen.getByRole('button', {
-				name: 'Confirm delete fuel entry from Mar 10, 2026'
-			})
-		);
-		expect(onDeleteConfirm).toHaveBeenCalledTimes(1);
-		expect(onDeleteConfirm).toHaveBeenCalledWith({ kind: 'fuel', entry: fuelEntry });
-
-		await fireEvent.click(
-			screen.getByRole('button', {
-				name: 'Cancel deleting fuel entry from Mar 10, 2026'
-			})
-		);
-		expect(onDeleteCancel).toHaveBeenCalledTimes(1);
-		expect(onDeleteCancel).toHaveBeenCalledWith({ kind: 'fuel', entry: fuelEntry });
+		// No arm-then-confirm UI appears after activation.
+		expect(screen.queryByText(/cannot be undone/i)).toBeNull();
+		expect(screen.queryByRole('button', { name: /confirm delete/i })).toBeNull();
+		expect(screen.queryByRole('button', { name: /cancel deleting/i })).toBeNull();
 	});
 
 	it('shows a Vehicle row in detail view when vehicleName is provided', () => {
@@ -284,21 +244,5 @@ describe('EntryDetailSheet', () => {
 		renderSheet({ kind: 'fuel', entry: createFuelEntry() });
 
 		expect(screen.queryByText('Vehicle')).toBeNull();
-	});
-
-	it('renders delete failures inside the visible sheet alert region', () => {
-		renderSheet(
-			{ kind: 'fuel', entry: createFuelEntry() },
-			{
-				deleteState: 'armed',
-				deleteErrorText: 'Could not delete fuel entry. Please try again.'
-			}
-		);
-
-		const dialog = screen.getByRole('dialog', { name: 'Entry details' });
-		const alert = within(dialog).getByRole('alert');
-
-		expect(alert).toBeTruthy();
-		expect(within(dialog).getByText('Could not delete fuel entry. Please try again.')).toBeTruthy();
 	});
 });

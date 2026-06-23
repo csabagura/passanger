@@ -128,6 +128,31 @@ export class ExpenseRepository {
 			return err('DELETE_FAILED', message);
 		}
 	}
+
+	// Inverse of deleteExpense: re-insert a deleted expense's snapshot at its ORIGINAL id (via
+	// put()). Expenses don't affect the fuel-consumption timeline, so there is no neighbor recompute.
+	async restoreExpense(snapshot: Expense): Promise<Result<void>> {
+		try {
+			await db.transaction('rw', db.expenses, async () => {
+				// The id should be free (Dexie ++id never reissues a deleted id); guard defensively.
+				const existing = await db.expenses.get(snapshot.id);
+				if (existing) {
+					throw new Error(`SAVE_FAILED:Expense ${snapshot.id} already present`);
+				}
+
+				await db.expenses.put(snapshot);
+			});
+			notifyDataChanged();
+			return ok(undefined);
+		} catch (e) {
+			const message = String(e);
+			if (message.startsWith('Error: SAVE_FAILED:')) {
+				return err('SAVE_FAILED', message.replace('Error: SAVE_FAILED:', ''));
+			}
+			if (isQuotaExceededError(e)) return err(QUOTA_EXCEEDED_CODE, QUOTA_EXCEEDED_MESSAGE);
+			return err('SAVE_FAILED', message);
+		}
+	}
 }
 
 export const expenseRepository = new ExpenseRepository();
@@ -139,3 +164,4 @@ export const getAllExpenses = (vehicleId?: number) => expenseRepository.getAllEx
 export const updateExpense = (id: number, changes: Partial<NewExpense>) =>
 	expenseRepository.updateExpense(id, changes);
 export const deleteExpense = (id: number) => expenseRepository.deleteExpense(id);
+export const restoreExpense = (snapshot: Expense) => expenseRepository.restoreExpense(snapshot);

@@ -5,6 +5,7 @@ import {
 	notifyTabsRestored,
 	subscribeTabSync,
 	closeTabSync,
+	getDataGeneration,
 	type TabSyncMessage
 } from './tabSync';
 import { TAB_SYNC_CHANNEL } from '$lib/config';
@@ -63,6 +64,32 @@ describe('tabSync', () => {
 
 		unsubscribe();
 		otherTab.close();
+	});
+
+	it('strictly increases the local data generation after each notifyDataChanged (AC4)', () => {
+		const before = getDataGeneration();
+		notifyDataChanged();
+		const afterFirst = getDataGeneration();
+		notifyDataChanged();
+		const afterSecond = getDataGeneration();
+
+		expect(afterFirst).toBeGreaterThan(before);
+		expect(afterSecond).toBeGreaterThan(afterFirst);
+	});
+
+	it('models the undo guard against the real counter: only data writes flip a captured generation (AC4)', () => {
+		// Exercise the exact comparison the History undo guard performs, against the REAL counter
+		// (no mock on either side) so the bump-and-guard plumbing is covered end-to-end.
+		const captured = getDataGeneration();
+
+		// Non-data notifications must NOT invalidate a pending undo.
+		notifySettingsChanged();
+		notifyTabsRestored();
+		expect(getDataGeneration() === captured).toBe(true);
+
+		// A committed data write must invalidate it.
+		notifyDataChanged();
+		expect(getDataGeneration() === captured).toBe(false);
 	});
 
 	it('does not throw and no-ops when BroadcastChannel is unavailable', () => {

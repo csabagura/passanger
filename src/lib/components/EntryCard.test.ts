@@ -177,9 +177,7 @@ describe('EntryCard', () => {
 			entry: createFuelEntry(),
 			currency: 'EUR ',
 			onEdit: vi.fn(),
-			onDeleteRequest: vi.fn(),
-			onDeleteConfirm: vi.fn(),
-			onDeleteCancel: vi.fn()
+			onDelete: vi.fn()
 		});
 
 		expect(
@@ -193,9 +191,7 @@ describe('EntryCard', () => {
 			entry: createMaintenanceEntry(),
 			currency: 'EUR ',
 			onEdit: vi.fn(),
-			onDeleteRequest: vi.fn(),
-			onDeleteConfirm: vi.fn(),
-			onDeleteCancel: vi.fn()
+			onDelete: vi.fn()
 		});
 
 		expect(
@@ -203,9 +199,8 @@ describe('EntryCard', () => {
 		).toBeTruthy();
 	});
 
-	it('renders the inline delete confirmation state and triggers confirm/cancel callbacks', async () => {
-		const onDeleteConfirm = vi.fn();
-		const onDeleteCancel = vi.fn();
+	it('fires onDelete directly in one action with no arm-then-confirm step (AC1)', async () => {
+		const onDelete = vi.fn();
 		const fuelEntry = createFuelEntry();
 
 		render(EntryCard, {
@@ -213,52 +208,42 @@ describe('EntryCard', () => {
 			entry: fuelEntry,
 			currency: 'EUR ',
 			onEdit: vi.fn(),
-			onDeleteRequest: vi.fn(),
-			onDeleteConfirm,
-			onDeleteCancel,
-			deleteState: 'armed'
+			onDelete
 		});
 
-		expect(screen.getByText('Delete this entry? This cannot be undone.')).toBeTruthy();
-
 		await fireEvent.click(
-			screen.getByRole('button', { name: /confirm delete fuel entry from Mar 10, 2026/i })
+			screen.getByRole('button', { name: /delete fuel entry from Mar 10, 2026/i })
 		);
-		expect(onDeleteConfirm).toHaveBeenCalledWith({ kind: 'fuel', entry: fuelEntry });
 
-		await fireEvent.click(
-			screen.getByRole('button', { name: /cancel deleting fuel entry from Mar 10, 2026/i })
-		);
-		expect(onDeleteCancel).toHaveBeenCalledWith({ kind: 'fuel', entry: fuelEntry });
+		expect(onDelete).toHaveBeenCalledTimes(1);
+		expect(onDelete).toHaveBeenCalledWith({ kind: 'fuel', entry: fuelEntry });
+		// No confirm/cancel controls exist after activation.
+		expect(screen.queryByRole('button', { name: /confirm delete/i })).toBeNull();
+		expect(screen.queryByRole('button', { name: /cancel deleting/i })).toBeNull();
 	});
 
-	it('only shows the destructive prompt on cards whose delete state is armed', () => {
+	it('never renders the banned "cannot be undone" confirmation copy (AC1, DEC-16)', () => {
 		render(EntryCard, {
 			kind: 'fuel',
 			entry: createFuelEntry({ id: 1 }),
 			currency: 'EUR ',
 			onEdit: vi.fn(),
-			onDeleteRequest: vi.fn(),
-			onDeleteConfirm: vi.fn(),
-			onDeleteCancel: vi.fn(),
-			deleteState: 'armed'
+			onDelete: vi.fn()
 		});
 
 		render(EntryCard, {
 			kind: 'maintenance',
 			entry: createMaintenanceEntry({ id: 2, type: 'Tyres' }),
 			currency: 'EUR ',
+			presentation: 'history',
+			actionPresentation: 'swipe',
+			actionsRevealed: true,
 			onEdit: vi.fn(),
-			onDeleteRequest: vi.fn(),
-			onDeleteConfirm: vi.fn(),
-			onDeleteCancel: vi.fn(),
-			deleteState: 'idle'
+			onDelete: vi.fn()
 		});
 
-		expect(screen.getAllByText('Delete this entry? This cannot be undone.')).toHaveLength(1);
-		expect(
-			screen.getByRole('button', { name: /delete maintenance entry from Mar 10, 2026/i })
-		).toBeTruthy();
+		expect(screen.queryByText(/cannot be undone/i)).toBeNull();
+		expect(screen.queryByText('Delete this entry? This cannot be undone.')).toBeNull();
 	});
 
 	it('renders the history presentation with date, icon surface, cost, and key detail', () => {
@@ -290,7 +275,7 @@ describe('EntryCard', () => {
 			actionPresentation: 'swipe',
 			onOpenDetail,
 			onEdit: vi.fn(),
-			onDeleteRequest: vi.fn()
+			onDelete: vi.fn()
 		});
 
 		const detailButton = screen.getByRole('button', {
@@ -306,13 +291,13 @@ describe('EntryCard', () => {
 		expect(onOpenDetail).toHaveBeenLastCalledWith({ kind: 'fuel', entry: fuelEntry });
 	});
 
-	it('does not open detail when swipe actions or delete confirmation controls are used', async () => {
+	it('does not open detail when swipe edit or delete actions are used', async () => {
 		const onOpenDetail = vi.fn();
 		const onEdit = vi.fn();
-		const onDeleteRequest = vi.fn();
+		const onDelete = vi.fn();
 		const maintenanceEntry = createMaintenanceEntry({ id: 44, type: 'Inspection' });
 
-		const view = render(EntryCard, {
+		render(EntryCard, {
 			kind: 'maintenance',
 			entry: maintenanceEntry,
 			currency: 'EUR ',
@@ -321,9 +306,7 @@ describe('EntryCard', () => {
 			actionsRevealed: true,
 			onOpenDetail,
 			onEdit,
-			onDeleteRequest,
-			onDeleteConfirm: vi.fn(),
-			onDeleteCancel: vi.fn()
+			onDelete
 		});
 
 		await fireEvent.click(
@@ -332,45 +315,13 @@ describe('EntryCard', () => {
 		expect(onEdit).toHaveBeenCalledWith({ kind: 'maintenance', entry: maintenanceEntry });
 		expect(onOpenDetail).not.toHaveBeenCalled();
 
-		await view.rerender({
-			kind: 'maintenance',
-			entry: maintenanceEntry,
-			currency: 'EUR ',
-			presentation: 'history',
-			actionPresentation: 'swipe',
-			actionsRevealed: true,
-			onOpenDetail,
-			onEdit,
-			onDeleteRequest,
-			onDeleteConfirm: vi.fn(),
-			onDeleteCancel: vi.fn()
-		});
-
 		await fireEvent.click(
 			screen.getByRole('button', { name: /delete maintenance entry from Mar 10, 2026/i })
 		);
-		expect(onDeleteRequest).toHaveBeenCalledWith({
+		expect(onDelete).toHaveBeenCalledWith({
 			kind: 'maintenance',
 			entry: maintenanceEntry
 		});
-		expect(onOpenDetail).not.toHaveBeenCalled();
-
-		await view.rerender({
-			kind: 'maintenance',
-			entry: maintenanceEntry,
-			currency: 'EUR ',
-			presentation: 'history',
-			actionPresentation: 'swipe',
-			actionsRevealed: true,
-			deleteState: 'armed',
-			onOpenDetail,
-			onEdit,
-			onDeleteRequest,
-			onDeleteConfirm: vi.fn(),
-			onDeleteCancel: vi.fn()
-		});
-
-		expect(screen.getByText('Delete this entry? This cannot be undone.')).toBeTruthy();
 		expect(onOpenDetail).not.toHaveBeenCalled();
 	});
 
@@ -385,7 +336,7 @@ describe('EntryCard', () => {
 			actionsRevealed: false,
 			onActionRevealChange,
 			onEdit: vi.fn(),
-			onDeleteRequest: vi.fn()
+			onDelete: vi.fn()
 		});
 
 		const card = screen.getByRole('group', { name: /fuel entry/i });
@@ -409,7 +360,7 @@ describe('EntryCard', () => {
 			actionsRevealed: true,
 			onActionRevealChange,
 			onEdit: vi.fn(),
-			onDeleteRequest: vi.fn()
+			onDelete: vi.fn()
 		});
 
 		expect(screen.getByRole('button', { name: /edit fuel entry from/i })).toBeTruthy();
@@ -429,7 +380,7 @@ describe('EntryCard', () => {
 			actionsRevealed: false,
 			onActionRevealChange: firstRevealSpy,
 			onEdit: vi.fn(),
-			onDeleteRequest: vi.fn()
+			onDelete: vi.fn()
 		});
 
 		const secondView = render(EntryCard, {
@@ -441,7 +392,7 @@ describe('EntryCard', () => {
 			actionsRevealed: false,
 			onActionRevealChange: secondRevealSpy,
 			onEdit: vi.fn(),
-			onDeleteRequest: vi.fn()
+			onDelete: vi.fn()
 		});
 
 		const firstCard = within(firstView.container).getByRole('group', { name: /fuel entry/i });
@@ -463,7 +414,7 @@ describe('EntryCard', () => {
 			actionsRevealed: true,
 			onActionRevealChange: firstRevealSpy,
 			onEdit: vi.fn(),
-			onDeleteRequest: vi.fn()
+			onDelete: vi.fn()
 		});
 
 		await fireEvent.pointerDown(secondCard, { pointerId: 2, clientX: 200, clientY: 16 });
@@ -480,7 +431,7 @@ describe('EntryCard', () => {
 			actionsRevealed: false,
 			onActionRevealChange: firstRevealSpy,
 			onEdit: vi.fn(),
-			onDeleteRequest: vi.fn()
+			onDelete: vi.fn()
 		});
 		await secondView.rerender({
 			kind: 'maintenance',
@@ -491,7 +442,7 @@ describe('EntryCard', () => {
 			actionsRevealed: true,
 			onActionRevealChange: secondRevealSpy,
 			onEdit: vi.fn(),
-			onDeleteRequest: vi.fn()
+			onDelete: vi.fn()
 		});
 
 		expect(
@@ -504,9 +455,8 @@ describe('EntryCard', () => {
 		).toBeTruthy();
 	});
 
-	it('keeps delete confirmation reachable in history swipe mode', async () => {
-		const onDeleteConfirm = vi.fn();
-		const onDeleteCancel = vi.fn();
+	it('keeps a single-action Delete reachable in history swipe mode (AC1)', async () => {
+		const onDelete = vi.fn();
 		const maintenanceEntry = createMaintenanceEntry({ id: 55, type: 'Inspection' });
 
 		render(EntryCard, {
@@ -516,33 +466,19 @@ describe('EntryCard', () => {
 			presentation: 'history',
 			actionPresentation: 'swipe',
 			actionsRevealed: true,
-			deleteState: 'armed',
 			onEdit: vi.fn(),
-			onDeleteRequest: vi.fn(),
-			onDeleteConfirm,
-			onDeleteCancel
-		});
-
-		expect(screen.getByText('Delete this entry? This cannot be undone.')).toBeTruthy();
-
-		await fireEvent.click(
-			screen.getByRole('button', {
-				name: /confirm delete maintenance entry from Mar 10, 2026/i
-			})
-		);
-		expect(onDeleteConfirm).toHaveBeenCalledWith({
-			kind: 'maintenance',
-			entry: maintenanceEntry
+			onDelete
 		});
 
 		await fireEvent.click(
 			screen.getByRole('button', {
-				name: /cancel deleting maintenance entry from Mar 10, 2026/i
+				name: /delete maintenance entry from Mar 10, 2026/i
 			})
 		);
-		expect(onDeleteCancel).toHaveBeenCalledWith({
+		expect(onDelete).toHaveBeenCalledWith({
 			kind: 'maintenance',
 			entry: maintenanceEntry
 		});
+		expect(screen.queryByText(/cannot be undone/i)).toBeNull();
 	});
 });

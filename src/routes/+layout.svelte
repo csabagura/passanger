@@ -176,13 +176,33 @@
 		};
 	});
 
-	// Theme: toggle .dark class on <html> based on settings.theme
+	// Theme: track the OS color-scheme as reactive state so BOTH the <html>.dark class and the
+	// <Toaster theme> (Story 2.4 AC-8) react to a live system-theme change, not just the .dark class.
+	let systemPrefersDark = $state(
+		typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+			? window.matchMedia('(prefers-color-scheme: dark)').matches
+			: false
+	);
+
+	// AC-8: the resolved theme ('dark' | 'light') is passed to <Toaster>, overriding the inert
+	// `theme={mode.current}` mode-watcher binding in ui/sonner (no <ModeWatcher> is mounted), so a
+	// raised error toast renders in the app's actual theme.
+	const resolvedTheme = $derived<'dark' | 'light'>(
+		settings.theme === 'dark' || (settings.theme === 'system' && systemPrefersDark)
+			? 'dark'
+			: 'light'
+	);
+
+	// Toggle <html>.dark AND keep systemPrefersDark in sync. The class is toggled imperatively (not
+	// derived) so an OS-preference 'change' event updates it synchronously, without waiting for a
+	// reactive flush; the same handler also updates systemPrefersDark so <Toaster theme> reacts.
 	$effect(() => {
 		const theme = settings.theme;
 		const prefersDark =
 			typeof window.matchMedia === 'function'
 				? window.matchMedia('(prefers-color-scheme: dark)')
 				: null;
+		systemPrefersDark = prefersDark?.matches ?? false;
 
 		const shouldBeDark =
 			theme === 'dark' || (theme === 'system' && (prefersDark?.matches ?? false));
@@ -190,6 +210,7 @@
 
 		if (theme === 'system' && prefersDark) {
 			const onSystemChange = () => {
+				systemPrefersDark = prefersDark.matches;
 				document.documentElement.classList.toggle('dark', prefersDark.matches);
 			};
 			prefersDark.addEventListener('change', onSystemChange);
@@ -384,4 +405,4 @@
 <NavBar />
 <Fab />
 <CaptureSheet />
-<Toaster />
+<Toaster theme={resolvedTheme} />
