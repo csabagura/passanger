@@ -42,4 +42,33 @@ describe('createCaptureSheet', () => {
 		// mode is sticky across a close — only a fresh openSheet(mode) resets it
 		expect(capture.mode).toBe('expense');
 	});
+
+	it('starts with a null prefill', () => {
+		const capture = createCaptureSheet();
+		expect(capture.prefill).toBeNull();
+	});
+
+	it("openSheet('expense', { expenseType }) exposes the prefill (Log this service)", () => {
+		const capture = createCaptureSheet();
+		capture.openSheet('expense', { expenseType: 'Oil change' });
+		expect(capture.open).toBe(true);
+		expect(capture.mode).toBe('expense');
+		expect(capture.prefill?.expenseType).toBe('Oil change');
+	});
+
+	it('openSheet() with no prefill resets a stale prefill (a fresh FAB tap)', () => {
+		const capture = createCaptureSheet();
+		capture.openSheet('expense', { expenseType: 'Oil change' });
+		capture.close();
+		// FAB → openSheet('fuel') carries no prefill, so it must clear the previous one.
+		capture.openSheet('fuel');
+		expect(capture.prefill).toBeNull();
+	});
+
+	it('close() clears the prefill', () => {
+		const capture = createCaptureSheet();
+		capture.openSheet('expense', { expenseType: 'Oil change' });
+		capture.close();
+		expect(capture.prefill).toBeNull();
+	});
 });

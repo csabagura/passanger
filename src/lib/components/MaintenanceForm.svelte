@@ -36,6 +36,10 @@
 		onCancel?: () => void;
 		onSuccessFeedbackComplete?: () => void;
 		onFirstCreateSave?: (expense: Expense) => void;
+		// Story 3.5: "Log this service" pre-fills the Type with a reminder title. Create mode only;
+		// the reminder title wins over a stale durable draft. The form mounts fresh on each Capture
+		// open, so seeding via the $state initializer (NOT an $effect) is correct — see CaptureSheet.
+		initialType?: string;
 	}
 
 	// Story 2.4: save failures surface on the toast channel (AC-4/7), not an inline error card, so
@@ -54,7 +58,8 @@
 		initialExpense = undefined,
 		onCancel = () => {},
 		onSuccessFeedbackComplete = () => {},
-		onFirstCreateSave = () => {}
+		onFirstCreateSave = () => {},
+		initialType = undefined
 	}: Props = $props();
 
 	let hasCreatedFirstSave = $state(false);
@@ -102,8 +107,14 @@
 			? toLocalDateInputValue(getInitialExpense()!.date)
 			: (maintenanceDraft['date'] ?? getTodayDateInputValue())
 	);
+	// Story 3.5: a "Log this service" prefill wins over a stale durable draft. Capturing only the
+	// initial value is intentional — the form mounts fresh on each Capture open, so this initializer
+	// re-seeds every time; an $effect would clobber the user's typing. Hence the svelte-ignore.
+	// svelte-ignore state_referenced_locally
 	let typeValue = $state(
-		getInitialExpense() ? getInitialExpense()!.type : (maintenanceDraft['type'] ?? '')
+		getInitialExpense()
+			? getInitialExpense()!.type
+			: (initialType ?? maintenanceDraft['type'] ?? '')
 	);
 	let odometerValue = $state(
 		getInitialExpense() && getInitialExpense()!.odometer !== undefined

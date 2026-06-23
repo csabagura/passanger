@@ -8,11 +8,23 @@
 
 export type CaptureMode = 'fuel' | 'expense';
 
+/**
+ * Optional values to pre-fill a freshly-opened Capture form (AD-4b: the context is "open/close +
+ * prefill"). Story 3.5 uses `expenseType` so "Log this service" seeds the Expense Type with the
+ * reminder title. Reset on every open and cleared on close so a plain FAB tap never inherits a
+ * stale prefill.
+ */
+export interface CapturePrefill {
+	expenseType?: string;
+}
+
 export interface CaptureSheetContext {
 	readonly open: boolean;
 	readonly mode: CaptureMode;
-	/** Open the sheet; FAB passes 'fuel', the deep link passes the matched param. Omit to keep mode. */
-	openSheet(mode?: CaptureMode): void;
+	readonly prefill: CapturePrefill | null;
+	/** Open the sheet; FAB passes 'fuel', the deep link passes the matched param. Omit to keep mode.
+	 *  `prefill` seeds the opened form (cleared on a plain open) — AD-4b "open/close + prefill". */
+	openSheet(mode?: CaptureMode, prefill?: CapturePrefill): void;
 	/** Swap the active segment without opening/closing — the segmented-control onValueChange. */
 	setMode(mode: CaptureMode): void;
 	close(): void;
@@ -21,6 +33,7 @@ export interface CaptureSheetContext {
 export function createCaptureSheet(): CaptureSheetContext {
 	let open = $state(false);
 	let mode = $state<CaptureMode>('fuel');
+	let prefill = $state<CapturePrefill | null>(null);
 
 	return {
 		get open() {
@@ -29,8 +42,13 @@ export function createCaptureSheet(): CaptureSheetContext {
 		get mode() {
 			return mode;
 		},
-		openSheet(next) {
+		get prefill() {
+			return prefill;
+		},
+		openSheet(next, nextPrefill) {
 			if (next) mode = next;
+			// Set on EVERY open so a fresh FAB tap (no prefill arg) clears any stale value.
+			prefill = nextPrefill ?? null;
 			open = true;
 		},
 		setMode(next) {
@@ -38,6 +56,7 @@ export function createCaptureSheet(): CaptureSheetContext {
 		},
 		close() {
 			open = false;
+			prefill = null;
 		}
 	};
 }

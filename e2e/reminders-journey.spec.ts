@@ -57,7 +57,7 @@ test('reminders smoke: add a service reminder and see its due status', async ({ 
 	await expect(reminderItem.getByText(/Due in .*7 days/)).toBeVisible();
 });
 
-test('due-soon card: an overdue reminder surfaces on /log and taps through to Settings', async ({
+test('Up-Next card: an overdue reminder surfaces on Home and "Log this service" prefills Capture', async ({
 	page
 }) => {
 	await createVehicle(page, 'Trail Wagon');
@@ -86,20 +86,23 @@ test('due-soon card: an overdue reminder surfaces on /log and taps through to Se
 	await expect(settingsItem).toBeVisible();
 	await expect(settingsItem.getByText('Overdue', { exact: true })).toBeVisible();
 
-	// Story 3.3: the due card now lives in Home's Up-Next slot (the /log surface is retired).
+	// Story 3.5: the rich Up-Next card now lives in Home's Up-Next slot.
 	await page.goto('/');
 	await page.waitForLoadState('networkidle');
 
-	const dueCard = page.getByRole('list', { name: 'Due reminders' });
-	await expect(dueCard).toBeVisible();
-	const dueRow = dueCard.getByRole('listitem').filter({ hasText: 'Oil change' });
-	await expect(dueRow).toBeVisible();
-	await expect(dueRow.getByText('Overdue by 53 days')).toBeVisible();
-	await expect(dueRow.getByText('Overdue', { exact: true })).toBeVisible();
+	const upNext = page.getByRole('region', { name: /up next/i });
+	await expect(upNext).toBeVisible();
+	await expect(upNext.getByText('Oil change')).toBeVisible();
+	await expect(upNext.getByText(/Overdue by 53 days/)).toBeVisible();
 
-	// Tapping the row deep-links to the Settings reminders section.
-	await dueRow.getByRole('button').click();
-	await page.waitForLoadState('networkidle');
-	await expect(page).toHaveURL(/\/settings/);
-	await expect(page.getByRole('heading', { name: 'Reminders' })).toBeVisible();
+	// "Log this service" opens the Capture sheet on the Expense segment with the Type prefilled.
+	await upNext.getByRole('button', { name: 'Log this service' }).click();
+	await expect(page.getByText('Log an entry')).toBeVisible();
+	await expect(page.getByRole('tab', { name: 'Expense', selected: true })).toBeVisible();
+	await expect(page.getByLabel(/^Type$/)).toHaveValue('Oil change');
+
+	// Close the sheet, then dismiss the card — it disappears (and Home stays calm).
+	await page.getByRole('button', { name: /close/i }).click();
+	await page.getByRole('button', { name: 'Dismiss Oil change reminder' }).click();
+	await expect(page.getByRole('region', { name: /up next/i })).toHaveCount(0);
 });
