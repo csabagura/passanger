@@ -1,4 +1,10 @@
 import Dexie, { type EntityTable } from 'dexie';
+
+// Re-export Dexie's `liveQuery` from inside the db boundary so reactive read adapters
+// (state/liveQuery.svelte.ts, AD-4) can subscribe to storage-mutation events without
+// importing `dexie` directly — eslint hard-errors on `dexie` imports outside src/lib/db/**.
+// Keeping the raw import here preserves the "Dexie is isolated to the db layer" invariant.
+export { liveQuery } from 'dexie';
 import { DB_NAME } from '$lib/config';
 import type { Vehicle, FuelLog, Expense, ServiceReminder } from './schema';
 import { migrateV1ToV2 } from './migrations/v2';
