@@ -1,17 +1,28 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import { resolve } from '$app/paths';
-	import Fuel from '@lucide/svelte/icons/fuel';
-	import ClipboardList from '@lucide/svelte/icons/clipboard-list';
+	import House from '@lucide/svelte/icons/house';
 	import BarChart3 from '@lucide/svelte/icons/bar-chart-3';
-	import Download from '@lucide/svelte/icons/download';
+	import ClipboardList from '@lucide/svelte/icons/clipboard-list';
+	import Wrench from '@lucide/svelte/icons/wrench';
 
+	// DEC-1 bottom nav: Home · Understand · [FAB] · History · Maintain (UX-DR5). The centre slot is
+	// the floating <Fab> (mounted by the layout, visually centred over the bar) — it is NOT a nav link,
+	// so the bar renders four links with an empty centre spacer the FAB sits above.
+	//
+	// Interim targets (Story 3.3 Dev Notes §4, OQ-2/3): the /understand and /maintain route bodies are
+	// Epic-4 work (Stories 4.4/4.5), so Understand points at the existing /analytics precursor and
+	// Maintain at /settings (reminders live there today). No nav item may 404; both retarget in Epic 4.
 	const tabs = [
-		{ href: '/log', label: 'Log', icon: Fuel },
+		{ href: '/', label: 'Home', icon: House },
+		{ href: '/analytics', label: 'Understand', icon: BarChart3 },
 		{ href: '/history', label: 'History', icon: ClipboardList },
-		{ href: '/analytics', label: 'Analytics', icon: BarChart3 },
-		{ href: '/export', label: 'Export', icon: Download }
+		{ href: '/settings', label: 'Maintain', icon: Wrench }
 	] as const;
+
+	// Index in `tabs` BEFORE which the centre FAB spacer is inserted (between Understand and History),
+	// so the FAB lands dead-centre over a 5-column bar.
+	const FAB_SLOT_INDEX = 2;
 
 	const currentPath = $derived(page.url.pathname);
 
@@ -65,7 +76,11 @@
 	style="padding-bottom: env(safe-area-inset-bottom);"
 	aria-label="Main navigation"
 >
-	{#each tabs as tab (tab.href)}
+	{#each tabs as tab, index (tab.href)}
+		{#if index === FAB_SLOT_INDEX}
+			<!-- Centre spacer reserving the column the floating <Fab> visually occupies (DEC-1). -->
+			<div class="min-w-[44px] flex-1" aria-hidden="true"></div>
+		{/if}
 		{@const resolvedHref = resolve(tab.href)}
 		{@const isActive = currentPath === resolvedHref}
 		<a

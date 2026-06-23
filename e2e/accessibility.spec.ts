@@ -3,9 +3,12 @@ import AxeBuilder from '@axe-core/playwright';
 
 const WCAG_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'];
 
+// Story 3.3: Home (/) is the default surface. /fuel-entry, /maintenance and /log no longer render
+// standalone form pages — they redirect into the global Capture sheet — so the scanned route set is
+// Home + the surviving destination pages (History, Export, Settings). The Capture sheet itself is
+// scanned separately below (it is a portalled dialog, not a route).
 const routes = [
-	{ name: 'Fuel Entry', path: '/fuel-entry' },
-	{ name: 'Maintenance', path: '/maintenance' },
+	{ name: 'Home', path: '/' },
 	{ name: 'History', path: '/history' },
 	{ name: 'Export', path: '/export' },
 	{ name: 'Settings', path: '/settings' }
@@ -40,29 +43,40 @@ for (const route of routes) {
 	});
 }
 
-test('Root (/) redirects to /log', async ({ page }) => {
+test('Root (/) renders Home without redirecting', async ({ page }) => {
 	await page.goto('/');
-	await expect(page).toHaveURL(/\/log/);
+	await page.waitForLoadState('networkidle');
+	// No redirect away from root, and the Home tab is the active nav item.
+	await expect(page).toHaveURL(/\/$/);
+	const homeLink = page
+		.getByRole('navigation', { name: 'Main navigation' })
+		.getByRole('link', { name: 'Home' });
+	await expect(homeLink).toHaveAttribute('aria-current', 'page');
 });
 
-test('Fuel Entry form fields are reachable via Tab and show visible focus', async ({ page }) => {
+test('Legacy /fuel-entry redirects into the Capture sheet on Home', async ({ page }) => {
 	await page.goto('/fuel-entry');
 	await page.waitForLoadState('networkidle');
+	// Lands on Home with the Capture sheet opened (the `?capture=fuel` param is stripped by the layout).
+	await expect(page.getByText('Log an entry')).toBeVisible();
+	await expect(page).not.toHaveURL(/fuel-entry|\/log/);
+});
 
-	// Tab through form — expect focus reaches the first input field
+test('Legacy /maintenance redirects into the Capture sheet on Home', async ({ page }) => {
+	await page.goto('/maintenance');
+	await page.waitForLoadState('networkidle');
+	await expect(page.getByText('Log an entry')).toBeVisible();
+	await expect(page).not.toHaveURL(/maintenance/);
+});
+
+test('Capture sheet is reachable via keyboard and shows visible focus', async ({ page }) => {
+	await page.goto('/?capture=fuel');
+	await page.waitForLoadState('networkidle');
+	await expect(page.getByText('Log an entry')).toBeVisible();
+
+	// bits-ui Dialog traps focus inside the sheet; tabbing must keep focus on a visible-focus control.
 	await page.keyboard.press('Tab');
 
-	// Keep tabbing until we reach an input field (skip any initial elements)
-	for (let i = 0; i < 10; i++) {
-		const tag = await page.evaluate(() => document.activeElement?.tagName);
-		if (tag === 'INPUT' || tag === 'SELECT' || tag === 'BUTTON') break;
-		await page.keyboard.press('Tab');
-	}
-
-	const activeTag = await page.evaluate(() => document.activeElement?.tagName);
-	expect(['INPUT', 'SELECT', 'BUTTON']).toContain(activeTag);
-
-	// Verify focus is visible (outline or ring style)
 	const focusVisible = await page.evaluate(() => {
 		const el = document.activeElement;
 		if (!el) return false;
@@ -78,14 +92,14 @@ test('Fuel Entry form fields are reachable via Tab and show visible focus', asyn
 
 test('App is fully usable with prefers-reduced-motion: reduce', async ({ page }) => {
 	await page.emulateMedia({ reducedMotion: 'reduce' });
-	await page.goto('/fuel-entry');
+	await page.goto('/');
 	await page.waitForLoadState('networkidle');
 
-	// Verify page loads and is interactive with reduced motion
+	// Verify Home loads and is interactive with reduced motion
 	await expect(page.locator('nav[aria-label="Main navigation"]')).toBeVisible();
 
-	// Navigate to each route to confirm no motion-dependent features break
-	for (const path of ['/maintenance', '/history', '/export']) {
+	// Navigate to each surviving route to confirm no motion-dependent features break
+	for (const path of ['/history', '/export', '/settings']) {
 		await page.goto(path);
 		await page.waitForLoadState('networkidle');
 		await expect(page.locator('nav[aria-label="Main navigation"]')).toBeVisible();
@@ -93,7 +107,7 @@ test('App is fully usable with prefers-reduced-motion: reduce', async ({ page })
 });
 
 test('NavBar tabs are reachable via keyboard', async ({ page }) => {
-	await page.goto('/fuel-entry');
+	await page.goto('/');
 	await page.waitForLoadState('networkidle');
 
 	const nav = page.locator('nav[aria-label="Main navigation"]');
@@ -116,8 +130,8 @@ test('NavBar tabs are reachable via keyboard', async ({ page }) => {
 	});
 	expect(navLink).toBe(true);
 
-	// Arrow right should move to next tab (Log → History in the current NavBar)
+	// Arrow right should move to the next tab (Home → Understand / /analytics in the DEC-1 NavBar)
 	await page.keyboard.press('ArrowRight');
 	const href = await page.evaluate(() => (document.activeElement as HTMLAnchorElement)?.pathname);
-	expect(href).toBe('/history');
+	expect(href).toBe('/analytics');
 });

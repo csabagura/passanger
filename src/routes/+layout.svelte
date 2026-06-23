@@ -2,7 +2,7 @@
 	import '../app.css';
 	import { setContext } from 'svelte';
 	import { page } from '$app/state';
-	import { replaceState } from '$app/navigation';
+	import { replaceState, afterNavigate } from '$app/navigation';
 	import UpdatePrompt from '$lib/components/UpdatePrompt.svelte';
 	import AppHeader from '$lib/components/AppHeader.svelte';
 	import NavBar from '$lib/components/NavBar.svelte';
@@ -12,6 +12,14 @@
 	import { consumeCaptureDeepLink } from '$lib/state/captureDeepLink';
 	import StorageProtectionNotice from '$lib/components/StorageProtectionNotice.svelte';
 	import TabSyncNotice from '$lib/components/TabSyncNotice.svelte';
+	import InstallPrompt from '$lib/components/InstallPrompt.svelte';
+	import OnboardingSurvey from '$lib/components/OnboardingSurvey.svelte';
+	import {
+		shouldShowOnboardingSurvey,
+		saveOnboardingSurveyResponse,
+		dismissOnboardingSurvey
+	} from '$lib/utils/onboardingSurvey';
+	import type { OnboardingSurveyResponse } from '$lib/utils/onboardingSurvey';
 	import { Toaster } from '$lib/components/ui/sonner';
 	import { toast } from '$lib/state/toast';
 	import {
@@ -60,8 +68,14 @@
 
 	// `?capture=fuel|expense` deep link: open the sheet on the matching segment, then strip the param
 	// via replaceState so closing / reload / back doesn't re-trigger it and the URL reflects real state.
-	// Route-agnostic (reads the current URL), so it works before the legacy redirects are retired (3.2).
-	$effect(() => {
+	// Route-agnostic (reads the current URL). Story 3.3: the legacy /log, /fuel-entry and /maintenance
+	// redirects land here with `?capture=…` on a COLD load. This MUST run via afterNavigate, not a bare
+	// $effect — `replaceState` called during the initial hydration flush crashes (the SvelteKit client
+	// router isn't initialized yet → `$set` of undefined and a blank app). afterNavigate fires after the
+	// router is ready, on the initial load AND every subsequent navigation, so cold-load redirects and
+	// warm `?capture=` link clicks both consume safely. (The shallow replaceState strip does not itself
+	// re-trigger afterNavigate, so there is no loop.)
+	afterNavigate(() => {
 		consumeCaptureDeepLink(page.url, captureSheet, (cleaned) =>
 			// eslint-disable-next-line svelte/no-navigation-without-resolve -- `cleaned` is the current page.url with the `capture` query param removed; it is already base-path-resolved, so resolve() does not apply.
 			replaceState(cleaned, page.state)
@@ -298,6 +312,50 @@
 
 	setContext('installPrompt', installPromptContext);
 
+	// Story 3.3 (AC-7): first-Capture → install-prompt / onboarding-survey gate (FR40). Pre-3.3 the
+	// retired /log inline forms owned this via their `onFirstCreateSave`. Capture now happens in the
+	// global sheet, so the layout owns the gate: <CaptureSheet> forwards each form's first-create-save
+	// here, and the prompt/survey render in the main flow (the sheet has closed by the time they show).
+	let firstSuccessfulCreateSave = $state(false);
+	let installPromptHiddenByInteraction = $state(false);
+	let onboardingSurveyEligible = $state(shouldShowOnboardingSurvey());
+
+	const showInstallPrompt = $derived(
+		firstSuccessfulCreateSave &&
+			!installPromptHiddenByInteraction &&
+			installPromptContext.canShowPrompt
+	);
+	const showOnboardingSurvey = $derived(
+		firstSuccessfulCreateSave && !showInstallPrompt && onboardingSurveyEligible
+	);
+
+	function handleFirstCreateSave() {
+		firstSuccessfulCreateSave = true;
+		installPromptHiddenByInteraction = false;
+	}
+
+	function handleSurveySubmit(response: OnboardingSurveyResponse) {
+		saveOnboardingSurveyResponse(response);
+		onboardingSurveyEligible = false;
+	}
+
+	function handleSurveyDismiss() {
+		dismissOnboardingSurvey();
+		onboardingSurveyEligible = false;
+	}
+
+	function handleInstallPromptDismiss() {
+		installPromptHiddenByInteraction = true;
+		firstSuccessfulCreateSave = false;
+		installPromptContext.dismissPrompt();
+	}
+
+	async function handleInstallPromptInstall() {
+		installPromptHiddenByInteraction = true;
+		firstSuccessfulCreateSave = false;
+		await installPromptContext.requestInstall();
+	}
+
 	// Storage protection — only runs in browser window context (Task 1.4)
 	let storageOutcome = $state<StoragePersistenceOutcome | null>(null);
 	let noticeDismissed = $state(false);
@@ -400,9 +458,25 @@
 	{/if}
 	<div class="mx-auto w-full lg:max-w-[480px]">
 		{@render children()}
+		{#if showInstallPrompt}
+			<!-- Story 3.3 (AC-7): shown after the first successful Capture, once the sheet has closed. -->
+			<div class="px-4 pb-4">
+				<InstallPrompt
+					platform={installPromptContext.platform}
+					canTriggerNativeInstall={installPromptContext.canTriggerNativeInstall}
+					onInstall={handleInstallPromptInstall}
+					onDismiss={handleInstallPromptDismiss}
+				/>
+			</div>
+		{/if}
+		{#if showOnboardingSurvey}
+			<div class="px-4 pb-4">
+				<OnboardingSurvey onSubmit={handleSurveySubmit} onDismiss={handleSurveyDismiss} />
+			</div>
+		{/if}
 	</div>
 </main>
 <NavBar />
 <Fab />
-<CaptureSheet />
+<CaptureSheet onFirstCreateSave={handleFirstCreateSave} />
 <Toaster theme={resolvedTheme} />

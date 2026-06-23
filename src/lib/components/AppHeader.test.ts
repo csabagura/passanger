@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/svelte';
 import AppHeader from './AppHeader.svelte';
 
-let mockPathname = '/log';
+let mockPathname = '/';
 let mockBasePath = '';
 
 vi.mock('$app/state', () => ({
@@ -50,13 +50,13 @@ function renderHeader(vehiclesCtx = makeVehiclesContext()) {
 
 describe('AppHeader', () => {
 	beforeEach(() => {
-		mockPathname = '/log';
+		mockPathname = '/';
 		mockBasePath = '';
 	});
 
 	it('renders screen title and settings link', () => {
 		renderHeader();
-		expect(screen.getByText('Log')).toBeTruthy();
+		expect(screen.getByText('Home')).toBeTruthy();
 		const settingsLink = screen.getByRole('link', { name: 'Settings' });
 		expect(settingsLink).toBeTruthy();
 		expect(settingsLink.getAttribute('href')).toBe('/settings');

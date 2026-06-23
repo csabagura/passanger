@@ -31,7 +31,10 @@ const mockToast = vi.hoisted(() => ({
 
 vi.mock('$lib/db/repositories/expenses', () => ({
 	saveExpense: (...args: unknown[]) => mockSaveExpense(...args),
-	updateExpense: (...args: unknown[]) => mockUpdateExpense(...args)
+	updateExpense: (...args: unknown[]) => mockUpdateExpense(...args),
+	// Story 3.3 (AC-7): the create-mode form seeds its first-create guard from existing expenses.
+	// Default to empty so the existing first-create-save tests still fire onFirstCreateSave.
+	getAllExpenses: () => Promise.resolve({ data: [], error: null })
 }));
 
 vi.mock('svelte', async (importOriginal) => {

@@ -10,7 +10,7 @@ import { render, cleanup } from '@testing-library/svelte';
 import { createRawSnippet, flushSync } from 'svelte';
 import Layout from './+layout.svelte';
 
-const mockPathname = '/log';
+const mockPathname = '/';
 
 vi.mock('$app/state', () => ({
 	page: {
