@@ -43,7 +43,6 @@ export const REMINDER_DUE_SOON_DAYS = 14;
 export const MAX_CSV_ROWS = 10_000;
 export const IMPORT_FILE_SIZE_WARN_BYTES = 5 * 1024 * 1024; // 5MB — show amber warning
 export const IMPORT_FILE_SIZE_MAX_BYTES = 10 * 1024 * 1024; // 10MB — hard reject
-export const RESULT_CARD_DISMISS_MS = 3000; // inline result card auto-dismiss duration
 export const TOAST_DURATION_MS = 4000; // default sonner toast auto-dismiss (success/error)
 export const TOAST_UNDO_DURATION_MS = 5000; // action (Undo) toast window — reused by FR-7/AD-7
 export const SETTINGS_STORAGE_KEY = 'passanger_settings'; // localStorage key for settings

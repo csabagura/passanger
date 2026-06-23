@@ -37,7 +37,7 @@ async function addFuelLog(
 	await page.getByRole('button', { name: 'Save', exact: true }).click();
 
 	// The form surfaces an inline success result card after a successful save.
-	await expect(page.getByRole('status').filter({ hasText: /Logged|log one more/i })).toBeVisible();
+	await expect(page.getByRole('status').filter({ hasText: /Saved|log one more/i })).toBeVisible();
 }
 
 async function gotoHistory(page: Page): Promise<void> {
@@ -119,14 +119,27 @@ test('fuel lifecycle: create vehicle, add logs, view, edit cost, delete', async 
 	// The stat bar now sums to 60 + 90 = 150.
 	await expect(totalSpendValue(page)).toHaveText('€150.00');
 
-	// The edit form auto-dismisses after its success feedback, returning to the list.
+	// Story 2.4: the confirmation persists until dismissed — tapping Done closes the edit form.
+	await page.getByRole('button', { name: 'Done', exact: true }).click();
 	await expect(page.getByRole('heading', { name: 'Editing fuel entry' })).toHaveCount(0);
 
-	// Delete the edited entry via its detail sheet.
+	// Delete the edited entry via its detail sheet — a single action, no confirm dialog (FR-7).
 	const sheetForDelete = await openFirstEntryDetail(page);
 	await expect(sheetForDelete.getByText('€90.00')).toBeVisible();
-	await sheetForDelete.getByRole('button', { name: 'Delete', exact: true }).click();
-	await sheetForDelete.getByRole('button', { name: /Confirm delete/i }).click();
+	await sheetForDelete.getByRole('button', { name: /Delete fuel entry/i }).click();
+
+	// The entry disappears immediately and an Undo action toast appears (~5s window).
+	await expect(entriesList(page).getByText('€90.00')).toHaveCount(0);
+	await expect(page.getByText('Deleted. Undo?')).toBeVisible();
+
+	// Undo brings the entry back with its cost and restores the stat bar.
+	await page.getByRole('button', { name: 'Undo' }).click();
+	await expect(entriesList(page).getByText('€90.00')).toBeVisible();
+	await expect(totalSpendValue(page)).toHaveText('€150.00');
+
+	// Delete it again to reach the final single-entry state; this time leave the Undo window be.
+	const sheetForDeleteAgain = await openFirstEntryDetail(page);
+	await sheetForDeleteAgain.getByRole('button', { name: /Delete fuel entry/i }).click();
 
 	// The deleted entry is gone; only the €60 entry remains in the list.
 	await expect(entriesList(page).getByText('€90.00')).toHaveCount(0);

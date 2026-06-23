@@ -11,7 +11,6 @@
 	const HISTORY_SWIPE_SLOP = 12;
 
 	type EntryKind = 'fuel' | 'maintenance';
-	type DeleteState = 'idle' | 'armed' | 'loading';
 	type ActionPresentation = 'buttons' | 'swipe';
 	type EntryPresentation = 'maintenance' | 'history';
 	type PointerGestureLock = 'pending' | 'horizontal' | 'vertical';
@@ -36,11 +35,7 @@
 		detailDisabled?: boolean;
 		onOpenDetail?: (request: EntryActionRequest) => void;
 		onEdit?: (request: EntryActionRequest) => void;
-		onDeleteRequest?: (request: EntryActionRequest) => void;
-		onDeleteConfirm?: (request: EntryActionRequest) => void;
-		onDeleteCancel?: (request: EntryActionRequest) => void;
-		deleteState?: DeleteState;
-		deleteDisabled?: boolean;
+		onDelete?: (request: EntryActionRequest) => void;
 		currency: string;
 		preferredFuelUnit?: FuelUnit;
 		presentation?: EntryPresentation;
@@ -57,11 +52,7 @@
 		detailDisabled = false,
 		onOpenDetail = () => {},
 		onEdit = () => {},
-		onDeleteRequest = () => {},
-		onDeleteConfirm = () => {},
-		onDeleteCancel = () => {},
-		deleteState = 'idle',
-		deleteDisabled = false,
+		onDelete = () => {},
 		currency,
 		preferredFuelUnit = 'L/100km',
 		presentation = 'maintenance',
@@ -74,11 +65,8 @@
 	let dragTranslateX = $state<number | null>(null);
 	let suppressDetailOpen = $state(false);
 
-	const deletePromptVisible = $derived(deleteState === 'armed' || deleteState === 'loading');
 	const restingTranslateX = $derived(
-		actionPresentation === 'swipe' && !deletePromptVisible && actionsRevealed
-			? -HISTORY_ACTION_WIDTH
-			: 0
+		actionPresentation === 'swipe' && actionsRevealed ? -HISTORY_ACTION_WIDTH : 0
 	);
 	const cardTranslateX = $derived(
 		actionPresentation === 'swipe' ? (dragTranslateX ?? restingTranslateX) : 0
@@ -142,7 +130,7 @@
 	}
 
 	function requestActionReveal(nextRevealed: boolean): void {
-		if (actionPresentation !== 'swipe' || deletePromptVisible) {
+		if (actionPresentation !== 'swipe') {
 			return;
 		}
 
@@ -164,7 +152,7 @@
 	function handlePointerDown(
 		event: PointerEvent & { currentTarget: EventTarget & HTMLDivElement }
 	): void {
-		if (actionPresentation !== 'swipe' || deletePromptVisible) {
+		if (actionPresentation !== 'swipe') {
 			return;
 		}
 
@@ -272,22 +260,13 @@
 		requestActionReveal(false);
 	}
 
-	function handleDeleteRequest(): void {
-		onDeleteRequest(getEntryActionRequest());
-	}
-
-	function handleDeleteConfirm(): void {
-		onDeleteConfirm(getEntryActionRequest());
-		requestActionReveal(false);
-	}
-
-	function handleDeleteCancel(): void {
-		onDeleteCancel(getEntryActionRequest());
+	function handleDelete(): void {
+		onDelete(getEntryActionRequest());
 		requestActionReveal(false);
 	}
 
 	function handleOpenDetail(): void {
-		if (presentation !== 'history' || detailDisabled || deletePromptVisible) {
+		if (presentation !== 'history' || detailDisabled) {
 			return;
 		}
 
@@ -381,7 +360,7 @@
 	class:relative={actionPresentation === 'swipe'}
 	class:overflow-hidden={actionPresentation === 'swipe'}
 >
-	{#if actionPresentation === 'swipe' && !deletePromptVisible}
+	{#if actionPresentation === 'swipe'}
 		<div
 			class="absolute inset-y-0 right-0 flex w-36 items-stretch justify-end overflow-hidden rounded-2xl"
 			aria-hidden={!actionsRevealed}
@@ -398,8 +377,7 @@
 			</button>
 			<button
 				type="button"
-				onclick={handleDeleteRequest}
-				disabled={deleteDisabled}
+				onclick={handleDelete}
 				tabindex={actionsRevealed ? 0 : -1}
 				aria-label={`Delete ${getEntryContextLabel()}`}
 				class="flex-1 bg-destructive px-4 text-sm font-semibold text-destructive-foreground disabled:cursor-not-allowed disabled:opacity-70"
@@ -434,7 +412,7 @@
 				type="button"
 				aria-haspopup="dialog"
 				aria-label={`View details for ${getEntryContextLabel()}`}
-				disabled={detailDisabled || deletePromptVisible}
+				disabled={detailDisabled}
 				onclick={handleOpenDetail}
 				onkeydown={handleOpenDetailKeydown}
 				class="block w-full text-left disabled:cursor-not-allowed disabled:opacity-70"
@@ -449,33 +427,7 @@
 			<p class="mt-3 whitespace-pre-line text-sm text-muted-foreground">{entry.notes.trim()}</p>
 		{/if}
 
-		{#if deletePromptVisible}
-			<div class="mt-4 rounded-2xl border border-destructive/20 bg-destructive/10 p-3">
-				<p class="text-sm font-semibold text-destructive">
-					Delete this entry? This cannot be undone.
-				</p>
-				<div class="mt-3 flex justify-end gap-2">
-					<button
-						type="button"
-						onclick={handleDeleteCancel}
-						disabled={deleteState === 'loading'}
-						aria-label={`Cancel deleting ${getEntryContextLabel()}`}
-						class="rounded-xl border border-destructive/20 px-3 py-2 text-sm font-semibold text-destructive disabled:cursor-not-allowed disabled:opacity-70"
-					>
-						Cancel
-					</button>
-					<button
-						type="button"
-						onclick={handleDeleteConfirm}
-						disabled={deleteState === 'loading'}
-						aria-label={`Confirm delete ${getEntryContextLabel()}`}
-						class="rounded-xl bg-destructive px-3 py-2 text-sm font-semibold text-destructive-foreground disabled:cursor-not-allowed disabled:opacity-70"
-					>
-						{deleteState === 'loading' ? 'Deleting...' : 'Confirm delete'}
-					</button>
-				</div>
-			</div>
-		{:else if actionPresentation === 'buttons'}
+		{#if actionPresentation === 'buttons'}
 			<div class="mt-4 flex justify-end gap-2">
 				<button
 					type="button"
@@ -488,8 +440,7 @@
 				</button>
 				<button
 					type="button"
-					onclick={handleDeleteRequest}
-					disabled={deleteDisabled}
+					onclick={handleDelete}
 					aria-label={`Delete ${getEntryContextLabel()}`}
 					class="rounded-xl border border-destructive/20 px-3 py-2 text-sm font-semibold text-destructive disabled:cursor-not-allowed disabled:opacity-70"
 				>

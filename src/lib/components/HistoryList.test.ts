@@ -2,11 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/svelte';
 import { flushSync } from 'svelte';
 import type { Expense, FuelLog } from '$lib/db/schema';
-import {
-	getHistoryEntryKey,
-	groupHistoryEntriesByMonth,
-	mergeHistoryEntries
-} from '$lib/utils/historyEntries';
+import { groupHistoryEntriesByMonth, mergeHistoryEntries } from '$lib/utils/historyEntries';
 import HistoryList from './HistoryList.svelte';
 
 class MockPointerEvent extends MouseEvent {
@@ -233,15 +229,15 @@ describe('HistoryList', () => {
 		expect(onEdit).toHaveBeenCalledWith({ kind: 'fuel', entry: fuel });
 	});
 
-	it('calls onDeleteRequest with the correct HistoryEntry when Delete is clicked after swipe reveal', async () => {
+	it('calls onDelete with the correct HistoryEntry when Delete is clicked after swipe reveal (AC1)', async () => {
 		const maintenance = createMaintenanceEntry({ id: 12, date: new Date('2026-03-10T12:00:00Z') });
 		const entries = mergeHistoryEntries([], [maintenance]);
-		const onDeleteRequest = vi.fn();
+		const onDelete = vi.fn();
 
 		render(HistoryList, {
 			monthGroups: groupHistoryEntriesByMonth(entries),
 			currency: 'EUR ',
-			onDeleteRequest
+			onDelete
 		});
 
 		const card = screen.getByRole('group', { name: /maintenance entry/i });
@@ -253,66 +249,10 @@ describe('HistoryList', () => {
 			screen.getByRole('button', { name: /delete maintenance entry from Mar 10, 2026/i })
 		);
 
-		expect(onDeleteRequest).toHaveBeenCalledTimes(1);
-		expect(onDeleteRequest).toHaveBeenCalledWith({ kind: 'maintenance', entry: maintenance });
-	});
-
-	it('shows delete confirmation and calls onDeleteConfirm when entry is armed and confirmed', async () => {
-		const fuel = createFuelEntry({ id: 9, date: new Date('2026-03-10T12:00:00Z') });
-		const entries = mergeHistoryEntries([fuel], []);
-		const onDeleteConfirm = vi.fn();
-		const onDeleteCancel = vi.fn();
-
-		render(HistoryList, {
-			monthGroups: groupHistoryEntriesByMonth(entries),
-			currency: 'EUR ',
-			getDeleteState: (entry) => (getHistoryEntryKey(entry) === 'fuel-9' ? 'armed' : 'idle'),
-			onDeleteConfirm,
-			onDeleteCancel
-		});
-
-		expect(screen.getByText('Delete this entry? This cannot be undone.')).toBeTruthy();
-
-		await fireEvent.click(screen.getByRole('button', { name: /confirm delete/i }));
-
-		expect(onDeleteConfirm).toHaveBeenCalledTimes(1);
-		expect(onDeleteConfirm).toHaveBeenCalledWith({ kind: 'fuel', entry: fuel });
-		expect(onDeleteCancel).not.toHaveBeenCalled();
-	});
-
-	it('suppresses the list-side delete prompt for the entry currently shown in detail', () => {
-		const fuel = createFuelEntry({ id: 9, date: new Date('2026-03-10T12:00:00Z') });
-		const entries = mergeHistoryEntries([fuel], []);
-
-		render(HistoryList, {
-			monthGroups: groupHistoryEntriesByMonth(entries),
-			currency: 'EUR ',
-			detailOpenEntryKey: 'fuel-9',
-			getDeleteState: (entry) => (getHistoryEntryKey(entry) === 'fuel-9' ? 'armed' : 'idle')
-		});
-
-		expect(screen.queryByText('Delete this entry? This cannot be undone.')).toBeNull();
-	});
-
-	it('calls onDeleteCancel when the armed delete confirmation is cancelled', async () => {
-		const fuel = createFuelEntry({ id: 9, date: new Date('2026-03-10T12:00:00Z') });
-		const entries = mergeHistoryEntries([fuel], []);
-		const onDeleteCancel = vi.fn();
-		const onDeleteConfirm = vi.fn();
-
-		render(HistoryList, {
-			monthGroups: groupHistoryEntriesByMonth(entries),
-			currency: 'EUR ',
-			getDeleteState: (entry) => (getHistoryEntryKey(entry) === 'fuel-9' ? 'armed' : 'idle'),
-			onDeleteCancel,
-			onDeleteConfirm
-		});
-
-		await fireEvent.click(screen.getByRole('button', { name: /cancel deleting/i }));
-
-		expect(onDeleteCancel).toHaveBeenCalledTimes(1);
-		expect(onDeleteCancel).toHaveBeenCalledWith({ kind: 'fuel', entry: fuel });
-		expect(onDeleteConfirm).not.toHaveBeenCalled();
+		expect(onDelete).toHaveBeenCalledTimes(1);
+		expect(onDelete).toHaveBeenCalledWith({ kind: 'maintenance', entry: maintenance });
+		// Single-action: no arm-then-confirm prompt appears in the list.
+		expect(screen.queryByText(/cannot be undone/i)).toBeNull();
 	});
 
 	it('focuses the empty-state CTA on initial mount when entries is empty', () => {

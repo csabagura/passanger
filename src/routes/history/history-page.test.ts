@@ -1,30 +1,47 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
 import { flushSync } from 'svelte';
-import { HISTORY_ENTRY_FILTER_STORAGE_KEY, RESULT_CARD_DISMISS_MS } from '$lib/config';
+import { HISTORY_ENTRY_FILTER_STORAGE_KEY } from '$lib/config';
 import HistoryPage from './+page.svelte';
 
 const mockGetAllFuelLogs = vi.fn();
 const mockGetAllExpenses = vi.fn();
 const mockDeleteFuelLog = vi.fn();
 const mockDeleteExpense = vi.fn();
+const mockRestoreFuelLog = vi.fn();
+const mockRestoreExpense = vi.fn();
 const mockUpdateFuelLogsAtomic = vi.fn();
 const mockUpdateExpense = vi.fn();
 const scrollToMock = vi.fn();
+const mockGetDataGeneration = vi.fn(() => 0);
 
 vi.mock('$lib/db/repositories/fuelLogs', () => ({
 	getAllFuelLogs: (...args: unknown[]) => mockGetAllFuelLogs(...args),
 	saveFuelLog: vi.fn(),
 	updateFuelLogsAtomic: (...args: unknown[]) => mockUpdateFuelLogsAtomic(...args),
-	deleteFuelLog: (...args: unknown[]) => mockDeleteFuelLog(...args)
+	deleteFuelLog: (...args: unknown[]) => mockDeleteFuelLog(...args),
+	restoreFuelLog: (...args: unknown[]) => mockRestoreFuelLog(...args)
 }));
 
 vi.mock('$lib/db/repositories/expenses', () => ({
 	getAllExpenses: (...args: unknown[]) => mockGetAllExpenses(...args),
 	saveExpense: vi.fn(),
 	updateExpense: (...args: unknown[]) => mockUpdateExpense(...args),
-	deleteExpense: (...args: unknown[]) => mockDeleteExpense(...args)
+	deleteExpense: (...args: unknown[]) => mockDeleteExpense(...args),
+	restoreExpense: (...args: unknown[]) => mockRestoreExpense(...args)
 }));
+
+// The History undo guard reads the local data-generation counter. Mock it so tests can simulate a
+// mutation landing during the undo window (counter changes → guard blocks the restore).
+vi.mock('$lib/utils/tabSync', () => ({
+	getDataGeneration: () => mockGetDataGeneration()
+}));
+
+const mockToast = {
+	success: vi.fn(),
+	error: vi.fn(),
+	action: vi.fn()
+};
 
 let mockSettingsFuelUnit: 'L/100km' | 'MPG' = 'L/100km';
 let mockActiveVehicle: {
@@ -49,6 +66,10 @@ vi.mock('svelte', async (importOriginal) => {
 						currency: 'EUR '
 					}
 				};
+			}
+
+			if (key === 'toast') {
+				return mockToast;
 			}
 
 			if (key === 'vehicles') {
@@ -240,6 +261,12 @@ describe('History page', () => {
 			error: null
 		});
 		mockDeleteExpense.mockResolvedValue({ data: undefined, error: null });
+		mockRestoreFuelLog.mockResolvedValue({
+			data: { restoredLog: testFuelEntry, updatedLogs: [] },
+			error: null
+		});
+		mockRestoreExpense.mockResolvedValue({ data: undefined, error: null });
+		mockGetDataGeneration.mockReturnValue(0);
 		mockUpdateFuelLogsAtomic.mockResolvedValue({ data: [], error: null });
 		mockUpdateExpense.mockResolvedValue({ data: undefined, error: null });
 		Object.defineProperty(globalThis, 'sessionStorage', {
@@ -359,7 +386,7 @@ describe('History page', () => {
 		flushSync();
 	});
 
-	it('clicking Delete after swipe reveal arms the inline delete confirmation', async () => {
+	it('single-action delete: clicking Delete fires deleteFuelLog and raises an Undo toast (AC1, AC2)', async () => {
 		mockActiveVehicle = testVehicle;
 		mockGetAllFuelLogs.mockResolvedValue({ data: [testFuelEntry], error: null });
 		mockGetAllExpenses.mockResolvedValue({ data: [], error: null });
@@ -372,44 +399,25 @@ describe('History page', () => {
 		await fireEvent.pointerMove(card, { pointerId: 1, clientX: 120, clientY: 16 });
 		await fireEvent.pointerUp(card, { pointerId: 1, clientX: 120, clientY: 16 });
 
-		const deleteButton = screen.getByRole('button', {
-			name: /delete fuel entry from Mar 9, 2026/i
-		});
-		await fireEvent.click(deleteButton);
-		flushSync();
-
-		expect(screen.getByText('Delete this entry? This cannot be undone.')).toBeTruthy();
-	});
-
-	it('confirms delete: calls deleteFuelLog and removes the entry from the list', async () => {
-		mockActiveVehicle = testVehicle;
-		mockGetAllFuelLogs.mockResolvedValue({ data: [testFuelEntry], error: null });
-		mockGetAllExpenses.mockResolvedValue({ data: [], error: null });
-
-		render(HistoryPage);
-		await settlePage();
-
-		// Swipe to reveal
-		const card = screen.getByRole('group', { name: /fuel entry, Mar 9, 2026/i });
-		await fireEvent.pointerDown(card, { pointerId: 1, clientX: 200, clientY: 16 });
-		await fireEvent.pointerMove(card, { pointerId: 1, clientX: 120, clientY: 16 });
-		await fireEvent.pointerUp(card, { pointerId: 1, clientX: 120, clientY: 16 });
-
-		// Arm delete
 		await fireEvent.click(
 			screen.getByRole('button', { name: /delete fuel entry from Mar 9, 2026/i })
 		);
-		flushSync();
-
-		// Confirm delete
-		await fireEvent.click(screen.getByRole('button', { name: /confirm delete/i }));
 		await settlePage();
 
+		// No arm-then-confirm step; the entry is removed optimistically in one action.
+		expect(screen.queryByText(/cannot be undone/i)).toBeNull();
 		expect(mockDeleteFuelLog).toHaveBeenCalledWith(testFuelEntry.id);
 		expect(screen.queryByRole('group', { name: /fuel entry, Mar 9, 2026/i })).toBeNull();
+
+		// An Undo action toast is raised through the shared channel.
+		expect(mockToast.action).toHaveBeenCalledTimes(1);
+		expect(mockToast.action).toHaveBeenCalledWith(
+			'Deleted. Undo?',
+			expect.objectContaining({ label: 'Undo' })
+		);
 	});
 
-	it('cancels delete: dismisses confirmation without calling deleteFuelLog', async () => {
+	it('Undo restores the deleted fuel entry via restoreFuelLog when the guard is satisfied (AC3)', async () => {
 		mockActiveVehicle = testVehicle;
 		mockGetAllFuelLogs.mockResolvedValue({ data: [testFuelEntry], error: null });
 		mockGetAllExpenses.mockResolvedValue({ data: [], error: null });
@@ -417,25 +425,122 @@ describe('History page', () => {
 		render(HistoryPage);
 		await settlePage();
 
-		// Swipe to reveal
 		const card = screen.getByRole('group', { name: /fuel entry, Mar 9, 2026/i });
-		await fireEvent.pointerDown(card, { pointerId: 1, clientX: 200, clientY: 16 });
-		await fireEvent.pointerMove(card, { pointerId: 1, clientX: 120, clientY: 16 });
-		await fireEvent.pointerUp(card, { pointerId: 1, clientX: 120, clientY: 16 });
-
-		// Arm delete
+		await swipeLeft(card);
 		await fireEvent.click(
 			screen.getByRole('button', { name: /delete fuel entry from Mar 9, 2026/i })
 		);
-		flushSync();
+		await settlePage();
 
-		// Cancel delete
-		await fireEvent.click(screen.getByRole('button', { name: /cancel deleting/i }));
-		flushSync();
+		// Invoke the toast's Undo onClick (nothing else mutated → generation unchanged → guard passes).
+		const undo = mockToast.action.mock.calls[0][1].onClick as () => void;
+		undo();
+		await settlePage();
 
-		expect(mockDeleteFuelLog).not.toHaveBeenCalled();
-		expect(screen.queryByText('Delete this entry? This cannot be undone.')).toBeNull();
-		expect(screen.queryByRole('group', { name: /fuel entry, Mar 9, 2026/i })).toBeTruthy();
+		expect(mockRestoreFuelLog).toHaveBeenCalledTimes(1);
+		expect(mockRestoreFuelLog).toHaveBeenCalledWith(
+			expect.objectContaining({ id: testFuelEntry.id })
+		);
+		expect(mockToast.success).toHaveBeenCalledWith('Restored.');
+	});
+
+	it('Undo is disabled when the data generation changed during the window (AC4)', async () => {
+		mockActiveVehicle = testVehicle;
+		mockGetAllFuelLogs.mockResolvedValue({ data: [testFuelEntry], error: null });
+		mockGetAllExpenses.mockResolvedValue({ data: [], error: null });
+		mockGetDataGeneration.mockReturnValue(1);
+
+		render(HistoryPage);
+		await settlePage();
+
+		const card = screen.getByRole('group', { name: /fuel entry, Mar 9, 2026/i });
+		await swipeLeft(card);
+		await fireEvent.click(
+			screen.getByRole('button', { name: /delete fuel entry from Mar 9, 2026/i })
+		);
+		await settlePage();
+
+		// Simulate another write landing in this tab after the delete (counter advances).
+		mockGetDataGeneration.mockReturnValue(2);
+
+		const undo = mockToast.action.mock.calls[0][1].onClick as () => void;
+		undo();
+		await settlePage();
+
+		expect(mockRestoreFuelLog).not.toHaveBeenCalled();
+		expect(mockToast.error).toHaveBeenCalledWith(
+			"Couldn't undo — the timeline changed since you deleted."
+		);
+	});
+
+	it('stacked deletes: deleting a second entry blocks the first delete Undo (AC4)', async () => {
+		mockActiveVehicle = testVehicle;
+		const secondFuelEntry = {
+			...testFuelEntry,
+			id: 9,
+			date: new Date(2026, 2, 8, 12, 0, 0, 0),
+			totalCost: 60
+		};
+		mockGetAllFuelLogs.mockResolvedValue({ data: [testFuelEntry, secondFuelEntry], error: null });
+		mockGetAllExpenses.mockResolvedValue({ data: [], error: null });
+
+		render(HistoryPage);
+		await settlePage();
+
+		// Delete the first entry — its Undo captures generation 0.
+		await swipeLeft(screen.getByRole('group', { name: /fuel entry, Mar 9, 2026/i }));
+		await fireEvent.click(
+			screen.getByRole('button', { name: /delete fuel entry from Mar 9, 2026/i })
+		);
+		await settlePage();
+		const undoFirst = mockToast.action.mock.calls[0][1].onClick as () => void;
+
+		// A second delete lands within the window — its notifyDataChanged() bumps the local counter.
+		mockGetDataGeneration.mockReturnValue(1);
+		await swipeLeft(screen.getByRole('group', { name: /fuel entry, Mar 8, 2026/i }));
+		await fireEvent.click(
+			screen.getByRole('button', { name: /delete fuel entry from Mar 8, 2026/i })
+		);
+		await settlePage();
+
+		// Undoing the FIRST delete is now refused — its captured generation (0) no longer matches.
+		undoFirst();
+		await settlePage();
+
+		expect(mockRestoreFuelLog).not.toHaveBeenCalled();
+		expect(mockToast.error).toHaveBeenCalledWith(
+			"Couldn't undo — the timeline changed since you deleted."
+		);
+	});
+
+	it('Undo after switching vehicles restores the row but does not reload the wrong vehicle', async () => {
+		mockActiveVehicle = testVehicle;
+		mockGetAllFuelLogs.mockResolvedValue({ data: [testFuelEntry], error: null });
+		mockGetAllExpenses.mockResolvedValue({ data: [], error: null });
+
+		render(HistoryPage);
+		await settlePage();
+
+		await swipeLeft(screen.getByRole('group', { name: /fuel entry, Mar 9, 2026/i }));
+		await fireEvent.click(
+			screen.getByRole('button', { name: /delete fuel entry from Mar 9, 2026/i })
+		);
+		await settlePage();
+
+		// Switch the active vehicle during the Undo window (not a DB write → the guard still passes).
+		mockActiveVehicle = { id: 99, name: 'Other', make: 'Honda', model: 'Civic', year: 2020 };
+		const loadsBeforeUndo = mockGetAllFuelLogs.mock.calls.length;
+
+		const undo = mockToast.action.mock.calls[0][1].onClick as () => void;
+		undo();
+		await settlePage();
+
+		// The row IS restored to its own (now-inactive) vehicle, but the active vehicle is NOT reloaded.
+		expect(mockRestoreFuelLog).toHaveBeenCalledWith(
+			expect.objectContaining({ id: testFuelEntry.id, vehicleId: testFuelEntry.vehicleId })
+		);
+		expect(mockGetAllFuelLogs.mock.calls.length).toBe(loadsBeforeUndo);
+		expect(mockToast.success).toHaveBeenCalledWith('Restored.');
 	});
 
 	it('clicking Edit after swipe reveal shows the inline edit form heading', async () => {
@@ -537,25 +642,23 @@ describe('History page', () => {
 		expect(getStatValue('Total spend')).toBe('EUR 198.00');
 
 		await openHistoryDetail(/view details for maintenance entry from Mar 10, 2026/i);
-		await fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
-		flushSync();
-		expect(screen.getByText('Delete this entry? This cannot be undone.')).toBeTruthy();
-
-		await fireEvent.click(
-			screen.getByRole('button', {
-				name: 'Confirm delete maintenance entry from Mar 10, 2026'
-			})
-		);
+		await fireEvent.click(screen.getByRole('button', { name: /delete maintenance entry/i }));
 		await settlePage();
 
+		expect(screen.queryByText(/cannot be undone/i)).toBeNull();
 		expect(mockDeleteExpense).toHaveBeenCalledWith(testExpense.id);
 		expect(screen.queryByRole('dialog', { name: 'Entry details' })).toBeNull();
 		expect(screen.queryByRole('group', { name: /maintenance entry, Mar 10, 2026/i })).toBeNull();
 		expect(getStatValue('Total spend')).toBe('EUR 78.00');
 		expect(document.activeElement?.getAttribute('data-entry-key')).toBe('fuel-2');
+		// The global Undo toast survives the sheet closing.
+		expect(mockToast.action).toHaveBeenCalledWith(
+			'Deleted. Undo?',
+			expect.objectContaining({ label: 'Undo' })
+		);
 	});
 
-	it('keeps a failed detail-sheet delete visible inside the sheet alert region', async () => {
+	it('surfaces a failed detail-sheet delete as a toast error and keeps the entry (AC5)', async () => {
 		mockActiveVehicle = testVehicle;
 		mockGetAllFuelLogs.mockResolvedValue({ data: [testFuelEntry], error: null });
 		mockGetAllExpenses.mockResolvedValue({ data: [], error: null });
@@ -568,32 +671,18 @@ describe('History page', () => {
 		await settlePage();
 
 		await openHistoryDetail(/view details for fuel entry from Mar 9, 2026/i);
-		await fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
-		await fireEvent.click(
-			screen.getByRole('button', {
-				name: 'Confirm delete fuel entry from Mar 9, 2026'
-			})
-		);
+		await fireEvent.click(screen.getByRole('button', { name: /delete fuel entry/i }));
 		await settlePage();
 
-		const dialog = screen.getByRole('dialog', { name: 'Entry details' });
-		expect(dialog).toBeTruthy();
-		expect(within(dialog).getByText('Delete this entry? This cannot be undone.')).toBeTruthy();
-		expect(within(dialog).getByRole('alert')).toBeTruthy();
-		expect(within(dialog).getByText('Could not delete fuel entry. Please try again.')).toBeTruthy();
-
-		await fireEvent.click(
-			within(dialog).getByRole('button', {
-				name: 'Cancel deleting fuel entry from Mar 9, 2026'
-			})
-		);
-		flushSync();
-
-		expect(screen.queryByText('Delete this entry? This cannot be undone.')).toBeNull();
-		expect(screen.queryByText('Could not delete fuel entry. Please try again.')).toBeNull();
+		// Error goes to the toast channel — no inline alert box, no Undo toast. The sheet stays open
+		// (the failed delete did not close it), so the entry is not removed.
+		expect(mockToast.error).toHaveBeenCalledWith('Could not delete fuel entry. Please try again.');
+		expect(mockToast.action).not.toHaveBeenCalled();
+		expect(screen.queryByText(/cannot be undone/i)).toBeNull();
+		expect(screen.getByRole('dialog', { name: 'Entry details' })).toBeTruthy();
 	});
 
-	it('deletes a maintenance expense and removes it from history', async () => {
+	it('deletes a maintenance expense and removes it from history (AC1)', async () => {
 		mockActiveVehicle = testVehicle;
 		mockGetAllFuelLogs.mockResolvedValue({ data: [], error: null });
 		mockGetAllExpenses.mockResolvedValue({ data: [testExpense], error: null });
@@ -601,24 +690,22 @@ describe('History page', () => {
 		render(HistoryPage);
 		await settlePage();
 
-		// Swipe to reveal
 		const card = screen.getByRole('group', { name: /maintenance entry, Mar 10, 2026/i });
 		await fireEvent.pointerDown(card, { pointerId: 1, clientX: 200, clientY: 16 });
 		await fireEvent.pointerMove(card, { pointerId: 1, clientX: 120, clientY: 16 });
 		await fireEvent.pointerUp(card, { pointerId: 1, clientX: 120, clientY: 16 });
 
-		// Arm delete
 		await fireEvent.click(
 			screen.getByRole('button', { name: /delete maintenance entry from Mar 10, 2026/i })
 		);
-		flushSync();
-
-		// Confirm delete
-		await fireEvent.click(screen.getByRole('button', { name: /confirm delete/i }));
 		await settlePage();
 
 		expect(mockDeleteExpense).toHaveBeenCalledWith(testExpense.id);
 		expect(screen.queryByRole('group', { name: /maintenance entry, Mar 10, 2026/i })).toBeNull();
+		expect(mockToast.action).toHaveBeenCalledWith(
+			'Deleted. Undo?',
+			expect.objectContaining({ label: 'Undo' })
+		);
 	});
 
 	it('displays the active vehicle from context and loads its entries', async () => {
@@ -1103,8 +1190,6 @@ describe('History page', () => {
 		flushSync();
 		expect(screen.getByRole('heading', { name: 'Editing fuel entry' })).toBeTruthy();
 
-		// Switch to fake timers before save so the result-card dismiss timer is fakeable
-		vi.useFakeTimers();
 		await fireEvent.click(screen.getByRole('button', { name: /save changes/i }));
 		await Promise.resolve();
 		await Promise.resolve();
@@ -1114,8 +1199,10 @@ describe('History page', () => {
 		// History list reflects the updated entry (handleEditedFuelSaved wired correctly)
 		expect(getHistoryCardKeys()).toContain('fuel-2');
 
-		// Advance past RESULT_CARD_DISMISS_MS + 150ms fade — onSuccessFeedbackComplete fires and clears editingEntry
-		await vi.advanceTimersByTimeAsync(RESULT_CARD_DISMISS_MS + 150);
+		// Story 2.4: the confirmation persists (no auto-dismiss). The edit form closes only when the
+		// user taps Done — which fires onSuccessFeedbackComplete and clears editingEntry.
+		expect(screen.getByRole('heading', { name: 'Editing fuel entry' })).toBeTruthy();
+		await fireEvent.click(screen.getByRole('button', { name: /^done$/i }));
 		flushSync();
 		expect(screen.queryByRole('heading', { name: 'Editing fuel entry' })).toBeNull();
 	});
@@ -1141,8 +1228,6 @@ describe('History page', () => {
 		flushSync();
 		expect(screen.getByRole('heading', { name: 'Editing maintenance entry' })).toBeTruthy();
 
-		// Switch to fake timers before save so the result-card dismiss timer is fakeable
-		vi.useFakeTimers();
 		await fireEvent.click(screen.getByRole('button', { name: /save changes/i }));
 		await Promise.resolve();
 		await Promise.resolve();
@@ -1152,13 +1237,15 @@ describe('History page', () => {
 		// History list reflects the updated entry (handleEditedMaintenanceSaved wired correctly)
 		expect(getHistoryCardKeys()).toContain('maintenance-5');
 
-		// Advance past RESULT_CARD_DISMISS_MS + 150ms fade — onSuccessFeedbackComplete fires and clears editingEntry
-		await vi.advanceTimersByTimeAsync(RESULT_CARD_DISMISS_MS + 150);
+		// Story 2.4: the confirmation persists (no auto-dismiss). The edit form closes only when the
+		// user taps Done — which fires onSuccessFeedbackComplete and clears editingEntry.
+		expect(screen.getByRole('heading', { name: 'Editing maintenance entry' })).toBeTruthy();
+		await fireEvent.click(screen.getByRole('button', { name: /^done$/i }));
 		flushSync();
 		expect(screen.queryByRole('heading', { name: 'Editing maintenance entry' })).toBeNull();
 	});
 
-	it('failed delete then cancel clears both inline confirmation and route error banner', async () => {
+	it('failed single-action delete surfaces a toast error and keeps the entry (AC5)', async () => {
 		mockActiveVehicle = testVehicle;
 		mockGetAllFuelLogs.mockResolvedValue({ data: [testFuelEntry], error: null });
 		mockGetAllExpenses.mockResolvedValue({ data: [], error: null });
@@ -1170,77 +1257,19 @@ describe('History page', () => {
 		render(HistoryPage);
 		await settlePage();
 
-		// Swipe to reveal
 		const card = screen.getByRole('group', { name: /fuel entry, Mar 9, 2026/i });
-		await fireEvent.pointerDown(card, { pointerId: 1, clientX: 200, clientY: 16 });
-		await fireEvent.pointerMove(card, { pointerId: 1, clientX: 120, clientY: 16 });
-		await fireEvent.pointerUp(card, { pointerId: 1, clientX: 120, clientY: 16 });
-
-		// Arm delete
+		await swipeLeft(card);
 		await fireEvent.click(
 			screen.getByRole('button', { name: /delete fuel entry from Mar 9, 2026/i })
 		);
-		flushSync();
-		expect(screen.getByText('Delete this entry? This cannot be undone.')).toBeTruthy();
-
-		// Confirm delete — repository returns error
-		await fireEvent.click(screen.getByRole('button', { name: /confirm delete/i }));
 		await settlePage();
 
-		// Both the route-level error banner and the inline confirmation are visible
-		expect(screen.getByRole('alert')).toBeTruthy();
-		expect(screen.getByText(/could not delete fuel entry/i)).toBeTruthy();
-		expect(screen.getByText('Delete this entry? This cannot be undone.')).toBeTruthy();
-
-		// Cancel — handleDeleteCancel clears armedDeleteEntryKey and deleteErrorText
-		await fireEvent.click(screen.getByRole('button', { name: /cancel deleting/i }));
-		flushSync();
-
-		expect(screen.queryByText('Delete this entry? This cannot be undone.')).toBeNull();
-		expect(screen.queryByText(/could not delete fuel entry/i)).toBeNull();
+		// No inline confirmation/banner — the failure is a toast, and no Undo is offered.
+		expect(screen.queryByText(/cannot be undone/i)).toBeNull();
 		expect(screen.queryByRole('alert')).toBeNull();
-	});
-
-	it('keeps the delete error banner visible when the filter changes during a failed delete', async () => {
-		mockActiveVehicle = testVehicle;
-		mockGetAllFuelLogs.mockResolvedValue({ data: [testFuelEntry], error: null });
-		mockGetAllExpenses.mockResolvedValue({ data: [testExpense], error: null });
-
-		let resolveFuelDelete!: (value: {
-			data: undefined;
-			error: { code: 'DELETE_FAILED'; message: string };
-		}) => void;
-		mockDeleteFuelLog.mockReturnValue(
-			new Promise((resolve) => {
-				resolveFuelDelete = resolve;
-			})
-		);
-
-		render(HistoryPage);
-		await settlePage();
-
-		await swipeLeft(screen.getByRole('group', { name: /fuel entry, Mar 9, 2026/i }));
-		await fireEvent.click(
-			screen.getByRole('button', { name: /delete fuel entry from Mar 9, 2026/i })
-		);
-		await fireEvent.click(
-			screen.getByRole('button', { name: /confirm delete fuel entry from Mar 9, 2026/i })
-		);
-		flushSync();
-
-		await fireEvent.click(screen.getByRole('radio', { name: 'Maintenance' }));
-		flushSync();
-
-		resolveFuelDelete({
-			data: undefined,
-			error: { code: 'DELETE_FAILED', message: 'boom' }
-		});
-		await settlePage();
-
-		expect(screen.getByRole('alert')).toBeTruthy();
-		expect(screen.getByText('Could not delete fuel entry. Please try again.')).toBeTruthy();
-		expect(getHistoryCardKeys()).toEqual(['maintenance-5']);
-		expect(screen.queryByText('Delete this entry? This cannot be undone.')).toBeNull();
+		expect(mockToast.error).toHaveBeenCalledWith('Could not delete fuel entry. Please try again.');
+		expect(mockToast.action).not.toHaveBeenCalled();
+		expect(screen.queryByRole('group', { name: /fuel entry, Mar 9, 2026/i })).toBeTruthy();
 	});
 
 	it('refreshes the open fuel edit timeline after deleting a different fuel log', async () => {
@@ -1319,9 +1348,6 @@ describe('History page', () => {
 		await fireEvent.click(
 			screen.getByRole('button', { name: /delete fuel entry from Mar 9, 2026/i })
 		);
-		await fireEvent.click(
-			screen.getByRole('button', { name: /confirm delete fuel entry from Mar 9, 2026/i })
-		);
 		await settlePage();
 
 		expect(screen.getByText('Last: 100 km')).toBeTruthy();
@@ -1357,9 +1383,6 @@ describe('History page', () => {
 		await swipeLeft(screen.getByRole('group', { name: /maintenance entry, Mar 10, 2026/i }));
 		await fireEvent.click(
 			screen.getByRole('button', { name: /delete maintenance entry from Mar 10, 2026/i })
-		);
-		await fireEvent.click(
-			screen.getByRole('button', { name: /confirm delete maintenance entry from Mar 10, 2026/i })
 		);
 		await settlePage();
 
@@ -1398,9 +1421,6 @@ describe('History page', () => {
 		await fireEvent.click(
 			screen.getByRole('button', { name: /delete fuel entry from Mar 9, 2026/i })
 		);
-		await fireEvent.click(
-			screen.getByRole('button', { name: /confirm delete fuel entry from Mar 9, 2026/i })
-		);
 		flushSync();
 
 		await fireEvent.click(screen.getByRole('radio', { name: 'Maintenance' }));
@@ -1430,16 +1450,13 @@ describe('History page', () => {
 		await fireEvent.click(
 			screen.getByRole('button', { name: /delete maintenance entry from Mar 10, 2026/i })
 		);
-		await fireEvent.click(
-			screen.getByRole('button', { name: /confirm delete maintenance entry from Mar 10, 2026/i })
-		);
 		await settlePage();
 
 		const emptyStateCta = screen.getByRole('link', { name: /go to fuel/i });
 		expect(document.activeElement).toBe(emptyStateCta);
 	});
 
-	it('sibling Edit and Delete buttons are disabled while another deletion is actively in flight', async () => {
+	it('sibling Edit buttons are disabled while another deletion is actively in flight', async () => {
 		mockActiveVehicle = testVehicle;
 		mockGetAllFuelLogs.mockResolvedValue({ data: [testFuelEntry], error: null });
 		mockGetAllExpenses.mockResolvedValue({ data: [testExpense], error: null });
@@ -1457,34 +1474,23 @@ describe('History page', () => {
 		render(HistoryPage);
 		await settlePage();
 
-		// Swipe fuel entry and arm delete
+		// Single-action delete on the fuel entry — deletingEntryKey is set synchronously before await
+		// and held by the pending delete promise.
 		const fuelCard = screen.getByRole('group', { name: /fuel entry, Mar 9, 2026/i });
-		await fireEvent.pointerDown(fuelCard, { pointerId: 1, clientX: 200, clientY: 16 });
-		await fireEvent.pointerMove(fuelCard, { pointerId: 1, clientX: 120, clientY: 16 });
-		await fireEvent.pointerUp(fuelCard, { pointerId: 1, clientX: 120, clientY: 16 });
+		await swipeLeft(fuelCard);
 		await fireEvent.click(
 			screen.getByRole('button', { name: /delete fuel entry from Mar 9, 2026/i })
 		);
 		flushSync();
 
-		// Confirm delete — deletingEntryKey = 'fuel-2' set synchronously before await
-		await fireEvent.click(screen.getByRole('button', { name: /confirm delete/i }));
-		flushSync();
-
 		// Swipe the maintenance card to reveal its actions while fuel deletion is in-flight
 		const maintCard = screen.getByRole('group', { name: /maintenance entry, Mar 10, 2026/i });
-		await fireEvent.pointerDown(maintCard, { pointerId: 2, clientX: 200, clientY: 16 });
-		await fireEvent.pointerMove(maintCard, { pointerId: 2, clientX: 120, clientY: 16 });
-		await fireEvent.pointerUp(maintCard, { pointerId: 2, clientX: 120, clientY: 16 });
+		await swipeLeft(maintCard, 2);
 
 		const maintEditButton = screen.getByRole('button', {
 			name: /edit maintenance entry from Mar 10, 2026/i
 		});
-		const maintDeleteButton = screen.getByRole('button', {
-			name: /delete maintenance entry from Mar 10, 2026/i
-		});
 		expect((maintEditButton as HTMLButtonElement).disabled).toBe(true);
-		expect((maintDeleteButton as HTMLButtonElement).disabled).toBe(true);
 
 		// Resolve the pending deletion to allow cleanup
 		resolveFuelDelete({ data: { deletedLogId: testFuelEntry.id, updatedLogs: [] }, error: null });

@@ -7,7 +7,8 @@ import {
 	getExpenseById,
 	getAllExpenses,
 	updateExpense,
-	deleteExpense
+	deleteExpense,
+	restoreExpense
 } from './expenses';
 import type { NewExpense } from '../schema';
 
@@ -235,6 +236,36 @@ describe('ExpenseRepository', () => {
 			const result = await deleteExpense(999);
 			expect(result.data).toBeNull();
 			expect(result.error?.code).toBe('NOT_FOUND');
+		});
+	});
+
+	describe('restoreExpense (Story 2.5 — reversible delete)', () => {
+		it('round-trips delete→restore preserving the original id and all fields', async () => {
+			const saved = await saveExpense(makeExpense());
+			const original = saved.data!;
+
+			expect((await deleteExpense(original.id)).error).toBeNull();
+			expect((await getExpenseById(original.id)).error?.code).toBe('NOT_FOUND');
+
+			const restoreResult = await restoreExpense(original);
+			expect(restoreResult.error).toBeNull();
+
+			const fetched = await getExpenseById(original.id);
+			expect(fetched.error).toBeNull();
+			expect(fetched.data?.id).toBe(original.id);
+			expect(fetched.data?.type).toBe(original.type);
+			expect(fetched.data?.cost).toBe(original.cost);
+			expect(fetched.data?.notes).toBe(original.notes);
+			expect((await getAllExpenses(1)).data).toHaveLength(1);
+		});
+
+		it('returns an error when the original id is already present (defensive guard)', async () => {
+			const saved = await saveExpense(makeExpense());
+			const result = await restoreExpense(saved.data!);
+
+			expect(result.data).toBeNull();
+			expect(result.error?.code).toBe('SAVE_FAILED');
+			expect((await getAllExpenses(1)).data).toHaveLength(1);
 		});
 	});
 });

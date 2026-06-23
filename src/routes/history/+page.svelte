@@ -6,9 +6,11 @@
 	import HistoryList from '$lib/components/HistoryList.svelte';
 	import MaintenanceForm from '$lib/components/MaintenanceForm.svelte';
 	import StatBar from '$lib/components/StatBar.svelte';
-	import { deleteExpense, getAllExpenses } from '$lib/db/repositories/expenses';
-	import { deleteFuelLog, getAllFuelLogs } from '$lib/db/repositories/fuelLogs';
+	import { deleteExpense, getAllExpenses, restoreExpense } from '$lib/db/repositories/expenses';
+	import { deleteFuelLog, getAllFuelLogs, restoreFuelLog } from '$lib/db/repositories/fuelLogs';
 	import type { Expense, FuelLog } from '$lib/db/schema';
+	import type { ToastApi } from '$lib/state/toast';
+	import { getDataGeneration } from '$lib/utils/tabSync';
 	import type { VehiclesContext } from '$lib/utils/vehicleContext';
 	import {
 		compareHistoryEntriesNewestFirst,
@@ -38,6 +40,7 @@
 
 	const vehiclesCtx = getContext<VehiclesContext>('vehicles');
 	const tabSyncCtx = getContext<{ dataRevision: number } | undefined>('tabSync');
+	const toast = getContext<ToastApi | undefined>('toast');
 
 	let currentVehicle = $derived(vehiclesCtx.activeVehicle);
 	let historyEntries = $state<HistoryEntry[]>([]);
@@ -56,10 +59,11 @@
 	let fuelEditTimelineVersion = $state(0);
 	let pendingEditReturnFocusKey = $state<string | null>(null);
 
-	// Delete state
-	let armedDeleteEntryKey = $state<string | null>(null);
+	// Delete state — single-action (no arm-then-confirm). `deletingEntryKey` only guards re-entrancy
+	// and disables edit/detail entry points for the brief window of the optimistic delete.
 	let deletingEntryKey = $state<string | null>(null);
-	let deleteErrorText = $state('');
+	// Guards against a rapid double-tap of the Undo toast action firing two restores.
+	let undoInFlight = false;
 
 	// Detail-sheet state
 	let selectedDetailEntryKey = $state<string | null>(null);
@@ -134,11 +138,6 @@
 					(entry) => getHistoryEntryKey(entry) === selectedDetailEntryKey
 				) ?? null)
 			: null
-	);
-	const selectedDetailDeleteErrorText = $derived(
-		selectedDetailEntry && armedDeleteEntryKey === getHistoryEntryKey(selectedDetailEntry)
-			? deleteErrorText
-			: ''
 	);
 
 	function clearLoadingIndicatorTimeout(): void {
@@ -237,16 +236,6 @@
 		}
 	}
 
-	function getDeleteState(entry: HistoryEntry): 'idle' | 'armed' | 'loading' {
-		const key = getHistoryEntryKey(entry);
-		if (deletingEntryKey === key) return 'loading';
-		return armedDeleteEntryKey === key ? 'armed' : 'idle';
-	}
-
-	function isDeleteDisabled(entry: HistoryEntry): boolean {
-		return deletingEntryKey !== null && deletingEntryKey !== getHistoryEntryKey(entry);
-	}
-
 	function getPreferredFocusTarget(
 		preferredEntryKey: string | null | undefined
 	): PostDeleteFocusTarget {
@@ -275,15 +264,6 @@
 	}
 
 	function closeDetailSheetWithoutFocus(): void {
-		if (
-			selectedDetailEntryKey &&
-			armedDeleteEntryKey === selectedDetailEntryKey &&
-			deletingEntryKey === null
-		) {
-			armedDeleteEntryKey = null;
-			deleteErrorText = '';
-		}
-
 		selectedDetailEntryKey = null;
 		detailInvokerEntryKey = null;
 	}
@@ -301,32 +281,14 @@
 			return;
 		}
 
-		deleteErrorText = '';
-		armedDeleteEntryKey = null;
 		selectedDetailEntryKey = getHistoryEntryKey(request);
 		detailInvokerEntryKey = getHistoryEntryKey(request);
 	}
 
 	function handleEdit(request: HistoryEntry): void {
 		if (deletingEntryKey) return;
-		deleteErrorText = '';
-		armedDeleteEntryKey = null;
 		fuelEditTimelineVersion = 0;
 		editingEntry = request;
-	}
-
-	function handleDeleteRequest(request: HistoryEntry): void {
-		if (deletingEntryKey) return;
-		deleteErrorText = '';
-		armedDeleteEntryKey = getHistoryEntryKey(request);
-	}
-
-	function handleDeleteCancel(request: HistoryEntry): void {
-		if (deletingEntryKey) return;
-		if (armedDeleteEntryKey === getHistoryEntryKey(request)) {
-			armedDeleteEntryKey = null;
-			deleteErrorText = '';
-		}
 	}
 
 	function getPostDeleteFocusTarget(entryKey: string): PostDeleteFocusTarget {
@@ -386,26 +348,29 @@
 		fuelEditTimelineVersion += 1;
 	}
 
-	async function handleDeleteConfirm(request: HistoryEntry): Promise<void> {
+	async function handleDelete(request: HistoryEntry): Promise<void> {
 		if (deletingEntryKey) return;
 
 		const entryKey = getHistoryEntryKey(request);
+		// Capture a plain-object snapshot BEFORE the delete so Undo can re-insert it. request.entry
+		// originates from the $state historyEntries list, so it IS a proxy — $state.snapshot() deep-
+		// clones it to a plain, structured-cloneable object safe for the Dexie put() in restore*.
+		const snapshot = $state.snapshot(request.entry);
 		const postDeleteFocusTarget = getPostDeleteFocusTarget(entryKey);
 		const deletingSelectedDetailEntry = selectedDetailEntryKey === entryKey;
-		deleteErrorText = '';
 		deletingEntryKey = entryKey;
 
 		try {
 			if (request.kind === 'maintenance') {
 				const result = await deleteExpense(request.entry.id);
 				if (result.error) {
-					deleteErrorText = 'Could not delete maintenance entry. Please try again.';
+					toast?.error('Could not delete maintenance entry. Please try again.');
 					return;
 				}
 			} else {
 				const result = await deleteFuelLog(request.entry.id);
 				if (result.error) {
-					deleteErrorText = 'Could not delete fuel entry. Please try again.';
+					toast?.error('Could not delete fuel entry. Please try again.');
 					return;
 				}
 
@@ -425,7 +390,6 @@
 				refreshOpenFuelEditAfterFuelDeletion(request.entry.id, updatedEntries);
 			}
 
-			if (armedDeleteEntryKey === entryKey) armedDeleteEntryKey = null;
 			if (editingEntry && getHistoryEntryKey(editingEntry) === entryKey) {
 				editingEntry = null;
 				fuelEditTimelineVersion = 0;
@@ -435,8 +399,65 @@
 			}
 			historyEntries = historyEntries.filter((item) => getHistoryEntryKey(item) !== entryKey);
 			await focusPostDeleteTarget(postDeleteFocusTarget);
+
+			// Capture both guard signals AFTER the delete's own notifyDataChanged() so the baseline is
+			// post-delete: any later write (this tab → getDataGeneration, another tab → dataRevision)
+			// flips one of them and disables the pending Undo (AC 4).
+			const gen = getDataGeneration();
+			const rev = tabSyncCtx?.dataRevision ?? 0;
+			toast?.action('Deleted. Undo?', {
+				label: 'Undo',
+				onClick: () => void handleUndo(request.kind, snapshot, gen, rev)
+			});
 		} finally {
 			deletingEntryKey = null;
+		}
+	}
+
+	async function handleUndo(
+		kind: HistoryEntry['kind'],
+		snapshot: FuelLog | Expense,
+		gen: number,
+		rev: number
+	): Promise<void> {
+		// In-flight guard: a true rapid double-tap could otherwise pass the generation guard twice and
+		// fire a second restore that hits the id-collision guard with a spurious failure toast.
+		if (undoInFlight) return;
+
+		// Re-check the guard at click time. If the timeline changed since the delete, the snapshot's
+		// own consumption may be stale — refuse rather than risk an inconsistent recompute (AC 4).
+		if (getDataGeneration() !== gen || (tabSyncCtx?.dataRevision ?? 0) !== rev) {
+			toast?.error("Couldn't undo — the timeline changed since you deleted.");
+			return;
+		}
+
+		undoInFlight = true;
+		try {
+			const result =
+				kind === 'fuel'
+					? await restoreFuelLog(snapshot as FuelLog)
+					: await restoreExpense(snapshot as Expense);
+			if (result.error) {
+				toast?.error('Could not restore the entry. Please try again.');
+				return;
+			}
+
+			// Reload to bring the row AND the corrected neighbor consumptions back into the list. The
+			// restore's notifyDataChanged() doesn't self-bump dataRevision, so the load is imperative.
+			// Reload only when the snapshot's vehicle is still the active one — a vehicle switch during
+			// the Undo window is not a DB write, so the guard passes, but reloading the active vehicle
+			// would either show the wrong list or skip the reload while still claiming "Restored.".
+			if (vehiclesCtx.activeVehicle?.id === snapshot.vehicleId) {
+				await loadEntriesForVehicle(snapshot.vehicleId);
+				// Re-home focus on the restored row (focusPostDeleteTarget awaits tick() itself).
+				await focusPostDeleteTarget({
+					type: 'entry',
+					key: getHistoryEntryKey({ kind, entry: snapshot } as HistoryEntry)
+				});
+			}
+			toast?.success('Restored.');
+		} finally {
+			undoInFlight = false;
 		}
 	}
 
@@ -458,8 +479,6 @@
 				return item;
 			})
 			.sort(compareHistoryEntriesNewestFirst);
-		deleteErrorText = '';
-		armedDeleteEntryKey = null;
 		fuelEditTimelineVersion = 0;
 	}
 
@@ -478,8 +497,6 @@
 				return item;
 			})
 			.sort(compareHistoryEntriesNewestFirst);
-		deleteErrorText = '';
-		armedDeleteEntryKey = null;
 	}
 
 	function handleEditedMaintenanceFeedbackComplete(): void {
@@ -499,19 +516,6 @@
 
 	$effect(() => {
 		writeHistoryEntryFilter(selectedHistoryFilter);
-	});
-
-	$effect(() => {
-		if (deletingEntryKey !== null) {
-			return;
-		}
-
-		const visibleEntryKeys = new Set(
-			visibleHistoryEntries.map((entry) => getHistoryEntryKey(entry))
-		);
-		if (armedDeleteEntryKey && !visibleEntryKeys.has(armedDeleteEntryKey)) {
-			armedDeleteEntryKey = null;
-		}
 	});
 
 	$effect(() => {
@@ -675,12 +679,6 @@
 				</section>
 			{/if}
 
-			{#if deleteErrorText}
-				<div role="alert" class="rounded-2xl border border-destructive/20 bg-destructive/10 p-4">
-					<p class="text-sm text-destructive">{deleteErrorText}</p>
-				</div>
-			{/if}
-
 			{#if historyEntries.length > 0}
 				<fieldset class="space-y-3">
 					<legend class="text-sm font-medium text-foreground">Entry type</legend>
@@ -769,14 +767,9 @@
 					preferredFuelUnit={settingsCtx.settings.fuelUnit}
 					editDisabled={editingEntry !== null || deletingEntryKey !== null}
 					detailDisabled={editingEntry !== null || deletingEntryKey !== null}
-					detailOpenEntryKey={selectedDetailEntryKey}
 					onOpenDetail={handleOpenDetail}
 					onEdit={handleEdit}
-					onDeleteRequest={handleDeleteRequest}
-					onDeleteConfirm={handleDeleteConfirm}
-					onDeleteCancel={handleDeleteCancel}
-					{getDeleteState}
-					{isDeleteDisabled}
+					onDelete={handleDelete}
 				/>
 			{/if}
 		{/if}
@@ -788,14 +781,9 @@
 			currency={settingsCtx.settings.currency}
 			preferredFuelUnit={settingsCtx.settings.fuelUnit}
 			vehicleName={currentVehicle?.name}
-			deleteState={getDeleteState(selectedDetailEntry)}
-			deleteDisabled={isDeleteDisabled(selectedDetailEntry)}
-			deleteErrorText={selectedDetailDeleteErrorText}
 			onClose={() => void closeDetailSheet()}
 			onEdit={handleDetailEdit}
-			onDeleteRequest={handleDeleteRequest}
-			onDeleteConfirm={handleDeleteConfirm}
-			onDeleteCancel={handleDeleteCancel}
+			onDelete={handleDelete}
 		/>
 	{/if}
 </div>

@@ -10,8 +10,6 @@
 	} from '$lib/utils/historyEntries';
 	import { formatCurrency } from '$lib/utils/calculations';
 
-	type DeleteState = 'idle' | 'armed' | 'loading';
-
 	interface Props {
 		monthGroups: HistoryMonthGroup[];
 		currency: string;
@@ -20,14 +18,9 @@
 		hasVehicles?: boolean;
 		editDisabled?: boolean;
 		detailDisabled?: boolean;
-		detailOpenEntryKey?: string | null;
 		onOpenDetail?: (request: HistoryEntry) => void;
 		onEdit?: (request: HistoryEntry) => void;
-		onDeleteRequest?: (request: HistoryEntry) => void;
-		onDeleteConfirm?: (request: HistoryEntry) => void;
-		onDeleteCancel?: (request: HistoryEntry) => void;
-		getDeleteState?: (entry: HistoryEntry) => DeleteState;
-		isDeleteDisabled?: (entry: HistoryEntry) => boolean;
+		onDelete?: (request: HistoryEntry) => void;
 	}
 
 	let {
@@ -38,14 +31,9 @@
 		hasVehicles = true,
 		editDisabled = false,
 		detailDisabled = false,
-		detailOpenEntryKey = null,
 		onOpenDetail = () => {},
 		onEdit = () => {},
-		onDeleteRequest = () => {},
-		onDeleteConfirm = () => {},
-		onDeleteCancel = () => {},
-		getDeleteState = () => 'idle',
-		isDeleteDisabled = () => false
+		onDelete = () => {}
 	}: Props = $props();
 
 	let revealedEntryKey = $state<string | null>(null);
@@ -167,13 +155,7 @@
 								{detailDisabled}
 								onOpenDetail={(req) => handleDetailOpen(req)}
 								onEdit={(req) => onEdit(req)}
-								onDeleteRequest={(req) => onDeleteRequest(req)}
-								onDeleteConfirm={(req) => onDeleteConfirm(req)}
-								onDeleteCancel={(req) => onDeleteCancel(req)}
-								deleteState={detailOpenEntryKey === getHistoryEntryKey(item)
-									? 'idle'
-									: getDeleteState(item)}
-								deleteDisabled={isDeleteDisabled(item)}
+								onDelete={(req) => onDelete(req)}
 							/>
 						</li>
 					{/each}

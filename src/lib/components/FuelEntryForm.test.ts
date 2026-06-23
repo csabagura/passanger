@@ -20,6 +20,13 @@ const mockSettings = vi.hoisted(() => ({
 	} as AppSettings
 }));
 
+// Story 2.4: the save-error path emits on the toast context. Provide a spy so the form can call it.
+const mockToast = vi.hoisted(() => ({
+	success: vi.fn(),
+	error: vi.fn(),
+	action: vi.fn()
+}));
+
 vi.mock('$lib/db/repositories/fuelLogs', () => ({
 	getAllFuelLogs: (...args: unknown[]) => mockGetAllFuelLogs(...args),
 	saveFuelLog: (...args: unknown[]) => mockSaveFuelLog(...args),
@@ -62,6 +69,9 @@ vi.mock('svelte', async (importOriginal) => {
 				return {
 					settings: mockSettings.value
 				};
+			}
+			if (key === 'toast') {
+				return mockToast;
 			}
 			return undefined;
 		}
@@ -406,60 +416,160 @@ describe('FuelEntryForm component — review fixes validation', () => {
 		});
 	});
 
-	describe('FIX #5: Result card fades out before dismissing', () => {
-		it('keeps the result card visible for about 3 seconds, then fades and removes it', async () => {
-			const savedLog: FuelLog = {
-				id: 1,
-				vehicleId: 1,
-				date: new Date(),
-				odometer: 87400,
-				quantity: 42,
-				unit: 'L',
-				distanceUnit: 'km',
-				totalCost: 78,
-				calculatedConsumption: 7.2,
-				notes: ''
-			};
+	// Story 2.4 (AC-2): the confirmation persists until the user dismisses it — NO 3s auto-dismiss.
+	describe('Story 2.4: value-revealing save persists until dismissed', () => {
+		const savedLog: FuelLog = {
+			id: 1,
+			vehicleId: 1,
+			date: new Date(),
+			odometer: 87400,
+			quantity: 42,
+			unit: 'L',
+			distanceUnit: 'km',
+			totalCost: 78,
+			calculatedConsumption: 7.2,
+			notes: ''
+		};
 
+		async function fillAndSave() {
+			render(FuelEntryForm, {
+				props: { vehicleId: 1, onSave: onSaveSpy, onSuccessFeedbackComplete: onDoneSpy }
+			});
+			await Promise.resolve();
+			flushSync();
+
+			await fireEvent.input(screen.getByLabelText(/odometer/i), { target: { value: '87400' } });
+			await fireEvent.input(screen.getByLabelText(/quantity/i), { target: { value: '42' } });
+			await fireEvent.input(screen.getByLabelText(/total cost/i), { target: { value: '78.00' } });
+
+			await fireEvent.click(screen.getByRole('button', { name: /^save$/i }));
+			await Promise.resolve();
+			await Promise.resolve();
+			flushSync();
+		}
+
+		let onDoneSpy: () => void;
+
+		beforeEach(() => {
+			onDoneSpy = vi.fn();
 			mockSaveFuelLog.mockResolvedValue({ data: savedLog, error: null });
+		});
 
+		it('does NOT auto-dismiss the confirmation after 3 seconds', async () => {
 			vi.useFakeTimers();
-
 			try {
-				render(FuelEntryForm, { props: { vehicleId: 1, onSave: onSaveSpy } });
-				await Promise.resolve();
+				await fillAndSave();
+
+				expect(screen.getByRole('status').textContent).toContain('this tank');
+
+				// Well past the old 3s + fade window — the confirmation must still be present.
+				await vi.advanceTimersByTimeAsync(5000);
 				flushSync();
 
-				const odometerInput = screen.getByLabelText(/odometer/i) as HTMLInputElement;
-				const quantityInput = screen.getByLabelText(/quantity/i) as HTMLInputElement;
-				const costInput = screen.getByLabelText(/total cost/i) as HTMLInputElement;
-
-				await fireEvent.input(odometerInput, { target: { value: '87400' } });
-				await fireEvent.input(quantityInput, { target: { value: '42' } });
-				await fireEvent.input(costInput, { target: { value: '78.00' } });
-
-				const submitButton = screen.getByRole('button', { name: /save/i });
-				await fireEvent.click(submitButton);
-				await Promise.resolve();
-				await Promise.resolve();
-				flushSync();
-
-				expect(screen.getByRole('status').getAttribute('style')).toContain('opacity: 1');
-
-				await vi.advanceTimersByTimeAsync(2999);
-				flushSync();
-				expect(screen.getByRole('status').getAttribute('style')).toContain('opacity: 1');
-
-				await vi.advanceTimersByTimeAsync(1);
-				flushSync();
-				expect(screen.getByRole('status').getAttribute('style')).toContain('opacity: 0');
-
-				await vi.advanceTimersByTimeAsync(150);
-				flushSync();
-				expect(screen.queryByRole('status')).toBeNull();
+				expect(screen.getByRole('status').textContent).toContain('this tank');
+				expect(onDoneSpy).not.toHaveBeenCalled();
 			} finally {
 				vi.useRealTimers();
 			}
+		});
+
+		it('reveals the consumption and the cost in calm voice (no glyph/pipe form)', async () => {
+			await fillAndSave();
+
+			const statusText = screen.getByRole('status').textContent ?? '';
+			expect(statusText).toContain('Saved.');
+			expect(statusText).toContain('7.2 L/100km this tank');
+			expect(statusText).toContain('€78.00');
+			expect(statusText).not.toContain('✓');
+			expect(statusText).not.toContain('|');
+		});
+
+		it('Done fires onSuccessFeedbackComplete and clears the confirmation', async () => {
+			await fillAndSave();
+
+			expect(screen.getByRole('button', { name: /^done$/i })).toBeTruthy();
+			await fireEvent.click(screen.getByRole('button', { name: /^done$/i }));
+			flushSync();
+
+			expect(onDoneSpy).toHaveBeenCalledTimes(1);
+			expect(screen.getByRole('status').textContent).toBe('');
+			expect(screen.queryByRole('button', { name: /^done$/i })).toBeNull();
+		});
+
+		it('editing a field clears the confirmation without closing the sheet', async () => {
+			await fillAndSave();
+			expect(screen.getByRole('status').textContent).toContain('this tank');
+
+			await fireEvent.input(screen.getByLabelText(/odometer/i), { target: { value: '88000' } });
+			flushSync();
+
+			expect(screen.getByRole('status').textContent).toBe('');
+			expect(onDoneSpy).not.toHaveBeenCalled();
+		});
+
+		it('shows an honest, cost-bearing state when consumption cannot be computed (no bare 0)', async () => {
+			mockSaveFuelLog.mockResolvedValue({
+				data: { ...savedLog, calculatedConsumption: 0 },
+				error: null
+			});
+			await fillAndSave();
+
+			const statusText = screen.getByRole('status').textContent ?? '';
+			expect(statusText).toContain('log one more to see your consumption');
+			expect(statusText).toContain('€78.00');
+			expect(statusText).not.toMatch(/(^|\s)0(\s|$)/);
+		});
+
+		it('renders an aria-hidden sparkline when a consumption trend exists', async () => {
+			mockGetAllFuelLogs.mockResolvedValue({
+				data: [
+					{
+						id: 10,
+						vehicleId: 1,
+						date: new Date('2026-03-01'),
+						odometer: 80000,
+						quantity: 40,
+						unit: 'L',
+						distanceUnit: 'km',
+						totalCost: 70,
+						calculatedConsumption: 6.5,
+						notes: ''
+					} as FuelLog
+				],
+				error: null
+			});
+			await fillAndSave();
+
+			const sparkline = document.querySelector('svg[aria-hidden="true"]');
+			expect(sparkline).toBeTruthy();
+		});
+
+		it('on a save error: emits a toast, retains the draft, shows no inline alert', async () => {
+			localStorage.clear();
+			clearFuelDraft();
+			mockSaveFuelLog.mockResolvedValue({
+				data: null,
+				error: { code: 'SAVE_FAILED', message: 'boom' }
+			});
+
+			render(FuelEntryForm, { props: { vehicleId: 1, onSave: onSaveSpy } });
+			await Promise.resolve();
+			flushSync();
+
+			await fireEvent.input(screen.getByLabelText(/odometer/i), { target: { value: '87400' } });
+			await fireEvent.input(screen.getByLabelText(/quantity/i), { target: { value: '42' } });
+			await fireEvent.input(screen.getByLabelText(/total cost/i), { target: { value: '78' } });
+			await fireEvent.click(screen.getByRole('button', { name: /^save$/i }));
+			await Promise.resolve();
+			await Promise.resolve();
+			flushSync();
+
+			expect(mockToast.error).toHaveBeenCalledWith('Could not save fuel entry. Please try again.');
+			// Draft retained for retry (NOT cleared on error).
+			expect(localStorage.getItem('passanger_draft_fuel')).toBeTruthy();
+			// No inline destructive alert — the failure lives on the toast channel.
+			expect(screen.queryByRole('alert')).toBeNull();
+			expect(onSaveSpy).not.toHaveBeenCalled();
 		});
 	});
 
@@ -704,13 +814,14 @@ describe('FuelEntryForm component — review fixes validation', () => {
 			await new Promise((r) => setTimeout(r, 100));
 			flushSync();
 
-			expect(screen.getByRole('status')).toBeTruthy();
+			expect(screen.getByRole('status').textContent).toContain('this tank');
 
 			await fireEvent.click(screen.getByRole('button', { name: /save/i }));
 			await new Promise((r) => setTimeout(r, 50));
 			flushSync();
 
-			expect(screen.queryByRole('status')).toBeNull();
+			// Story 2.4: the live region is always present; the stale success TEXT is cleared.
+			expect(screen.getByRole('status').textContent).toBe('');
 			expect(screen.getByText(/enter a valid odometer/i)).toBeTruthy();
 			expect(mockSaveFuelLog).toHaveBeenCalledTimes(1);
 		});
@@ -1973,7 +2084,8 @@ describe('FuelEntryForm component — review fixes validation', () => {
 
 			expect(screen.getByRole('status').textContent).toContain('32.7 MPG');
 			expect(screen.getByRole('status').textContent).toContain('EUR 80.00');
-			expect(screen.getByRole('status').textContent).toContain('36.0 L');
+			// Story 2.4: the calm voice drops the raw quantity readout ("36.0 gal") in favor of "this tank".
+			expect(screen.getByRole('status').textContent).toContain('this tank');
 		});
 
 		it('accepts trailing-zero three-decimal odometer input when editing the oldest fuel log', async () => {
@@ -2363,9 +2475,11 @@ describe('FuelEntryForm component — review fixes validation', () => {
 			await new Promise((resolve) => setTimeout(resolve, 0));
 			flushSync();
 
-			expect(screen.getByRole('alert').textContent).toContain(
+			// Story 2.4 (AC-4): failures surface on the toast channel, not an inline alert.
+			expect(mockToast.error).toHaveBeenCalledWith(
 				'Could not update fuel entry. Please try again.'
 			);
+			expect(screen.queryByRole('alert')).toBeNull();
 			expect(onSaveSpy).not.toHaveBeenCalled();
 		});
 
@@ -2407,9 +2521,10 @@ describe('FuelEntryForm component — review fixes validation', () => {
 			await new Promise((resolve) => setTimeout(resolve, 0));
 			flushSync();
 
-			const alertText = screen.getByRole('alert').textContent ?? '';
-			expect(alertText).toContain(QUOTA_EXCEEDED_MESSAGE);
-			expect(alertText).not.toContain('Please try again');
+			// Story 2.4 (AC-4): the specific quota message routes through the toast channel.
+			expect(mockToast.error).toHaveBeenCalledWith(QUOTA_EXCEEDED_MESSAGE);
+			expect(mockToast.error).not.toHaveBeenCalledWith(expect.stringContaining('Please try again'));
+			expect(screen.queryByRole('alert')).toBeNull();
 			// Input preserved so the user can free space and retry without re-entering.
 			expect((screen.getByLabelText(/total cost/i) as HTMLInputElement).value).toBe('90');
 			expect(onSaveSpy).not.toHaveBeenCalled();
@@ -2432,9 +2547,10 @@ describe('FuelEntryForm component — review fixes validation', () => {
 			await new Promise((resolve) => setTimeout(resolve, 0));
 			flushSync();
 
-			const alertText = screen.getByRole('alert').textContent ?? '';
-			expect(alertText).toContain(QUOTA_EXCEEDED_MESSAGE);
-			expect(alertText).not.toContain('Please try again');
+			// Story 2.4 (AC-4): the specific quota message routes through the toast channel.
+			expect(mockToast.error).toHaveBeenCalledWith(QUOTA_EXCEEDED_MESSAGE);
+			expect(mockToast.error).not.toHaveBeenCalledWith(expect.stringContaining('Please try again'));
+			expect(screen.queryByRole('alert')).toBeNull();
 			// Draft preserved on a failed save so the user can free space and retry.
 			expect((screen.getByLabelText(/odometer/i) as HTMLInputElement).value).toBe('87400');
 			expect((screen.getByLabelText(/total cost/i) as HTMLInputElement).value).toBe('78');

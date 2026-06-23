@@ -3,7 +3,7 @@ import { ok, err } from '$lib/utils/result';
 import type { Result } from '$lib/utils/result';
 import { notifyDataChanged } from '$lib/utils/tabSync';
 import type { FuelLog, NewFuelLog } from '../schema';
-import { buildFuelLogDeletionPlan } from '$lib/utils/fuelLogTimeline';
+import { buildFuelLogDeletionPlan, buildFuelLogUpdatePlan } from '$lib/utils/fuelLogTimeline';
 import { isQuotaExceededError, QUOTA_EXCEEDED_CODE, QUOTA_EXCEEDED_MESSAGE } from '../dbErrors';
 
 function validateNewFuelLog(entry: NewFuelLog): string | null {
@@ -256,6 +256,79 @@ export class FuelLogRepository {
 			return err('DELETE_FAILED', message);
 		}
 	}
+
+	// Inverse of deleteFuelLog: re-insert a deleted log's snapshot at its ORIGINAL id (via put())
+	// and atomically restore the neighbor consumptions the delete had recomputed. Reuses the same
+	// timeline engine as delete, so the timeline returns to its exact pre-delete state. The caller
+	// (History undo) is responsible for the generation guard that guarantees the surrounding
+	// timeline is unchanged, which is what keeps the snapshot's own calculatedConsumption valid.
+	async restoreFuelLog(
+		snapshot: FuelLog
+	): Promise<Result<{ restoredLog: FuelLog; updatedLogs: FuelLog[] }>> {
+		try {
+			const restoreResult = await db.transaction('rw', db.fuelLogs, async () => {
+				// The id should be free (Dexie ++id never reissues a deleted id); guard defensively.
+				const existing = await db.fuelLogs.get(snapshot.id);
+				if (existing) {
+					throw new Error(`SAVE_FAILED:FuelLog ${snapshot.id} already present`);
+				}
+
+				// The post-delete set (WITHOUT the restored row). buildFuelLogUpdatePlan injects the
+				// snapshot, recomputes, then skips any id absent from this set — so the plan contains
+				// ONLY neighbor patches; the restored row itself is written directly via put().
+				const timelineLogs = await db.fuelLogs
+					.where('vehicleId')
+					.equals(snapshot.vehicleId)
+					.toArray();
+				const updatePlan = buildFuelLogUpdatePlan(timelineLogs, snapshot);
+
+				await db.fuelLogs.put(snapshot);
+
+				for (const patch of updatePlan) {
+					const validationError = validatePartialFuelLog(patch.changes);
+					if (validationError) {
+						throw new Error(`VALIDATION_ERROR:${validationError}`);
+					}
+
+					const count = await db.fuelLogs.update(patch.id, patch.changes);
+					if (count === 0) {
+						throw new Error(`NOT_FOUND:${patch.id}`);
+					}
+				}
+
+				const updatedLogs =
+					updatePlan.length === 0
+						? []
+						: await db.fuelLogs.bulkGet(updatePlan.map((patch) => patch.id));
+
+				if (updatedLogs.some((log) => !log)) {
+					throw new Error('SAVE_FAILED:Record not found after update');
+				}
+
+				return {
+					restoredLog: snapshot,
+					updatedLogs: updatedLogs as FuelLog[]
+				};
+			});
+
+			notifyDataChanged();
+			return ok(restoreResult);
+		} catch (e) {
+			const message = String(e);
+			if (message.startsWith('Error: NOT_FOUND:')) {
+				const missingId = message.replace('Error: NOT_FOUND:', '');
+				return err('NOT_FOUND', `FuelLog ${missingId} not found`);
+			}
+			if (message.startsWith('Error: VALIDATION_ERROR:')) {
+				return err('VALIDATION_ERROR', message.replace('Error: VALIDATION_ERROR:', ''));
+			}
+			if (message.startsWith('Error: SAVE_FAILED:')) {
+				return err('SAVE_FAILED', message.replace('Error: SAVE_FAILED:', ''));
+			}
+			if (isQuotaExceededError(e)) return err(QUOTA_EXCEEDED_CODE, QUOTA_EXCEEDED_MESSAGE);
+			return err('SAVE_FAILED', message);
+		}
+	}
 }
 
 export const fuelLogRepository = new FuelLogRepository();
@@ -270,3 +343,4 @@ export const updateFuelLogsAtomic = (
 	patches: Array<{ id: number; changes: Partial<NewFuelLog> }>
 ) => fuelLogRepository.updateFuelLogsAtomic(patches);
 export const deleteFuelLog = (id: number) => fuelLogRepository.deleteFuelLog(id);
+export const restoreFuelLog = (snapshot: FuelLog) => fuelLogRepository.restoreFuelLog(snapshot);
