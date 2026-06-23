@@ -3,6 +3,7 @@ import type { Expense, FuelLog } from '$lib/db/schema';
 import { LITERS_PER_GALLON, KILOMETERS_PER_MILE } from '$lib/utils/calculations';
 import { mergeHistoryEntries, type HistoryEntry } from '$lib/utils/historyEntries';
 import {
+	averageConsumption,
 	consumptionTrend,
 	costPerDistance,
 	fuelVsMaintenanceSplit,
@@ -314,5 +315,104 @@ describe('costPerDistance', () => {
 		const result = costPerDistance(logs, 'Ft', 'L/100km');
 		expect(Object.keys(result)).toEqual(['Ft']);
 		expect(result.Ft.costPerDistance).toBeCloseTo(0.15, 6);
+	});
+});
+
+describe('averageConsumption', () => {
+	it('returns null for no fuel logs', () => {
+		expect(averageConsumption([], 'L/100km')).toBeNull();
+	});
+
+	it('returns null when the only fill has no derivable distance (genuine first log)', () => {
+		const logs = [createFuelEntry({ id: 1, calculatedConsumption: 0 })];
+		expect(averageConsumption(logs, 'L/100km')).toBeNull();
+	});
+
+	it('is volume-weighted (Σvolume / Σdistance), not a mean of per-tank values, for L logs', () => {
+		// log1: 50 L at 10 L/100km => 500 km. log2: 40 L at 8 L/100km => 500 km.
+		// Σ = 90 L over 1000 km => (90 / 1000) * 100 = 9.0 L/100km.
+		const logs = [
+			createFuelEntry({
+				id: 1,
+				unit: 'L',
+				distanceUnit: 'km',
+				quantity: 50,
+				calculatedConsumption: 10
+			}),
+			createFuelEntry({
+				id: 2,
+				unit: 'L',
+				distanceUnit: 'km',
+				quantity: 40,
+				calculatedConsumption: 8
+			})
+		];
+		expect(averageConsumption(logs, 'L/100km')).toBeCloseTo(9.0, 6);
+	});
+
+	it('computes MPG (Σmiles / Σgallons) for gal logs under the imperial preference', () => {
+		// log1: 10 gal at 25 MPG => 250 mi. log2: 10 gal at 20 MPG => 200 mi.
+		// Σ = 450 mi over 20 gal => 22.5 MPG.
+		const logs = [
+			createFuelEntry({
+				id: 1,
+				unit: 'gal',
+				distanceUnit: 'mi',
+				quantity: 10,
+				calculatedConsumption: 25
+			}),
+			createFuelEntry({
+				id: 2,
+				unit: 'gal',
+				distanceUnit: 'mi',
+				quantity: 10,
+				calculatedConsumption: 20
+			})
+		];
+		expect(averageConsumption(logs, 'MPG')).toBeCloseTo(22.5, 6);
+	});
+
+	it('normalizes mixed L/gal + km/mi rows to the L/100km display unit before summing', () => {
+		const logs = [
+			createFuelEntry({
+				id: 1,
+				unit: 'L',
+				distanceUnit: 'km',
+				quantity: 50,
+				calculatedConsumption: 10
+			}),
+			createFuelEntry({
+				id: 2,
+				unit: 'gal',
+				distanceUnit: 'mi',
+				quantity: 10,
+				calculatedConsumption: 25
+			})
+		];
+		// km log: 500 km, 50 L. mi log: 250 mi => 250 * 1.609344 km; 10 gal => 10 * 3.785411784 L.
+		const totalLiters = 50 + 10 * LITERS_PER_GALLON;
+		const totalKm = 500 + 250 * KILOMETERS_PER_MILE;
+		expect(averageConsumption(logs, 'L/100km')).toBeCloseTo((totalLiters / totalKm) * 100, 6);
+	});
+
+	it('ignores non-derivable fills while still aggregating the derivable ones', () => {
+		const logs = [
+			createFuelEntry({ id: 1, calculatedConsumption: 0 }), // dropped
+			createFuelEntry({
+				id: 2,
+				unit: 'L',
+				distanceUnit: 'km',
+				quantity: 50,
+				calculatedConsumption: 10
+			}),
+			createFuelEntry({
+				id: 3,
+				unit: 'L',
+				distanceUnit: 'km',
+				quantity: 40,
+				calculatedConsumption: 8
+			})
+		];
+		expect(averageConsumption(logs, 'L/100km')).toBeCloseTo(9.0, 6);
 	});
 });

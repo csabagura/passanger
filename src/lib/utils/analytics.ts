@@ -5,7 +5,8 @@ import {
 	convertConsumptionUnit,
 	getDistanceUnitForFuelUnit,
 	getVolumeUnitForFuelUnit,
-	KILOMETERS_PER_MILE
+	KILOMETERS_PER_MILE,
+	LITERS_PER_GALLON
 } from '$lib/utils/calculations';
 import { resolveHistoryEntryCurrency, type HistoryEntry } from '$lib/utils/historyEntries';
 
@@ -93,6 +94,14 @@ function convertDistanceToUnit(
 	}
 
 	return fromUnit === 'km' ? distance / KILOMETERS_PER_MILE : distance * KILOMETERS_PER_MILE;
+}
+
+function convertVolumeToUnit(volume: number, fromUnit: 'L' | 'gal', toUnit: 'L' | 'gal'): number {
+	if (fromUnit === toUnit) {
+		return volume;
+	}
+
+	return fromUnit === 'L' ? volume / LITERS_PER_GALLON : volume * LITERS_PER_GALLON;
 }
 
 /**
@@ -223,4 +232,42 @@ export function costPerDistance(
 	}
 
 	return result;
+}
+
+/**
+ * Overall volume-weighted fuel consumption, expressed in the display unit implied
+ * by `preferredFuelUnit` — L/100km (volume in L over distance in km) or MPG
+ * (distance in mi over volume in gal). Mirrors `costPerDistance`'s methodology: a
+ * true overall rate (Σvolume / Σdistance), NOT a mean of per-tank values. Only
+ * fuel logs whose distance is derivable (consumption > 0) contribute, and each
+ * fill's volume + distance are normalized to the display unit before summing, so
+ * mixed L/gal rows combine correctly. Consumption is currency-independent, so —
+ * unlike `costPerDistance` — this returns a single value (or `null` when no fill
+ * has a derivable distance / the totals are non-positive). Pure: no DB, no Svelte.
+ */
+export function averageConsumption(
+	fuelLogs: FuelLog[],
+	preferredFuelUnit: FuelUnit = 'L/100km'
+): number | null {
+	const distanceUnit = getDistanceUnitForFuelUnit(preferredFuelUnit);
+	const volumeUnit = getVolumeUnitForFuelUnit(preferredFuelUnit);
+
+	let totalVolume = 0;
+	let totalDistance = 0;
+
+	for (const log of fuelLogs) {
+		const distance = getFuelEntryDistance(log);
+		if (distance === null) {
+			continue;
+		}
+
+		totalVolume += convertVolumeToUnit(log.quantity, log.unit, volumeUnit);
+		totalDistance += convertDistanceToUnit(distance, log.distanceUnit, distanceUnit);
+	}
+
+	if (totalDistance <= 0 || totalVolume <= 0) {
+		return null;
+	}
+
+	return volumeUnit === 'L' ? (totalVolume / totalDistance) * 100 : totalDistance / totalVolume;
 }

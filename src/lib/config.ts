@@ -10,6 +10,13 @@ export type PresetCurrency = (typeof PRESET_CURRENCIES)[number];
 export const DEFAULT_UNIT: FuelUnit = 'L/100km';
 export const DEFAULT_CURRENCY: string = '€';
 
+// Home Hero Metric (Story 3.4 / FR-9 base, DEC-2): which figure the tap-to-toggle Hero Metric
+// shows. Remembered as the optional `heroMetric` field on AppSettings (localStorage, AD-8).
+// Default 'cost' — "money is the emotional hook"; absent/invalid falls back to it.
+export const HERO_METRICS = ['cost', 'consumption'] as const;
+export type HeroMetric = (typeof HERO_METRICS)[number];
+export const DEFAULT_HERO_METRIC: HeroMetric = 'cost';
+
 // Currency display metadata, keyed by the currency string trimmed + upper-cased.
 // Currencies whose minor unit is absent/negligible are shown with no decimal places.
 export const ZERO_DECIMAL_CURRENCIES = new Set([

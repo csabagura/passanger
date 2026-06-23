@@ -1,14 +1,12 @@
 <script lang="ts">
-	import { onDestroy, getContext } from 'svelte';
+	import { onDestroy } from 'svelte';
 	import { createLiveQuery } from '$lib/state/liveQuery.svelte';
 	import { getAllFuelLogs } from '$lib/db/repositories/fuelLogs';
 	import { getAllExpenses } from '$lib/db/repositories/expenses';
-	import { costPerDistance } from '$lib/utils/analytics';
-	import { formatCurrency, getDistanceUnitForFuelUnit } from '$lib/utils/calculations';
 	import RemindersDueCard from '$lib/components/RemindersDueCard.svelte';
+	import HeroMetric from '$lib/components/HeroMetric.svelte';
 	import HomeSkeleton from '$lib/components/HomeSkeleton.svelte';
 	import type { FuelLog, Expense } from '$lib/db/schema';
-	import type { AppSettings } from '$lib/utils/settings';
 
 	interface Props {
 		// A FIXED active-vehicle id for this component's lifetime. Home wraps <HomeDashboard> in a
@@ -21,10 +19,9 @@
 
 	let { vehicleId, vehicleName }: Props = $props();
 
-	const settingsCtx = getContext<{ settings: AppSettings }>('settings');
-	const homeCurrency = $derived(settingsCtx.settings.currency);
-	const fuelUnit = $derived(settingsCtx.settings.fuelUnit);
-	const distanceUnit = $derived(getDistanceUnitForFuelUnit(fuelUnit));
+	// HomeDashboard no longer reads currency/unit or computes the cost figure directly — Story 3.4
+	// moved the Hero Metric (cost ↔ consumption toggle + remembered choice) into <HeroMetric>, which
+	// reads the 'settings' context itself and is fed the already-loaded `fuelLogs` below.
 
 	// AD-4 reactive reads: a new Capture (fuel OR expense) for this vehicle re-emits here without a
 	// reload. `initial = undefined` distinguishes "not loaded yet" (→ skeleton) from "loaded empty"
@@ -66,21 +63,6 @@
 		return `Tracking ${fuelPart} · ${expensePart} for ${vehicleName}.`;
 	});
 
-	// Base cost stat (AC-6) — read-only Cost-per-Distance in the home currency. No toggle / no trend /
-	// no remembered choice (those are Story 3.4 / 4.2). `costPerDistance` only counts fills whose
-	// distance is derivable (consumption > 0): one such fill is enough, so this is null only until at
-	// least one home-currency fill has a derivable distance (the genuine first fill has consumption 0).
-	const costStat = $derived.by(() => {
-		const byCurrency = costPerDistance(fuelLogs, homeCurrency, fuelUnit);
-		return byCurrency[homeCurrency] ?? null;
-	});
-
-	const costNextAction = $derived(
-		fuelCount === 0
-			? `Log your first fill-up to see cost per ${distanceUnit}.`
-			: `Log another fill-up to calculate cost per ${distanceUnit}.`
-	);
-
 	// Last-fill recency (AC-6) — a small local Intl relative-time over the newest fuel-log date. This is
 	// intentionally tiny and replaceable: the formal recency helper (FR-19) arrives in Story 4.1.
 	const lastFillDate = $derived.by(() => {
@@ -117,26 +99,9 @@
 		<!-- Summary line (priority 1) -->
 		<p class="text-base text-foreground">{summaryLine}</p>
 
-		<!-- Base cost stat (priority 2) — `stat` role: the one big number earns the most pixels. -->
-		<section
-			aria-labelledby="home-cost-stat-heading"
-			class="rounded-xl border border-border bg-card p-4"
-		>
-			<h2
-				id="home-cost-stat-heading"
-				class="text-xs font-semibold uppercase tracking-wide text-muted-foreground"
-			>
-				Cost per {distanceUnit}
-			</h2>
-			{#if costStat}
-				<p class="mt-2 text-[2rem] font-semibold leading-none tabular-nums text-foreground">
-					{formatCurrency(costStat.costPerDistance, homeCurrency)}
-					<span class="text-base font-normal text-muted-foreground">/ {costStat.distanceUnit}</span>
-				</p>
-			{:else}
-				<p class="mt-2 text-sm text-muted-foreground">{costNextAction}</p>
-			{/if}
-		</section>
+		<!-- Hero Metric (priority 2) — Story 3.4: the tap-to-toggle Cost-per-Distance ↔ Consumption
+		     `stat`. Reads the 'settings' context itself; fed the already-loaded fuelLogs. -->
+		<HeroMetric {fuelLogs} />
 
 		<!-- Up-Next slot (priority 3) — the existing RemindersDueCard stands in until the rich card
 		     (status bar + "Log this service") lands in Story 3.5. Stays calm/hidden when none are due.

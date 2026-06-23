@@ -275,4 +275,56 @@ describe('Settings utility', () => {
 			expect(getSettings().exchangeRates).toBeUndefined();
 		});
 	});
+
+	describe('heroMetric', () => {
+		it('omits heroMetric entirely when absent (byte-identical back-compat, like exchangeRates)', () => {
+			saveSettings({ fuelUnit: DEFAULT_UNIT, currency: DEFAULT_CURRENCY, theme: 'system' });
+			const raw = localStorage.getItem(SETTINGS_STORAGE_KEY);
+			expect('heroMetric' in JSON.parse(raw!)).toBe(false);
+			expect('heroMetric' in getSettings()).toBe(false);
+		});
+
+		it('round-trips a stored consumption choice', () => {
+			saveSettings({
+				fuelUnit: DEFAULT_UNIT,
+				currency: DEFAULT_CURRENCY,
+				theme: 'system',
+				heroMetric: 'consumption'
+			});
+			expect(getSettings().heroMetric).toBe('consumption');
+		});
+
+		it('round-trips an explicit cost choice', () => {
+			saveSettings({
+				fuelUnit: DEFAULT_UNIT,
+				currency: DEFAULT_CURRENCY,
+				theme: 'system',
+				heroMetric: 'cost'
+			});
+			expect(getSettings().heroMetric).toBe('cost');
+		});
+
+		it('drops an invalid heroMetric on save (so the consumer defaults to cost)', () => {
+			saveSettings({
+				fuelUnit: DEFAULT_UNIT,
+				currency: DEFAULT_CURRENCY,
+				theme: 'system',
+				heroMetric: 'efficiency' as AppSettings['heroMetric']
+			});
+			expect('heroMetric' in getSettings()).toBe(false);
+		});
+
+		it('drops an invalid persisted heroMetric on read', () => {
+			localStorage.setItem(
+				SETTINGS_STORAGE_KEY,
+				JSON.stringify({
+					fuelUnit: DEFAULT_UNIT,
+					currency: DEFAULT_CURRENCY,
+					theme: 'system',
+					heroMetric: 42
+				})
+			);
+			expect('heroMetric' in getSettings()).toBe(false);
+		});
+	});
 });
