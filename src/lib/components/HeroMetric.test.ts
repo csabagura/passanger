@@ -125,6 +125,16 @@ describe('HeroMetric', () => {
 		expect(button.className).toContain('focus-visible:ring-2');
 	});
 
+	it('AC7: the accessible name has no double period in the insufficient-data state', () => {
+		// nextAction is a full sentence ending in "."; the toggle hint must not append a second period.
+		renderHero(baseSettings(), []);
+		const label = screen.getByRole('button').getAttribute('aria-label');
+		expect(label).not.toContain('..');
+		expect(label).toBe(
+			'Cost per km: Log your first fill-up to see cost per km. Tap to switch to Consumption.'
+		);
+	});
+
 	it('AC7: the metric change is announced via a polite live region (empty on load)', async () => {
 		renderHero(baseSettings(), [makeLog()]);
 		const status = screen.getByRole('status');

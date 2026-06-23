@@ -99,8 +99,11 @@
 	const valueSpeech = $derived(
 		view.value ? `${view.value}${view.unitSuffix ? ` ${view.unitSuffix}` : ''}` : view.nextAction
 	);
+	// Strip a trailing period from valueSpeech before appending the toggle hint: the value state
+	// ("€0.12 / km") has none, but the insufficient-data state ends in a full sentence ("…cost per
+	// km.") — without this the name would read "…cost per km.. Tap to switch…" (double period).
 	const accessibleName = $derived(
-		`${view.heading}: ${valueSpeech}. Tap to switch to ${metricLabels[otherMetric]}.`
+		`${view.heading}: ${valueSpeech.replace(/\.$/, '')}. Tap to switch to ${metricLabels[otherMetric]}.`
 	);
 
 	// Transient polite announcement: EMPTY on initial render (so the default view collides with no
