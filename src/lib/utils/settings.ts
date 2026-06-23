@@ -1,5 +1,11 @@
-import { SETTINGS_STORAGE_KEY, DEFAULT_UNIT, DEFAULT_CURRENCY, SUPPORTED_UNITS } from '$lib/config';
-import type { FuelUnit } from '$lib/config';
+import {
+	SETTINGS_STORAGE_KEY,
+	DEFAULT_UNIT,
+	DEFAULT_CURRENCY,
+	SUPPORTED_UNITS,
+	HERO_METRICS
+} from '$lib/config';
+import type { FuelUnit, HeroMetric } from '$lib/config';
 
 export type ThemePreference = 'system' | 'light' | 'dark';
 const VALID_THEMES: readonly ThemePreference[] = ['system', 'light', 'dark'] as const;
@@ -12,6 +18,9 @@ export interface AppSettings {
 	// User-entered exchange rates, keyed by currency string. rate[c] = home-currency value of
 	// 1 unit of currency c. Optional/absent for back-compat. Only finite > 0 entries are kept.
 	exchangeRates?: Record<string, number>;
+	// Remembered Home Hero Metric choice (Story 3.4). Optional/absent for back-compat; absent or
+	// invalid falls back to DEFAULT_HERO_METRIC ('cost') at the consumer, mirroring exchangeRates?.
+	heroMetric?: HeroMetric;
 }
 
 const DEFAULT_SETTINGS: AppSettings = {
@@ -30,6 +39,10 @@ function isValidCurrency(value: unknown): value is string {
 
 function isValidTheme(value: unknown): value is ThemePreference {
 	return typeof value === 'string' && VALID_THEMES.includes(value as ThemePreference);
+}
+
+function isValidHeroMetric(value: unknown): value is HeroMetric {
+	return typeof value === 'string' && HERO_METRICS.includes(value as HeroMetric);
 }
 
 // Keep only entries whose rate is a finite number > 0; drop blanks/NaN/≤0. Returns
@@ -82,6 +95,12 @@ export function getSettings(): AppSettings {
 			settings.exchangeRates = exchangeRates;
 		}
 
+		// Optional/back-compat, exactly like exchangeRates: only attach when a valid value is
+		// persisted; an absent or invalid field is left off so the consumer defaults to 'cost'.
+		if (isValidHeroMetric(persistedSettings.heroMetric)) {
+			settings.heroMetric = persistedSettings.heroMetric;
+		}
+
 		return settings;
 	} catch {
 		return { ...DEFAULT_SETTINGS };
@@ -100,6 +119,12 @@ export function saveSettings(settings: AppSettings): boolean {
 	const exchangeRates = sanitizeExchangeRates(settings.exchangeRates);
 	if (exchangeRates) {
 		nextSettings.exchangeRates = exchangeRates;
+	}
+
+	// saveSettings reconstructs nextSettings from known fields only, so heroMetric must be
+	// re-attached here or it is silently dropped. Persist only a valid value (mirrors exchangeRates).
+	if (isValidHeroMetric(settings.heroMetric)) {
+		nextSettings.heroMetric = settings.heroMetric;
 	}
 
 	try {

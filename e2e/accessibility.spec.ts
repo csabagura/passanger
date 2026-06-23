@@ -90,6 +90,64 @@ test('Capture sheet is reachable via keyboard and shows visible focus', async ({
 	expect(focusVisible).toBe(true);
 });
 
+// Story 3.4 — the Home Hero Metric: a tap-to-toggle Cost-per-Distance ↔ Consumption control whose
+// choice is remembered. Setting up a vehicle + a fuel log with a derivable distance gives both metrics
+// a real value, so the toggle and its persistence can be exercised end-to-end and axe-scanned.
+async function seedVehicleAndFill(page: import('@playwright/test').Page): Promise<void> {
+	await page.goto('/');
+	await page.waitForLoadState('networkidle');
+	await page.getByRole('button', { name: /Add your vehicle to get started/i }).click();
+	await page.getByLabel('Display Name').fill('Hero Car');
+	await page.getByLabel('Make').fill('Toyota');
+	await page.getByLabel('Model').fill('Corolla');
+	await page.getByRole('button', { name: 'Save vehicle' }).click();
+	await expect(page.getByText(/No entries yet for/i)).toBeVisible();
+
+	// Two fills (ascending odometer) so the second computes a consumption → a derivable distance.
+	for (const fill of [
+		{ odometer: '10000', quantity: '40', cost: '60' },
+		{ odometer: '10500', quantity: '42', cost: '78' }
+	]) {
+		await page.getByRole('button', { name: /Log a fill-up or expense/i }).click();
+		const sheet = page.getByRole('dialog');
+		await sheet.getByLabel(/^Odometer/).fill(fill.odometer);
+		await sheet.getByLabel(/^Quantity/).fill(fill.quantity);
+		await sheet.getByLabel('Total Cost').fill(fill.cost);
+		await sheet.getByRole('button', { name: 'Save', exact: true }).click();
+		await sheet.getByRole('button', { name: 'Done', exact: true }).click();
+		await expect(page.getByText('Log an entry')).toHaveCount(0);
+	}
+}
+
+test('Home Hero Metric toggles cost ↔ consumption, persists across reload, stays axe-clean', async ({
+	page
+}) => {
+	await seedVehicleAndFill(page);
+
+	// Defaults to the Cost-per-Distance stat (DEC-2: money is the default hook).
+	const toggle = page.getByRole('button', { name: /Tap to switch/i });
+	await expect(toggle).toHaveAccessibleName(/^Cost per km:/i);
+
+	// Tap flips to Consumption (label + value switch together).
+	await toggle.click();
+	await expect(toggle).toHaveAccessibleName(/^Consumption:/i);
+	await expect(toggle).toHaveAccessibleName(/8\.4 L\/100km/);
+
+	// The toggle remains axe-clean in the consumption state.
+	const results = await new AxeBuilder({ page }).withTags(WCAG_TAGS).analyze();
+	const serious = results.violations.filter(
+		(v) => v.impact === 'critical' || v.impact === 'serious'
+	);
+	expect(serious).toEqual([]);
+
+	// The choice is remembered across a full reload (persisted to settings/localStorage).
+	await page.reload();
+	await page.waitForLoadState('networkidle');
+	await expect(page.getByRole('button', { name: /Tap to switch/i })).toHaveAccessibleName(
+		/^Consumption:/i
+	);
+});
+
 test('App is fully usable with prefers-reduced-motion: reduce', async ({ page }) => {
 	await page.emulateMedia({ reducedMotion: 'reduce' });
 	await page.goto('/');
