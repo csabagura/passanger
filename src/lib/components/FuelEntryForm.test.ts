@@ -416,6 +416,40 @@ describe('FuelEntryForm component — review fixes validation', () => {
 		});
 	});
 
+	describe('Dual-mount focus scoping (Story 3.2 code-review regression)', () => {
+		it('focuses the submitted instance own field when a duplicate-id form is co-mounted', async () => {
+			// Real-world dual-mount (verified during code review): /log keeps an inline FuelEntryForm
+			// mounted while the global Capture sheet mounts a SECOND FuelEntryForm with the SAME
+			// hardcoded ids (id="odometer", ...). First-invalid-field focus must target the SUBMITTED
+			// form's own input — not the first match in document order, which a document-wide
+			// getElementById would wrongly return (focusing the background page form behind the modal).
+			render(FuelEntryForm, { props: { vehicleId: 1, onSave: onSaveSpy } });
+			render(FuelEntryForm, { props: { vehicleId: 1, onSave: onSaveSpy } });
+			await new Promise((r) => setTimeout(r, 0));
+			flushSync();
+
+			// Both instances coexist in document.body with the SAME ids — the collision is the point.
+			const odometers = document.querySelectorAll<HTMLInputElement>('[id="odometer"]');
+			const forms = document.querySelectorAll('form');
+			expect(odometers.length).toBe(2);
+			expect(forms.length).toBe(2);
+			const firstOdometer = odometers[0];
+			const secondOdometer = odometers[1];
+
+			// Park focus on the FIRST instance, then submit the SECOND empty (odometer is the first
+			// invalid field). The fix must MOVE focus into the second form; the pre-fix global lookup
+			// would leave focus on the first instance's odometer (first in tree order).
+			firstOdometer.focus();
+			expect(document.activeElement).toBe(firstOdometer);
+
+			await fireEvent.submit(forms[1] as HTMLFormElement);
+			await new Promise((r) => setTimeout(r, 50));
+			flushSync();
+
+			expect(document.activeElement).toBe(secondOdometer);
+		});
+	});
+
 	// Story 2.4 (AC-2): the confirmation persists until the user dismisses it — NO 3s auto-dismiss.
 	describe('Story 2.4: value-revealing save persists until dismissed', () => {
 		const savedLog: FuelLog = {

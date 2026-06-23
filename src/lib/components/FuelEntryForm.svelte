@@ -15,6 +15,7 @@
 	import { PRESET_CURRENCIES } from '$lib/config';
 	import CurrencyChips from '$lib/components/capture/CurrencyChips.svelte';
 	import ConsumptionSparkline from '$lib/components/ConsumptionSparkline.svelte';
+	import { Field } from '$lib/components/ui/field';
 	import {
 		classifyOdometer,
 		medianDelta,
@@ -119,9 +120,18 @@
 		return presets.includes(currency) ? [...presets] : [currency, ...presets];
 	});
 
-	let odometerInput: HTMLInputElement | undefined = $state();
-	let quantityInput: HTMLInputElement | undefined = $state();
-	let costInput: HTMLInputElement | undefined = $state();
+	// Field forwards no element ref, so focus recovery (mount auto-focus + first-invalid-field)
+	// targets the stable id passed to each Field — the proven story-1-5 migration pattern. We scope
+	// the lookup to THIS form (formEl), NOT document.getElementById: /log keeps an inline form mounted
+	// while the global Capture sheet mounts a SECOND instance with the SAME ids, so a document-wide
+	// lookup would resolve to whichever is first in tree order (the page form) and mis-target the
+	// sheet form's focus. The history-retry button is NOT a Field, so it keeps its bind:this ref.
+	let formEl: HTMLFormElement | undefined = $state();
+	function focusField(id: string): void {
+		// `[id="…"]` (not `#id`) so the lookup stays scoped to formEl in every engine — jsdom's nwsapi
+		// resolves `#id` document-wide via a getElementById fast-path, which would defeat the scoping.
+		formEl?.querySelector<HTMLElement>(`[id="${id}"]`)?.focus();
+	}
 	let retryHistoryButton: HTMLButtonElement | undefined = $state();
 
 	let odometerError = $state('');
@@ -318,13 +328,10 @@
 		return '';
 	});
 
-	const odometerDescribedBy = $derived(
-		[
-			odometerError ? 'odometer-error' : null,
-			odometerWarning && !odometerError ? 'odometer-warning' : null
-		]
-			.filter(Boolean)
-			.join(' ') || undefined
+	// Field owns the error id (`odometer-error`); we only thread the amber warning's id when it is
+	// the visible advisory (no error). Field merges it with its own error id via aria-describedby.
+	const odometerWarningId = $derived(
+		!odometerError && odometerWarning ? 'odometer-warning' : undefined
 	);
 
 	// Recent-currency chips: re-read the session list after each save (the module store isn't a
@@ -440,7 +447,7 @@
 	});
 
 	$effect(() => {
-		odometerInput?.focus();
+		focusField('odometer');
 	});
 
 	function setFormValuesFromLog(log: FuelLog): void {
@@ -505,15 +512,15 @@
 		}
 
 		if (odometerError) {
-			odometerInput?.focus();
+			focusField('odometer');
 			return;
 		}
 		if (quantityError) {
-			quantityInput?.focus();
+			focusField('quantity');
 			return;
 		}
 		if (costError) {
-			costInput?.focus();
+			focusField('cost');
 			return;
 		}
 
@@ -546,7 +553,7 @@
 		if (odometerLooksGrouped(odometerTrimmed, parsedOdometer)) {
 			saveState = { status: 'idle' };
 			odometerError = 'Enter odometer without commas (e.g. 87400)';
-			odometerInput?.focus();
+			focusField('odometer');
 			return;
 		}
 
@@ -562,7 +569,7 @@
 		) {
 			saveState = { status: 'idle' };
 			odometerError = 'Enter an odometer reading higher than the last logged value';
-			odometerInput?.focus();
+			focusField('odometer');
 			return;
 		}
 
@@ -578,7 +585,7 @@
 			) {
 				saveState = { status: 'idle' };
 				odometerError = 'Enter an odometer reading lower than the next logged value';
-				odometerInput?.focus();
+				focusField('odometer');
 				return;
 			}
 
@@ -694,6 +701,7 @@
 </script>
 
 <form
+	bind:this={formEl}
 	onsubmit={(e) => {
 		e.preventDefault();
 		handleSubmit();
@@ -708,80 +716,60 @@
 		</p>
 	{/if}
 	<div>
-		<label for="odometer" class="block text-sm font-medium text-foreground">
-			Odometer ({currentDistanceUnit})
-		</label>
-		<input
-			bind:this={odometerInput}
-			bind:value={odometer}
-			oninput={clearSubmissionFeedback}
+		<Field
+			id="odometer"
+			label="Odometer ({currentDistanceUnit})"
 			type="text"
 			inputmode="decimal"
-			id="odometer"
-			aria-describedby={odometerDescribedBy}
-			aria-invalid={!!odometerError}
-			class="mt-1 block h-[52px] w-full rounded-lg border border-border px-3 py-2 text-base focus:outline-none focus:ring-2 focus:ring-ring"
+			bind:value={odometer}
+			error={odometerError}
+			aria-describedby={odometerWarningId}
+			oninput={clearSubmissionFeedback}
 		/>
 		{#if previousOdometer !== undefined && previousOdometer > 0}
-			<p class="mt-1 text-xs text-muted-foreground">
+			<p class="mt-2 text-xs text-muted-foreground">
 				Last: {previousOdometer.toLocaleString()}
 				{` ${lastLogDistanceUnit || currentDistanceUnit}`}
 			</p>
 		{/if}
-		{#if odometerError}
-			<p id="odometer-error" role="alert" class="mt-1 text-sm text-destructive">
-				{odometerError}
-			</p>
-		{:else if odometerWarning}
+		{#if !odometerError && odometerWarning}
 			<!-- Story 2.2: non-blocking sanity warning. Soft amber (text-due-soon, DEC-15), polite
-			     live region, NO role="alert" — distinct from the destructive odometerError. -->
-			<p id="odometer-warning" aria-live="polite" class="mt-1 text-sm text-due-soon">
+			     live region, NO role="alert" — distinct from the destructive Field error. Threaded
+			     into the odometer Field via aria-describedby (odometerWarningId). -->
+			<p id="odometer-warning" aria-live="polite" class="mt-2 text-sm text-due-soon">
 				{odometerWarning}
 			</p>
 		{/if}
 	</div>
 
-	<div>
-		<label for="quantity" class="block text-sm font-medium text-foreground">
-			Quantity ({currentFuelUnit})
-		</label>
-		<input
-			bind:this={quantityInput}
-			bind:value={quantity}
-			oninput={clearSubmissionFeedback}
-			type="text"
-			inputmode="decimal"
-			id="quantity"
-			aria-describedby={quantityError ? 'quantity-error' : undefined}
-			aria-invalid={!!quantityError}
-			class="mt-1 block h-[52px] w-full rounded-lg border border-border px-3 py-2 text-base focus:outline-none focus:ring-2 focus:ring-ring"
-		/>
-		{#if quantityError}
-			<p id="quantity-error" role="alert" class="mt-1 text-sm text-destructive">
-				{quantityError}
-			</p>
-		{/if}
-	</div>
+	<Field
+		id="quantity"
+		label="Quantity ({currentFuelUnit})"
+		type="text"
+		inputmode="decimal"
+		bind:value={quantity}
+		error={quantityError}
+		oninput={clearSubmissionFeedback}
+	/>
 
 	<div>
-		<label for="cost" class="block text-sm font-medium text-foreground"> Total Cost </label>
-		<div class="mt-1 flex gap-2">
-			<input
-				bind:this={costInput}
-				bind:value={cost}
-				oninput={clearSubmissionFeedback}
-				type="text"
-				inputmode="decimal"
-				id="cost"
-				aria-describedby={costError ? 'cost-error' : undefined}
-				aria-invalid={!!costError}
-				class="block h-[52px] w-full rounded-lg border border-border px-3 py-2 text-base focus:outline-none focus:ring-2 focus:ring-ring"
-			/>
+		<div class="flex items-start gap-2">
+			<div class="flex-1">
+				<Field
+					id="cost"
+					label="Total Cost"
+					type="text"
+					inputmode="decimal"
+					bind:value={cost}
+					error={costError}
+					oninput={clearSubmissionFeedback}
+				/>
+			</div>
 			<select
 				bind:value={currency}
 				onchange={clearSubmissionFeedback}
 				aria-label="Currency"
-				class="h-[52px] shrink-0 rounded-lg border border-border bg-background px-2 text-base focus:outline-none focus:ring-2 focus:ring-ring"
+				class="mt-7 h-13 shrink-0 rounded-md border border-border bg-background px-2 text-base focus:outline-none focus:ring-2 focus:ring-ring"
 			>
 				{#each currencyOptions as option (option)}
 					<option value={option}>{option}</option>
@@ -789,11 +777,6 @@
 			</select>
 		</div>
 		<CurrencyChips recent={recentCurrencies} selected={currency} onpick={(c) => (currency = c)} />
-		{#if costError}
-			<p id="cost-error" role="alert" class="mt-1 text-sm text-destructive">
-				{costError}
-			</p>
-		{/if}
 	</div>
 
 	<!-- Story 2.4 (AC-1/2/3/6): the value-revealing save confirmation. The outer wrapper carries the
