@@ -9,7 +9,16 @@
 	} from '$lib/utils/calculations';
 	import { saveSettings, type AppSettings } from '$lib/utils/settings';
 	import { notifySettingsChanged } from '$lib/utils/tabSync';
-	import { DEFAULT_HERO_METRIC, type HeroMetric as HeroMetricChoice } from '$lib/config';
+	import {
+		DEFAULT_HERO_METRIC,
+		TREND_FLAT_BAND_PCT,
+		type HeroMetric as HeroMetricChoice
+	} from '$lib/config';
+	import {
+		consumptionDelta,
+		costPerDistanceDelta,
+		type PeriodDelta
+	} from '$lib/utils/metrics/periodDelta';
 	import type { FuelLog } from '$lib/db/schema';
 
 	interface Props {
@@ -17,9 +26,13 @@
 		// renders this once data has resolved, so HeroMetric stays a pure presentational + toggle
 		// component with no Dexie read of its own (Dexie-isolation contract).
 		fuelLogs: FuelLog[];
+		// Injectable reference date for the month-over-month trend (Story 4.2). Absent in production
+		// (HomeDashboard passes nothing) → the engine reads the real clock; tests pin a fixed Date so
+		// the month-boundary comparison is deterministic. Mirrors serviceReminder's injectable `today`.
+		now?: Date;
 	}
 
-	let { fuelLogs }: Props = $props();
+	let { fuelLogs, now }: Props = $props();
 
 	// The provider (layout) exposes BOTH a `settings` getter and `updateSettings`; HomeDashboard only
 	// typed `settings`, but the toggle needs to write back, so type both here.
@@ -47,6 +60,45 @@
 
 	// Volume-weighted overall consumption, already in the display unit (Story-3.4 analytics aggregate).
 	const consumptionValue = $derived(averageConsumption(fuelLogs, fuelUnit));
+
+	// Month-over-month trend for the ACTIVE metric (Story 4.2). NOTE: the big value above is an
+	// ALL-TIME aggregate; the trend is THIS calendar month vs LAST (DEC-9) — different windows by
+	// design. A vehicle can have a falling all-time average yet a ▲ this month. Do not "fix" this.
+	// Cost is per-currency: take the home-currency bucket only (the non-home asymmetry is the accepted
+	// Story-3.3 → Epic-5/FR-15 defer — do not fall back to a non-home bucket to find a trend).
+	const activeTrend = $derived<PeriodDelta | null>(
+		activeMetric === 'consumption'
+			? consumptionDelta(fuelLogs, fuelUnit, now)
+			: (costPerDistanceDelta(fuelLogs, homeCurrency, fuelUnit, now)[homeCurrency] ?? null)
+	);
+
+	// Apply the presentation flat band (config) → a single display direction, or null when there is no
+	// usable trend (insufficient baseline / absent home-currency bucket). The engine only returns
+	// 'flat' on an exact 0 (floats never hit), so the band is what makes ▬ reachable.
+	const trendDirection = $derived<'up' | 'down' | 'flat' | null>(
+		activeTrend?.status === 'ok'
+			? Math.abs(activeTrend.percentChange) < TREND_FLAT_BAND_PCT
+				? 'flat'
+				: activeTrend.direction
+			: null
+	);
+
+	// Glyph + colour for each direction. NON-ALARMIST (DEC-13): ▲ up = brand blue (text-primary, the
+	// one DESIGN.md-sanctioned trend-up colour); ▼ down / ▬ flat = muted. NO success/destructive
+	// green-red — rising cost is shown calmly, not as a warning. Glyph-only (AC7); no percent/sentence.
+	const TREND_PRESENTATION: Record<'up' | 'down' | 'flat', { glyph: string; colorClass: string }> =
+		{
+			up: { glyph: '▲', colorClass: 'text-primary' },
+			down: { glyph: '▼', colorClass: 'text-muted-foreground' },
+			flat: { glyph: '▬', colorClass: 'text-muted-foreground' }
+		};
+
+	// Spoken direction clause for the accessible name (ok-state only; empty when no usable trend).
+	const trendSpeech = $derived(
+		trendDirection
+			? `, ${{ up: 'up from last month', down: 'down from last month', flat: 'level with last month' }[trendDirection]}`
+			: ''
+	);
 
 	interface MetricView {
 		// Visually-hidden uppercase heading copy ("Cost per km" / "Consumption").
@@ -97,14 +149,21 @@
 	// aria-label change is not reliably re-announced, so the transient aria-live region below carries
 	// the change announcement.
 	const valueSpeech = $derived(
-		view.value ? `${view.value}${view.unitSuffix ? ` ${view.unitSuffix}` : ''}` : view.nextAction
+		view.value !== null
+			? `${view.value}${view.unitSuffix ? ` ${view.unitSuffix}` : ''}`
+			: view.nextAction
 	);
 	// Strip a trailing period from valueSpeech before appending the toggle hint: the value state
 	// ("€0.12 / km") has none, but the insufficient-data state ends in a full sentence ("…cost per
 	// km.") — without this the name would read "…cost per km.. Tap to switch…" (double period).
 	const accessibleName = $derived(
-		`${view.heading}: ${valueSpeech.replace(/\.$/, '')}. Tap to switch to ${metricLabels[otherMetric]}.`
+		`${view.heading}: ${valueSpeech.replace(/\.$/, '')}${trendSpeech}. Tap to switch to ${metricLabels[otherMetric]}.`
 	);
+
+	// A muted "log more to see a trend" hint shows ONLY when a metric value is present but there is no
+	// usable trend yet (no prior month). With no value at all, `nextAction` already covers the empty
+	// state, so no hint (3.4 AC6 calm-empty contract holds — the chip slot also stays glyph-free).
+	const showTrendHint = $derived(view.value !== null && trendDirection === null);
 
 	// Transient polite announcement: EMPTY on initial render (so the default view collides with no
 	// getByText assertion and no SR speaks on load), then set only when the active metric actually
@@ -115,7 +174,7 @@
 
 	$effect(() => {
 		const metric = activeMetric;
-		const speech = `${view.heading}: ${valueSpeech}`;
+		const speech = `${view.heading}: ${valueSpeech}${trendSpeech}`;
 		if (lastAnnouncedMetric === null) {
 			lastAnnouncedMetric = metric; // prime on mount without announcing the default
 			return;
@@ -155,11 +214,22 @@
 			>
 				{view.heading}
 			</span>
-			<!-- Trend-chip slot (AC6): reserve the final footprint so Story 4.2's ▲/▼/▬ chip drops in with
-			     no layout shift. Renders nothing in 3.4 — calm and empty, never a "—" that reads as data. -->
-			<span aria-hidden="true" class="h-5 w-10 shrink-0"></span>
+			<!-- Trend chip (Story 4.2): the month-over-month direction for the active metric, glyph-only
+			     (AC7 — magnitude/sentence is 4.3 Insight). Keeps 3.4's reserved h-5 w-10 footprint so
+			     there is zero layout shift whether or not a glyph shows; stays calm and empty (no "—")
+			     when there's no usable trend. aria-hidden — direction reaches SRs via the button name. -->
+			<span
+				aria-hidden="true"
+				class="flex h-5 w-10 shrink-0 items-center justify-end text-base leading-none"
+			>
+				{#if trendDirection}
+					<span class={TREND_PRESENTATION[trendDirection].colorClass}
+						>{TREND_PRESENTATION[trendDirection].glyph}</span
+					>
+				{/if}
+			</span>
 		</span>
-		{#if view.value}
+		{#if view.value !== null}
 			<span
 				aria-hidden="true"
 				class="text-[2rem] font-semibold leading-none tabular-nums text-foreground"
@@ -171,6 +241,14 @@
 			</span>
 		{:else}
 			<span aria-hidden="true" class="text-sm text-muted-foreground">{view.nextAction}</span>
+		{/if}
+		{#if showTrendHint}
+			<!-- Calm nudge when a value exists but there's no prior month to trend against (EXPERIENCE.md:79).
+			     aria-hidden — the authoritative button aria-label already conveys the state, so no double
+			     announcement; the chip slot above stays glyph-free in this case (AC5). -->
+			<span aria-hidden="true" class="text-xs text-muted-foreground"
+				>add a couple more fill-ups to see a trend</span
+			>
 		{/if}
 	</button>
 	<!-- Transient change announcement for SRs (empty until the metric actually changes). -->
