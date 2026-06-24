@@ -7,9 +7,10 @@
 	import type { AppSettings } from '$lib/utils/settings';
 	import type { FuelLog } from '$lib/db/schema';
 
-	const { initialSettings, fuelLogs } = $props<{
+	const { initialSettings, fuelLogs, now } = $props<{
 		initialSettings: AppSettings;
 		fuelLogs: FuelLog[];
+		now?: Date;
 	}>();
 
 	// Capture-in-a-factory to avoid the state_referenced_locally init warning (mirrors
@@ -27,4 +28,4 @@
 	});
 </script>
 
-<HeroMetric {fuelLogs} />
+<HeroMetric {fuelLogs} {now} />

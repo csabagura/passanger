@@ -60,6 +60,11 @@ export const CADENCE_MIN_SPAN_DAYS = 14; // minimum calendar-day span between ea
 export const CONSUMPTION_CHANGE_THRESHOLD_PCT = 10;
 export const SPEND_CHANGE_THRESHOLD_PCT = 15;
 export const FUEL_PRICE_CHANGE_THRESHOLD_PCT = 5;
+// Hero-chip flat band (Story 4.2, presentation): a month-over-month change whose magnitude is below
+// this percent renders the ▬ flat glyph instead of ▲/▼ (the engine only returns 'flat' on an exact 0,
+// which float data never hits — periodDelta.ts:32 hands the band downstream). DISTINCT from the DEC-3
+// Insight thresholds above: those gate whether 4.3 surfaces a *sentence*; this only picks the glyph.
+export const TREND_FLAT_BAND_PCT = 1;
 export const MAX_CSV_ROWS = 10_000;
 export const IMPORT_FILE_SIZE_WARN_BYTES = 5 * 1024 * 1024; // 5MB — show amber warning
 export const IMPORT_FILE_SIZE_MAX_BYTES = 10 * 1024 * 1024; // 10MB — hard reject
