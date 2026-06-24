@@ -110,7 +110,8 @@
 	}
 
 	function handleViewAnalytics() {
-		void goto(resolve('/analytics'));
+		// Story 4.4: the analytics surface moved to /understand (the /analytics precursor redirects there).
+		void goto(resolve('/understand'));
 	}
 </script>
 
@@ -309,7 +310,7 @@
 					class="h-12 w-full rounded-xl border border-border bg-card text-sm font-semibold text-foreground"
 					onclick={handleViewAnalytics}
 				>
-					See trends in Analytics
+					See trends in Understand
 				</button>
 				<button
 					type="button"

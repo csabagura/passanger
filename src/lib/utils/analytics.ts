@@ -1,6 +1,6 @@
 import type { FuelUnit } from '$lib/config';
 import { DEFAULT_CURRENCY } from '$lib/config';
-import type { FuelLog } from '$lib/db/schema';
+import type { Expense, FuelLog } from '$lib/db/schema';
 import {
 	convertConsumptionUnit,
 	getDistanceUnitForFuelUnit,
@@ -30,6 +30,9 @@ export interface MonthlySpendBucket {
 }
 
 export interface ConsumptionTrendPoint {
+	/** The source fuel log's id — a consumption point is 1:1 with a fuel log, so the Understand
+	 *  chart can link a point back to its entry (Story 4.4 / FR-13). */
+	id: number;
 	/** The fuel log's date. */
 	date: Date;
 	/** Short human label such as "10 Mar". */
@@ -143,6 +146,41 @@ export function monthlySpendByCurrency(
 }
 
 /**
+ * Maintenance (Expense) spend per calendar month, grouped by currency (Story 4.4 / FR-14). Mirrors
+ * `monthlySpendByCurrency`'s `MonthlySpendBucket[]` shape + OLDEST → NEWEST ordering, but draws from
+ * Expenses only (fuel is excluded by construction — this takes `Expense[]`). Currencies are NEVER
+ * summed; legacy entries with no currency map to `homeCurrency`; non-finite `cost` rows are skipped
+ * (PREP-1 convention — `NaN <= 0 → false` would otherwise leak `€NaN`).
+ */
+export function maintenanceCostTrend(
+	expenses: Expense[],
+	homeCurrency: string = DEFAULT_CURRENCY,
+	locale: Intl.LocalesArgument = undefined
+): MonthlySpendBucket[] {
+	const bucketsByKey = new Map<string, MonthlySpendBucket>();
+
+	for (const expense of expenses) {
+		if (!isFiniteNumber(expense.cost)) {
+			continue;
+		}
+		const date = expense.date;
+		const monthKey = getMonthKey(date);
+		let bucket = bucketsByKey.get(monthKey);
+		if (!bucket) {
+			bucket = { monthKey, label: formatMonthLabel(date, locale), byCurrency: {} };
+			bucketsByKey.set(monthKey, bucket);
+		}
+
+		const currency = expense.currency ?? homeCurrency;
+		bucket.byCurrency[currency] = (bucket.byCurrency[currency] ?? 0) + expense.cost;
+	}
+
+	return [...bucketsByKey.values()].sort((left, right) =>
+		left.monthKey < right.monthKey ? -1 : left.monthKey > right.monthKey ? 1 : 0
+	);
+}
+
+/**
  * Consumption series for fuel logs, converted to the preferred display unit.
  * Ordered OLDEST → NEWEST by date (ties broken by id) so the line reads
  * left-to-right chronologically. Logs with consumption <= 0 are skipped (they
@@ -163,6 +201,7 @@ export function consumptionTrend(
 			return dateDifference !== 0 ? dateDifference : left.id - right.id;
 		})
 		.map((log) => ({
+			id: log.id,
 			date: log.date,
 			label: formatDayLabel(log.date, locale),
 			consumption: convertConsumptionUnit(log.calculatedConsumption, log.unit, displayUnit)

@@ -142,7 +142,8 @@
 
 	// Multi-tab safety: a write / settings change / restore in ANOTHER tab posts a BroadcastChannel
 	// message; here we re-run the existing imperative loads so this tab reconciles. `dataRevision` is
-	// the reactive trigger that history/analytics read inside their load $effect.
+	// the reactive trigger that History reads inside its load $effect. (Understand uses liveQuery for
+	// cross-surface reactivity instead, so it does not depend on dataRevision — Story 4.4 / AD-4.)
 	let dataRevision = $state(0);
 	let remoteCue = $state<'data' | 'settings' | null>(null);
 	let remoteRestorePending = $state(false);

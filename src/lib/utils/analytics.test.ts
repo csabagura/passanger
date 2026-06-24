@@ -7,6 +7,7 @@ import {
 	consumptionTrend,
 	costPerDistance,
 	fuelVsMaintenanceSplit,
+	maintenanceCostTrend,
 	monthlySpendByCurrency
 } from './analytics';
 
@@ -168,6 +169,64 @@ describe('consumptionTrend', () => {
 			'MPG'
 		);
 		expect(trend[0].consumption).toBeCloseTo(32, 6);
+	});
+
+	// Story 4.4 (AC6): each point carries its source fuel-log id (1:1) so the Understand chart can
+	// link a consumption point back to its entry.
+	it('carries the source fuel-log id on each point', () => {
+		const logs = [
+			createFuelEntry({ id: 5, date: new Date(2026, 2, 12), calculatedConsumption: 8 }),
+			createFuelEntry({ id: 4, date: new Date(2026, 2, 10), calculatedConsumption: 7 })
+		];
+		const trend = consumptionTrend(logs, 'L/100km');
+		// Oldest → newest by date: id 4 (10 Mar) then id 5 (12 Mar).
+		expect(trend.map((point) => point.id)).toEqual([4, 5]);
+	});
+});
+
+describe('maintenanceCostTrend (Story 4.4, FR-14)', () => {
+	it('returns an empty array for no expenses', () => {
+		expect(maintenanceCostTrend([], '€')).toEqual([]);
+	});
+
+	it('sums maintenance cost per calendar month, oldest to newest', () => {
+		const expenses = [
+			createMaintenanceEntry({ id: 1, date: new Date(2026, 2, 12), cost: 120, currency: '€' }),
+			createMaintenanceEntry({ id: 2, date: new Date(2026, 0, 5), cost: 40, currency: '€' }),
+			createMaintenanceEntry({ id: 3, date: new Date(2026, 2, 20), cost: 30, currency: '€' })
+		];
+		const buckets = maintenanceCostTrend(expenses, '€');
+		expect(buckets.map((bucket) => bucket.monthKey)).toEqual(['2026-01', '2026-03']);
+		expect(buckets[0].byCurrency).toEqual({ '€': 40 });
+		expect(buckets[1].byCurrency).toEqual({ '€': 150 });
+	});
+
+	it('keeps currencies separate within a month (never summed)', () => {
+		const expenses = [
+			createMaintenanceEntry({ id: 1, date: new Date(2026, 2, 10), cost: 100, currency: '€' }),
+			createMaintenanceEntry({ id: 2, date: new Date(2026, 2, 12), cost: 20000, currency: 'Ft' })
+		];
+		expect(maintenanceCostTrend(expenses, '€')[0].byCurrency).toEqual({ '€': 100, Ft: 20000 });
+	});
+
+	it('attributes legacy (no-currency) expenses to the home currency', () => {
+		const expenses = [
+			createMaintenanceEntry({ id: 1, date: new Date(2026, 2, 10), cost: 78, currency: undefined })
+		];
+		expect(maintenanceCostTrend(expenses, 'Ft')[0].byCurrency).toEqual({ Ft: 78 });
+	});
+
+	it('skips an expense with a non-finite cost (PREP-1 convention)', () => {
+		const expenses = [
+			createMaintenanceEntry({
+				id: 1,
+				date: new Date(2026, 2, 10),
+				cost: Number.NaN,
+				currency: '€'
+			}),
+			createMaintenanceEntry({ id: 2, date: new Date(2026, 2, 12), cost: 50, currency: '€' })
+		];
+		expect(maintenanceCostTrend(expenses, '€')[0].byCurrency).toEqual({ '€': 50 });
 	});
 });
 

@@ -41,11 +41,11 @@ describe('NavBar', () => {
 			expect(screen.getByText('Maintain')).toBeTruthy();
 		});
 
-		it('links point to correct routes (Understand→/analytics, Maintain→/settings interim)', () => {
+		it('links point to correct routes (Understand→/understand, Maintain→/settings interim)', () => {
 			render(NavBar);
 			const links = screen.getAllByRole('link');
 			expect(links[0].getAttribute('href')).toBe('/');
-			expect(links[1].getAttribute('href')).toBe('/analytics');
+			expect(links[1].getAttribute('href')).toBe('/understand');
 			expect(links[2].getAttribute('href')).toBe('/history');
 			expect(links[3].getAttribute('href')).toBe('/settings');
 		});
@@ -62,8 +62,8 @@ describe('NavBar', () => {
 			expect(links[3].getAttribute('aria-current')).toBeNull();
 		});
 
-		it('marks Understand tab as current page on /analytics', () => {
-			mockPathname = '/analytics';
+		it('marks Understand tab as current page on /understand', () => {
+			mockPathname = '/understand';
 			render(NavBar);
 			const links = screen.getAllByRole('link');
 			expect(links[1].getAttribute('aria-current')).toBe('page');
