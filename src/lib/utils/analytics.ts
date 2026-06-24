@@ -5,6 +5,7 @@ import {
 	convertConsumptionUnit,
 	getDistanceUnitForFuelUnit,
 	getVolumeUnitForFuelUnit,
+	isFiniteNumber,
 	KILOMETERS_PER_MILE,
 	LITERS_PER_GALLON
 } from '$lib/utils/calculations';
@@ -75,7 +76,14 @@ function formatDayLabel(date: Date, locale: Intl.LocalesArgument = undefined): s
  * (no/zero consumption — e.g. the first-ever log, or a non-trip fill-up).
  */
 function getFuelEntryDistance(entry: FuelLog): number | null {
-	if (entry.calculatedConsumption <= 0 || entry.quantity <= 0) {
+	// PREP-1: reject non-finite as well as non-positive. The older `<= 0` convention leaks `NaN`
+	// (`NaN <= 0 → false`), which propagates into `€NaN` / `NaN L/100km`. `isFiniteNumber` closes that.
+	if (
+		!isFiniteNumber(entry.calculatedConsumption) ||
+		entry.calculatedConsumption <= 0 ||
+		!isFiniteNumber(entry.quantity) ||
+		entry.quantity <= 0
+	) {
 		return null;
 	}
 
@@ -202,7 +210,7 @@ export function costPerDistance(
 
 	for (const log of fuelLogs) {
 		const distance = getFuelEntryDistance(log);
-		if (distance === null) {
+		if (distance === null || !isFiniteNumber(log.totalCost)) {
 			continue;
 		}
 
@@ -219,7 +227,7 @@ export function costPerDistance(
 
 	const result: Record<string, CostPerDistanceEntry> = {};
 	for (const [currency, { totalCost, totalDistance }] of totals) {
-		if (totalDistance <= 0) {
+		if (!isFiniteNumber(totalDistance) || totalDistance <= 0 || !isFiniteNumber(totalCost)) {
 			continue;
 		}
 
@@ -265,7 +273,12 @@ export function averageConsumption(
 		totalDistance += convertDistanceToUnit(distance, log.distanceUnit, distanceUnit);
 	}
 
-	if (totalDistance <= 0 || totalVolume <= 0) {
+	if (
+		!isFiniteNumber(totalDistance) ||
+		totalDistance <= 0 ||
+		!isFiniteNumber(totalVolume) ||
+		totalVolume <= 0
+	) {
 		return null;
 	}
 

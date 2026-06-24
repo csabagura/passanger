@@ -6,6 +6,7 @@
 	import UpNextCard from '$lib/components/UpNextCard.svelte';
 	import HeroMetric from '$lib/components/HeroMetric.svelte';
 	import HomeSkeleton from '$lib/components/HomeSkeleton.svelte';
+	import { recency } from '$lib/utils/metrics/recency';
 	import type { FuelLog, Expense } from '$lib/db/schema';
 
 	interface Props {
@@ -63,8 +64,8 @@
 		return `Tracking ${fuelPart} · ${expensePart} for ${vehicleName}.`;
 	});
 
-	// Last-fill recency (AC-6) — a small local Intl relative-time over the newest fuel-log date. This is
-	// intentionally tiny and replaceable: the formal recency helper (FR-19) arrives in Story 4.1.
+	// Last-fill recency (AC-6) — the newest fuel-log date rendered via the FR-19 recency helper
+	// (Story 4.1). String output is byte-identical to the inline version this replaces.
 	const lastFillDate = $derived.by(() => {
 		if (fuelLogs.length === 0) return null;
 		return fuelLogs.reduce(
@@ -73,23 +74,7 @@
 		);
 	});
 
-	const recencyText = $derived.by(() => {
-		if (!lastFillDate) return null;
-		const rtf = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' });
-		// Whole-day delta between local calendar dates: each date's LOCAL year/month/day is fed into
-		// Date.UTC, so both operands share one UTC frame and the timezone offset cancels in the
-		// subtraction — "today / yesterday / N days ago" stays stable across the day (no Date mutation).
-		const now = new Date();
-		const todayMidnight = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
-		const fillMidnight = Date.UTC(
-			lastFillDate.getFullYear(),
-			lastFillDate.getMonth(),
-			lastFillDate.getDate()
-		);
-		const dayMs = 24 * 60 * 60 * 1000;
-		const diffDays = Math.round((fillMidnight - todayMidnight) / dayMs);
-		return `Last fill-up: ${rtf.format(diffDays, 'day')}`;
-	});
+	const recencyText = $derived(lastFillDate ? `Last fill-up: ${recency(lastFillDate)}` : null);
 </script>
 
 {#if loading}

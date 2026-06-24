@@ -65,6 +65,38 @@ describe('reminderDismissal storage', () => {
 		clearDismissal(1);
 		expect(readDismissals()).toEqual({ 2: { status: 'overdue' } });
 	});
+
+	// PREP-1 (Story 4.1): a corrupt/legacy stored value must degrade safely — a bad marker can never
+	// silently suppress a reminder forever, and an array (which passes typeof === 'object') is rejected.
+	it('rejects a stored array (not a valid map)', () => {
+		globalThis.localStorage.setItem(REMINDER_DISMISSED_STORAGE_KEY, JSON.stringify([1, 2, 3]));
+		expect(readDismissals()).toEqual({});
+	});
+
+	it('drops a marker with an unknown status', () => {
+		globalThis.localStorage.setItem(
+			REMINDER_DISMISSED_STORAGE_KEY,
+			JSON.stringify({ 1: { status: 'bogus', odometer: 100 }, 2: { status: 'overdue' } })
+		);
+		expect(readDismissals()).toEqual({ 2: { status: 'overdue' } });
+	});
+
+	it('drops a marker with a non-finite odometer but keeps valid siblings', () => {
+		// JSON has no NaN literal; a tampered/legacy file might carry null or a string. Both are dropped.
+		globalThis.localStorage.setItem(
+			REMINDER_DISMISSED_STORAGE_KEY,
+			'{"1":{"status":"overdue","odometer":"NaN"},"2":{"status":"due-soon","odometer":60000}}'
+		);
+		expect(readDismissals()).toEqual({ 2: { status: 'due-soon', odometer: 60000 } });
+	});
+
+	it('drops a non-object marker', () => {
+		globalThis.localStorage.setItem(
+			REMINDER_DISMISSED_STORAGE_KEY,
+			JSON.stringify({ 1: 'not-a-marker', 2: { status: 'overdue' } })
+		);
+		expect(readDismissals()).toEqual({ 2: { status: 'overdue' } });
+	});
 });
 
 describe('isSuppressedByDismissal', () => {

@@ -10,6 +10,7 @@
 // instead of crashing the dashboard.
 
 import { REMINDER_DISMISSED_STORAGE_KEY, REMINDER_DUE_SOON_KM } from '$lib/config';
+import { isFiniteNumber } from '$lib/utils/calculations';
 import type { ReminderStatus } from '$lib/utils/serviceReminder';
 
 export type ReminderDismissal = { status: ReminderStatus; odometer?: number };
@@ -17,6 +18,29 @@ export type ReminderDismissalMap = Record<number, ReminderDismissal>;
 
 // Severity ranking so "status worsened" is a simple numeric comparison.
 const SEVERITY: Record<ReminderStatus, number> = { ok: 0, 'due-soon': 1, overdue: 2 };
+
+function isReminderStatus(value: unknown): value is ReminderStatus {
+	return typeof value === 'string' && value in SEVERITY;
+}
+
+/**
+ * PREP-1 (Story 4.1): validate one persisted marker before trusting it. A corrupt/legacy entry — an
+ * unknown status, or a non-finite odometer — is dropped (returns null) rather than silently
+ * suppressing a reminder forever. `odometer` stays optional; when present it must be finite.
+ */
+function sanitizeMarker(value: unknown): ReminderDismissal | null {
+	if (!value || typeof value !== 'object' || Array.isArray(value)) {
+		return null;
+	}
+	const marker = value as Record<string, unknown>;
+	if (!isReminderStatus(marker.status)) {
+		return null;
+	}
+	if (marker.odometer !== undefined && !isFiniteNumber(marker.odometer)) {
+		return null;
+	}
+	return { status: marker.status, odometer: marker.odometer as number | undefined };
+}
 
 function getLocalStorage(): Storage | null {
 	try {
@@ -38,10 +62,23 @@ export function readDismissals(): ReminderDismissalMap {
 			return {};
 		}
 		const parsed = JSON.parse(raw);
-		if (parsed && typeof parsed === 'object') {
-			return parsed as ReminderDismissalMap;
+		// An array passes `typeof === 'object'` but is not a valid map — reject it (deferred-work:112).
+		if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+			return {};
 		}
-		return {};
+		// Sanitize per-marker so a single corrupt entry degrades safely instead of poisoning the map.
+		const result: ReminderDismissalMap = {};
+		for (const [key, value] of Object.entries(parsed)) {
+			const id = Number(key);
+			if (!Number.isInteger(id)) {
+				continue;
+			}
+			const marker = sanitizeMarker(value);
+			if (marker) {
+				result[id] = marker;
+			}
+		}
+		return result;
 	} catch {
 		return {};
 	}
