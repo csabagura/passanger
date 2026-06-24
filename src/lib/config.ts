@@ -47,6 +47,19 @@ export const MAX_VEHICLES = 5;
 // the remaining distance/time falls at or below these, and → overdue at/below zero.
 export const REMINDER_DUE_SOON_KM = 500;
 export const REMINDER_DUE_SOON_DAYS = 14;
+
+// Derived-metrics engine (Story 4.1 / FR-19, DEC-9). The cadence (km/day) estimator runs over a
+// trailing window and only returns a result when it has enough evidence — otherwise it reports an
+// explicit "insufficient" state rather than a guess. The three numbers below are DECIDED by DEC-9.
+export const CADENCE_WINDOW_DAYS = 90; // trailing window the km/day estimate is computed over
+export const CADENCE_MIN_LOGS = 3; // minimum fuel logs in-window before a rate is reported
+export const CADENCE_MIN_SPAN_DAYS = 14; // minimum calendar-day span between earliest/latest in-window log
+// DEC-3 plain-language Insight thresholds — a change must exceed these (in %) before Insight (Story
+// 4.3) phrases it as a trend. Defined here now so 4.3 consumes them; the 4.1 engine does NOT apply
+// them (periodDelta returns the raw signed change; thresholding/phrasing is Insight's job).
+export const CONSUMPTION_CHANGE_THRESHOLD_PCT = 10;
+export const SPEND_CHANGE_THRESHOLD_PCT = 15;
+export const FUEL_PRICE_CHANGE_THRESHOLD_PCT = 5;
 export const MAX_CSV_ROWS = 10_000;
 export const IMPORT_FILE_SIZE_WARN_BYTES = 5 * 1024 * 1024; // 5MB — show amber warning
 export const IMPORT_FILE_SIZE_MAX_BYTES = 10 * 1024 * 1024; // 10MB — hard reject

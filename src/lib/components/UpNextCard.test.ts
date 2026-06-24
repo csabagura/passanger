@@ -112,6 +112,23 @@ describe('UpNextCard', () => {
 		expect(screen.queryByText('Air filter')).toBeNull();
 	});
 
+	it('PREP-1: a non-finite odometer row does not poison currentOdometer (km reminder still computes)', async () => {
+		// due at 55000, current 60000 → -5000 → overdue. A corrupt NaN-odometer row must be dropped from
+		// the max-reduce; if it leaked, currentOdometer would be NaN → status falls back to ok → card hides.
+		mockGetServiceRemindersForVehicle.mockResolvedValue({
+			data: [
+				makeReminder({ id: 2, title: 'Oil change', intervalKm: 5000, lastServiceOdometer: 50000 })
+			],
+			error: null
+		});
+		const corrupt = { ...fuelLogAt(Number.NaN), id: 2 };
+		renderCard([fuelLogAt(60000), corrupt]);
+
+		await screen.findByText('Up next');
+		expect(screen.getByText('Oil change')).toBeTruthy();
+		expect(screen.getByText(/Overdue · Overdue by 5,000 km/)).toBeTruthy();
+	});
+
 	it('"Log this service" opens Capture(Expense) prefilled with the reminder title', async () => {
 		mockGetServiceRemindersForVehicle.mockResolvedValue({
 			data: [

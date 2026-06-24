@@ -3,6 +3,18 @@ import { ZERO_DECIMAL_CURRENCIES, SUFFIX_CURRENCIES } from '$lib/config';
 
 export const LITERS_PER_GALLON = 3.785411784;
 export const KILOMETERS_PER_MILE = 1.609344;
+
+/**
+ * The one shared non-finite guard for the canonical math (PREP-1, Story 4.1). `NaN`/`Infinity`
+ * leak through the older `<= 0` convention (`NaN <= 0 → false`), which renders a dead `€NaN` /
+ * `NaN L/100km` and corrupts the dismissal-window math. Centralising the check here — mirroring the
+ * `convertConsumptionUnit` `Number.isFinite` idiom below — lets analytics, the metrics engine, the
+ * Up-Next odometer derivation, and the dismissal-shape validation all reject corrupt/legacy rows the
+ * same way instead of scattering `Number.isFinite` calls. Narrows the type so callers keep `number`.
+ */
+export function isFiniteNumber(value: unknown): value is number {
+	return typeof value === 'number' && Number.isFinite(value);
+}
 const MPG_L_PER_100KM_CONVERSION_FACTOR = (LITERS_PER_GALLON * 100) / KILOMETERS_PER_MILE;
 
 /**

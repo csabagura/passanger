@@ -416,3 +416,57 @@ describe('averageConsumption', () => {
 		expect(averageConsumption(logs, 'L/100km')).toBeCloseTo(9.0, 6);
 	});
 });
+
+describe('PREP-1 non-finite guard (Story 4.1)', () => {
+	// The older `<= 0` convention leaked NaN/Infinity (`NaN <= 0 → false`), rendering dead €NaN /
+	// "NaN L/100km". A non-finite row must now be skipped cleanly, leaving the good rows aggregated.
+	it('costPerDistance skips a row with a non-finite consumption rather than emitting NaN', () => {
+		const logs = [
+			createFuelEntry({ id: 1, calculatedConsumption: Number.NaN, totalCost: 100, currency: '€' }),
+			createFuelEntry({
+				id: 2,
+				quantity: 50,
+				calculatedConsumption: 10,
+				totalCost: 100,
+				currency: '€'
+			})
+		];
+		const result = costPerDistance(logs, '€');
+		expect(Number.isFinite(result['€'].costPerDistance)).toBe(true);
+		expect(result['€'].costPerDistance).toBeCloseTo(0.2, 9); // only the good row counts
+	});
+
+	it('costPerDistance skips a row with a non-finite totalCost', () => {
+		const logs = [
+			createFuelEntry({
+				id: 1,
+				quantity: 50,
+				calculatedConsumption: 10,
+				totalCost: Number.POSITIVE_INFINITY,
+				currency: '€'
+			}),
+			createFuelEntry({
+				id: 2,
+				quantity: 50,
+				calculatedConsumption: 10,
+				totalCost: 100,
+				currency: '€'
+			})
+		];
+		const result = costPerDistance(logs, '€');
+		expect(Number.isFinite(result['€'].costPerDistance)).toBe(true);
+		expect(result['€'].costPerDistance).toBeCloseTo(0.2, 9);
+	});
+
+	it('averageConsumption skips non-finite consumption/quantity rows', () => {
+		const logs = [
+			createFuelEntry({ id: 1, calculatedConsumption: Number.NaN }),
+			createFuelEntry({ id: 2, quantity: Number.POSITIVE_INFINITY, calculatedConsumption: 10 }),
+			createFuelEntry({ id: 3, quantity: 50, calculatedConsumption: 10 })
+		];
+		const result = averageConsumption(logs, 'L/100km');
+		expect(result).not.toBeNull();
+		expect(Number.isFinite(result as number)).toBe(true);
+		expect(result).toBeCloseTo(10, 6); // only the good row counts
+	});
+});

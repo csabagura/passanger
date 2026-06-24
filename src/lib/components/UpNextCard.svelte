@@ -14,6 +14,7 @@
 		isSuppressedByDismissal
 	} from '$lib/utils/reminderDismissal';
 	import type { CaptureSheetContext } from '$lib/state/captureSheet.svelte';
+	import { isFiniteNumber } from '$lib/utils/calculations';
 	import type { FuelLog } from '$lib/db/schema';
 
 	interface Props {
@@ -33,11 +34,13 @@
 
 	// `currentOdometer` = max odometer across the vehicle's fuel logs (same definition as Settings /
 	// the retired RemindersDueCard). Derived from the prop, so a new fuel Capture updates it live.
-	const currentOdometer = $derived(
-		fuelLogs.length === 0
-			? undefined
-			: fuelLogs.reduce((max, log) => Math.max(max, log.odometer), 0)
-	);
+	// PREP-1: a corrupt/legacy non-finite odometer is dropped (not fed into Math.max, where a single
+	// NaN would poison the whole reduce → NaN currentOdometer → corrupt dismissal-window math). When
+	// no log has a usable odometer, currentOdometer is undefined (the "unknown" case downstream).
+	const currentOdometer = $derived.by(() => {
+		const usable = fuelLogs.map((log) => log.odometer).filter(isFiniteNumber);
+		return usable.length === 0 ? undefined : Math.max(...usable);
+	});
 
 	let dueReminders = $state<DueReminder[]>([]);
 	// Distinguishes "not loaded yet" from "loaded, nothing due" so the loop-cleanup below never prunes
