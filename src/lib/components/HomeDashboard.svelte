@@ -5,6 +5,7 @@
 	import { getAllExpenses } from '$lib/db/repositories/expenses';
 	import UpNextCard from '$lib/components/UpNextCard.svelte';
 	import HeroMetric from '$lib/components/HeroMetric.svelte';
+	import InsightLine from '$lib/components/InsightLine.svelte';
 	import HomeSkeleton from '$lib/components/HomeSkeleton.svelte';
 	import { recency } from '$lib/utils/metrics/recency';
 	import type { FuelLog, Expense } from '$lib/db/schema';
@@ -83,6 +84,11 @@
 	<div class="space-y-4 px-4 pt-4">
 		<!-- Summary line (priority 1) -->
 		<p class="text-base text-foreground">{summaryLine}</p>
+
+		<!-- Plain-language Insight (Story 4.3 / FR-11) — the single most-significant insight, above the
+		     Hero Metric (UX order Insight → Hero → Up-Next). Reads the 'settings' context itself; fed the
+		     already-loaded fuel + expense logs. Renders nothing in cold-start/insufficient states. -->
+		<InsightLine {fuelLogs} {expenses} />
 
 		<!-- Hero Metric (priority 2) — Story 3.4: the tap-to-toggle Cost-per-Distance ↔ Consumption
 		     `stat`. Reads the 'settings' context itself; fed the already-loaded fuelLogs. -->

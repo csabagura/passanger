@@ -130,6 +130,39 @@ describe('HomeDashboard', () => {
 		});
 	});
 
+	it('Story 4.3: renders the plain-language Insight line above the Hero Metric when data warrants it', async () => {
+		// Anchor two fills to the current vs the previous CALENDAR month relative to the real clock
+		// (HomeDashboard passes no `now`, so the engine reads it). Day 15 exists in every month, and the
+		// month-key filter ignores the day, so this is deterministic regardless of today's date.
+		const now = new Date();
+		const previousMonth = new Date(now.getFullYear(), now.getMonth() - 1, 15);
+		const currentMonth = new Date(now.getFullYear(), now.getMonth(), 15);
+		// Volume + cost held constant → spend and fuel-price stay flat; only consumption moves 8 → 10
+		// (+25%), so the single most-significant insight is deterministic.
+		await saveFuelLog(
+			makeLog({ date: previousMonth, quantity: 40, totalCost: 60, calculatedConsumption: 8 })
+		);
+		await saveFuelLog(
+			makeLog({ date: currentMonth, quantity: 40, totalCost: 60, calculatedConsumption: 10 })
+		);
+		renderDashboard();
+
+		await waitFor(() => {
+			expect(screen.getByText('Consumption is up about 25% this month.')).toBeTruthy();
+		});
+	});
+
+	it('Story 4.3: renders no Insight line for a single-month cold-start (no HeroMetric duplication)', async () => {
+		await saveFuelLog(makeLog({ date: new Date() }));
+		renderDashboard();
+		await waitFor(() => {
+			expect(screen.getByText(/tracking 1 fill-up for daily driver/i)).toBeTruthy();
+		});
+		// Cold start → getInsights returns [] → no insight paragraph; HeroMetric owns the cold-start copy.
+		expect(screen.queryByText(/this month\.$/i)).toBeNull();
+		expect(screen.queryByText(/running about average/i)).toBeNull();
+	});
+
 	it('AC4: an expense Capture is reflected live in the summary line', async () => {
 		await saveFuelLog(makeLog());
 		renderDashboard();
