@@ -60,6 +60,14 @@ export const CADENCE_MIN_SPAN_DAYS = 14; // minimum calendar-day span between ea
 export const CONSUMPTION_CHANGE_THRESHOLD_PCT = 10;
 export const SPEND_CHANGE_THRESHOLD_PCT = 15;
 export const FUEL_PRICE_CHANGE_THRESHOLD_PCT = 5;
+// Fuel-price/litre Insight (Story 4.3 / DEC-3) compares the current calendar month against the
+// TRAILING average over this many days (NOT month-over-month, unlike consumption/spend) — fuel
+// price drifts slowly, so a multi-month baseline reads truer than a single prior month. Distinct
+// from CADENCE_WINDOW_DAYS (which happens to share the value) — that gates the km/day estimate.
+export const FUEL_PRICE_BASELINE_DAYS = 90;
+// Plain-language Insight surfacing (Story 4.3 / DEC-3): Home shows the single most-significant
+// insight; the /understand route (Story 4.4) shows up to this many. `selectTopInsights` slices to it.
+export const MAX_INSIGHTS_UNDERSTAND = 3;
 // Hero-chip flat band (Story 4.2, presentation): a month-over-month change whose magnitude is below
 // this percent renders the ▬ flat glyph instead of ▲/▼ (the engine only returns 'flat' on an exact 0,
 // which float data never hits — periodDelta.ts:32 hands the band downstream). DISTINCT from the DEC-3
