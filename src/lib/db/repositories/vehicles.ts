@@ -102,7 +102,23 @@ export class VehicleRepository {
 
 	async deleteVehicle(id: number): Promise<Result<void>> {
 		try {
-			await db.vehicles.delete(id);
+			// Cascade-delete the vehicle's owned records so no orphaned fuel logs,
+			// expenses, or service reminders are left behind in IndexedDB. Run in a
+			// single transaction so a partial failure rolls back rather than leaving
+			// the vehicle deleted but its children stranded (or vice versa).
+			await db.transaction(
+				'rw',
+				db.vehicles,
+				db.fuelLogs,
+				db.expenses,
+				db.serviceReminders,
+				async () => {
+					await db.fuelLogs.where('vehicleId').equals(id).delete();
+					await db.expenses.where('vehicleId').equals(id).delete();
+					await db.serviceReminders.where('vehicleId').equals(id).delete();
+					await db.vehicles.delete(id);
+				}
+			);
 			notifyDataChanged();
 			return ok(undefined);
 		} catch (e) {

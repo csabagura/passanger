@@ -29,7 +29,8 @@
 		VEHICLE_ID_STORAGE_KEY
 	} from '$lib/config';
 	import { getAllVehicles } from '$lib/db/repositories/vehicles';
-	import type { Vehicle } from '$lib/db/schema';
+	import { offerReminderReset } from '$lib/utils/reminderResetOffer';
+	import type { Vehicle, Expense } from '$lib/db/schema';
 	import { readStoredVehicleId, safeSetItem } from '$lib/utils/vehicleStorage';
 	import { getSettings } from '$lib/utils/settings';
 	import type { AppSettings } from '$lib/utils/settings';
@@ -335,6 +336,23 @@
 		installPromptHiddenByInteraction = false;
 	}
 
+	// Story 4.6 (FR-12 loop-close / DEC-6): when an Expense whose `type` token-matches a reminder
+	// `title` is created, OFFER (confirm, never auto) to reset that reminder's last-service marker.
+	// Layout-owned wiring (mirrors the install/survey gate): CaptureSheet forwards the expense form's
+	// create-only save here; the offer logic lives in reminderResetOffer.ts and rides the shared
+	// `toast` channel. The common path (no match) is silent. Confirming writes via the repo, whose
+	// notifyDataChanged() re-emits the Home Up-Next + /maintain liveQuery to recompute status to `ok`.
+	function handleExpenseCreateSave(expense: Expense) {
+		// onApplied bumps the same-tab dataRevision so the Home Up-Next card re-reads and recomputes the
+		// reset reminder's status to `ok` immediately (AC5) — the repo's notifyDataChanged only reaches
+		// other tabs (a BroadcastChannel never self-delivers).
+		void offerReminderReset(expense, toast, {
+			onApplied: () => {
+				dataRevision += 1;
+			}
+		});
+	}
+
 	function handleSurveySubmit(response: OnboardingSurveyResponse) {
 		saveOnboardingSurveyResponse(response);
 		onboardingSurveyEligible = false;
@@ -479,5 +497,5 @@
 </main>
 <NavBar />
 <Fab />
-<CaptureSheet onFirstCreateSave={handleFirstCreateSave} />
+<CaptureSheet onFirstCreateSave={handleFirstCreateSave} onCreateSave={handleExpenseCreateSave} />
 <Toaster theme={resolvedTheme} />

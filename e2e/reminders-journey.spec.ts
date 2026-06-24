@@ -116,3 +116,63 @@ test('Up-Next card: an overdue reminder surfaces on Home and "Log this service" 
 	await page.getByRole('button', { name: 'Dismiss Oil change reminder' }).click();
 	await expect(page.getByRole('region', { name: /up next/i })).toHaveCount(0);
 });
+
+test('Reminder loop-close (FR-12): saving a matching expense offers a reset; confirming clears the Up-Next card', async ({
+	page
+}) => {
+	await createVehicle(page, 'Trail Wagon');
+
+	// An overdue, time-based reminder with a 180-day interval (> the 14-day due-soon window) so a
+	// reset from "today" recomputes all the way to `ok` (a short interval would land back in due-soon).
+	await page
+		.getByRole('navigation', { name: 'Main navigation' })
+		.getByRole('link', { name: 'Maintain' })
+		.click();
+	await page.waitForLoadState('networkidle');
+	await page.getByRole('button', { name: /Add reminder/i }).click();
+
+	await page.getByLabel('Title').fill('Oil change');
+	await page.getByLabel('Every (days)').fill('180');
+
+	const twoHundredDaysAgo = await page.evaluate(() => {
+		const d = new Date();
+		d.setDate(d.getDate() - 200);
+		const month = String(d.getMonth() + 1).padStart(2, '0');
+		const day = String(d.getDate()).padStart(2, '0');
+		return `${d.getFullYear()}-${month}-${day}`;
+	});
+	await page.getByLabel(/^Last service date/).fill(twoHundredDaysAgo);
+	await page.getByRole('button', { name: 'Save reminder' }).click();
+
+	// Confirm the write committed (it lands in the Maintain list as overdue) before navigating Home,
+	// so the Home liveQuery read can't race an in-flight save.
+	const maintainItem = page
+		.getByRole('list', { name: 'Service reminders' })
+		.getByRole('listitem')
+		.filter({ hasText: 'Oil change' });
+	await expect(maintainItem.getByText('Overdue', { exact: true })).toBeVisible();
+
+	// Home: the overdue reminder is on the Up-Next card.
+	await page.goto('/');
+	await page.waitForLoadState('networkidle');
+	const upNext = page.getByRole('region', { name: /up next/i });
+	await expect(upNext.getByText('Oil change')).toBeVisible();
+
+	// "Log this service" → Capture(Expense) with Type prefilled. Add a cost and save.
+	await upNext.getByRole('button', { name: 'Log this service' }).click();
+	await expect(page.getByRole('tab', { name: 'Expense', selected: true })).toBeVisible();
+	await expect(page.getByLabel(/^Type$/)).toHaveValue('Oil change');
+	await page.getByLabel(/^Cost$/).fill('78');
+	await page.getByRole('button', { name: /^Save$/ }).click();
+
+	// The create-only loop-close offer rides the toast channel (confirm, never auto): a real action
+	// button labelled "Reset" appears. Close the sheet (Done), then confirm the reset on the toast.
+	await expect(page.getByText('Logged. Reset the Oil change reminder?')).toBeVisible();
+	await page.getByRole('button', { name: /^Done$/ }).click();
+	await page.getByRole('button', { name: 'Reset' }).click();
+
+	// Confirming wrote the marker → liveQuery recomputes the status to ok → the calm Up-Next card
+	// disappears from Home with no further action (AD-4 reactive re-emit).
+	await expect(page.getByText('Reset. Next Oil change is set from today.')).toBeVisible();
+	await expect(page.getByRole('region', { name: /up next/i })).toHaveCount(0);
+});

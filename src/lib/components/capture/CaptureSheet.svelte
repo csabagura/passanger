@@ -9,6 +9,7 @@
 	import CaptureSegmented from './CaptureSegmented.svelte';
 	import type { CaptureMode, CaptureSheetContext } from '$lib/state/captureSheet.svelte';
 	import type { VehiclesContext } from '$lib/utils/vehicleContext';
+	import type { Expense } from '$lib/db/schema';
 
 	// The global Capture sheet (AD-3): a controlled bottom Sheet driven by the captureSheet context as
 	// the single source of truth. bits-ui Dialog provides focus-trap, scroll-lock, Escape-to-close and
@@ -21,9 +22,13 @@
 		// the install-prompt / onboarding-survey gate (FR40). Pre-3.3 this fired on the now-retired /log
 		// inline forms' `onFirstCreateSave`; the layout owns the gate and renders the prompt/survey.
 		onFirstCreateSave?: () => void;
+		// Story 4.6 (FR-12 loop-close): fired on every Expense CREATE save so the layout can offer to
+		// reset a token-matching reminder. Forwarded to the Expense form only (fuel saves never match a
+		// service reminder).
+		onCreateSave?: (expense: Expense) => void;
 	}
 
-	let { onFirstCreateSave = () => {} }: Props = $props();
+	let { onFirstCreateSave = () => {}, onCreateSave = () => {} }: Props = $props();
 
 	// User-facing label is "Expense" (DEC-5) but it renders the existing MaintenanceForm writing to the
 	// expenses repository — the internal entity stays "maintenance" (renaming is out of scope).
@@ -80,6 +85,7 @@
 							vehicleId={vehicles.activeVehicleId}
 							onSave={() => {}}
 							{onFirstCreateSave}
+							{onCreateSave}
 							onSuccessFeedbackComplete={() => capture.close()}
 							initialType={capture.prefill?.expenseType}
 						/>

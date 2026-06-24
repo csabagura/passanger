@@ -153,3 +153,53 @@ describe('CaptureSheet — first-Capture install/survey trigger (AC-7)', () => {
 		expect(onFirstCreateSave).not.toHaveBeenCalled();
 	});
 });
+
+describe('CaptureSheet — onCreateSave loop-close hook (Story 4.6, FR-12)', () => {
+	it('forwards onCreateSave to the Expense form; it fires with the saved expense on a create save', async () => {
+		const onCreateSave = vi.fn();
+		const capture = createCaptureSheet();
+		capture.openSheet('expense');
+
+		render(CaptureSheet, {
+			props: { onCreateSave },
+			context: new Map<string, unknown>([
+				['captureSheet', capture],
+				['vehicles', vehiclesCtx(1)],
+				['settings', { settings }]
+			])
+		});
+		flushSync();
+
+		await fireEvent.input(screen.getByLabelText(/^Type/i), { target: { value: 'Oil change' } });
+		await fireEvent.input(screen.getByLabelText(/^Cost/i), { target: { value: '78' } });
+		await fireEvent.click(screen.getByRole('button', { name: /^Save$/ }));
+
+		await waitFor(() => expect(onCreateSave).toHaveBeenCalledTimes(1));
+		expect(onCreateSave.mock.calls[0][0]).toMatchObject({ vehicleId: 1, type: 'Oil change' });
+	});
+
+	it('does NOT forward onCreateSave to the Fuel form (a fuel save never offers a reminder reset)', async () => {
+		const onCreateSave = vi.fn();
+		const capture = createCaptureSheet();
+		capture.openSheet('fuel');
+
+		render(CaptureSheet, {
+			props: { onCreateSave },
+			context: new Map<string, unknown>([
+				['captureSheet', capture],
+				['vehicles', vehiclesCtx(1)],
+				['settings', { settings }]
+			])
+		});
+		flushSync();
+
+		await fireEvent.input(screen.getByLabelText(/^Odometer/i), { target: { value: '50000' } });
+		await fireEvent.input(screen.getByLabelText(/^Quantity/i), { target: { value: '40' } });
+		await fireEvent.input(screen.getByLabelText(/^Total Cost/i), { target: { value: '60' } });
+		await fireEvent.click(screen.getByRole('button', { name: /^Save$/ }));
+
+		// Give any erroneous invocation time to land, then assert the fuel save never fired it.
+		await new Promise((r) => setTimeout(r, 50));
+		expect(onCreateSave).not.toHaveBeenCalled();
+	});
+});
