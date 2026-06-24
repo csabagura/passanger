@@ -746,4 +746,67 @@ describe('MaintenanceForm', () => {
 			expect(document.querySelector('svg[aria-hidden="true"]')).toBeNull();
 		});
 	});
+
+	// Story 4.6 (FR-12 loop-close, AC3/AC7): the create-only onCreateSave callback fires the reminder
+	// reset offer. It MUST fire on a create save (with the saved Expense) and MUST NOT fire on an edit.
+	describe('onCreateSave (Story 4.6 — create-only loop-close hook)', () => {
+		const savedExpense: Expense = {
+			id: 99,
+			vehicleId: 7,
+			date: new Date(2026, 5, 24, 12, 0, 0, 0),
+			type: 'Oil Change',
+			odometer: 87400,
+			cost: 78,
+			currency: '€',
+			notes: ''
+		};
+
+		it('fires on a successful create save with the saved expense', async () => {
+			mockSaveExpense.mockResolvedValue({ data: savedExpense, error: null });
+			const onCreateSave = vi.fn();
+			render(MaintenanceForm, { vehicleId: 7, onSave: onSaveSpy, onCreateSave });
+
+			await fireEvent.input(screen.getByLabelText(/^type$/i), { target: { value: 'Oil Change' } });
+			await fireEvent.input(screen.getByLabelText(/cost/i), { target: { value: '78.00' } });
+			await fireEvent.click(screen.getByRole('button', { name: /^save$/i }));
+			await Promise.resolve();
+			flushSync();
+
+			expect(onCreateSave).toHaveBeenCalledTimes(1);
+			expect(onCreateSave).toHaveBeenCalledWith(savedExpense);
+		});
+
+		it('does NOT fire on an edit save (the offer must never ride an edit)', async () => {
+			const existingExpense: Expense = {
+				id: 21,
+				vehicleId: 7,
+				date: new Date(2026, 2, 8, 12, 0, 0, 0),
+				type: 'Tyres',
+				odometer: 87200,
+				cost: 320,
+				currency: '€',
+				notes: 'Winter set'
+			};
+			mockUpdateExpense.mockResolvedValue({
+				data: { ...existingExpense, cost: 340 },
+				error: null
+			});
+			const onCreateSave = vi.fn();
+			render(MaintenanceForm, {
+				vehicleId: 7,
+				mode: 'edit',
+				initialExpense: existingExpense,
+				onSave: onSaveSpy,
+				onCreateSave
+			});
+
+			await fireEvent.input(screen.getByLabelText(/cost/i), { target: { value: '340' } });
+			await fireEvent.click(screen.getByRole('button', { name: /save changes/i }));
+			await Promise.resolve();
+			flushSync();
+
+			expect(mockUpdateExpense).toHaveBeenCalledTimes(1);
+			expect(onCreateSave).not.toHaveBeenCalled();
+		});
+	});
 });

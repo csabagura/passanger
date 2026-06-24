@@ -286,5 +286,50 @@ describe('VehicleRepository', () => {
 			const result = await deleteVehicle(999);
 			expect(result.error).toBeNull();
 		});
+
+		it('cascade-deletes the vehicle owned fuel logs, expenses, and reminders', async () => {
+			const target = await saveVehicle({ name: 'Target', make: 'Ford', model: 'Focus' });
+			const keep = await saveVehicle({ name: 'Keep', make: 'Toyota', model: 'Yaris' });
+			const targetId = target.data!.id;
+			const keepId = keep.data!.id;
+
+			await db.fuelLogs.add({
+				vehicleId: targetId,
+				date: new Date('2026-01-01'),
+				odometer: 1000,
+				quantity: 40,
+				unit: 'L',
+				distanceUnit: 'km',
+				totalCost: 60,
+				calculatedConsumption: 0
+			});
+			await db.expenses.add({
+				vehicleId: targetId,
+				date: new Date('2026-01-02'),
+				type: 'Service',
+				cost: 120
+			});
+			await db.serviceReminders.add({ vehicleId: targetId, title: 'Oil change' });
+			// A sibling vehicle's record must survive the cascade.
+			await db.fuelLogs.add({
+				vehicleId: keepId,
+				date: new Date('2026-01-01'),
+				odometer: 500,
+				quantity: 30,
+				unit: 'L',
+				distanceUnit: 'km',
+				totalCost: 45,
+				calculatedConsumption: 0
+			});
+
+			const result = await deleteVehicle(targetId);
+			expect(result.error).toBeNull();
+
+			expect(await db.fuelLogs.where('vehicleId').equals(targetId).count()).toBe(0);
+			expect(await db.expenses.where('vehicleId').equals(targetId).count()).toBe(0);
+			expect(await db.serviceReminders.where('vehicleId').equals(targetId).count()).toBe(0);
+			// The other vehicle is untouched.
+			expect(await db.fuelLogs.where('vehicleId').equals(keepId).count()).toBe(1);
+		});
 	});
 });

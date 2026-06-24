@@ -36,6 +36,10 @@
 		onCancel?: () => void;
 		onSuccessFeedbackComplete?: () => void;
 		onFirstCreateSave?: (expense: Expense) => void;
+		// Story 4.6 (FR-12 loop-close): fired on EVERY create save (unlike onFirstCreateSave, which is
+		// once-ever) so the layout can offer to reset a token-matching reminder. Create-only — gated to
+		// the `!isEditMode` branch so editing an old expense's type never pops a reset offer.
+		onCreateSave?: (expense: Expense) => void;
 		// Story 3.5: "Log this service" pre-fills the Type with a reminder title. Create mode only;
 		// the reminder title wins over a stale durable draft. The form mounts fresh on each Capture
 		// open, so seeding via the $state initializer (NOT an $effect) is correct — see CaptureSheet.
@@ -59,6 +63,7 @@
 		onCancel = () => {},
 		onSuccessFeedbackComplete = () => {},
 		onFirstCreateSave = () => {},
+		onCreateSave = () => {},
 		initialType = undefined
 	}: Props = $props();
 
@@ -333,6 +338,11 @@
 		if (!isEditMode && !hasCreatedFirstSave) {
 			hasCreatedFirstSave = true;
 			onFirstCreateSave(result.data);
+		}
+		// Story 4.6: create-only loop-close offer. `result.data` is a plain Dexie row (not a $state
+		// proxy), so the layout can build the reminder patch from its primitives safely.
+		if (!isEditMode) {
+			onCreateSave(result.data);
 		}
 		onSave(result.data);
 	}
