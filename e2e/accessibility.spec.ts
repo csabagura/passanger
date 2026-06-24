@@ -10,6 +10,7 @@ const WCAG_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'];
 const routes = [
 	{ name: 'Home', path: '/' },
 	{ name: 'Understand', path: '/understand' },
+	{ name: 'Maintain', path: '/maintain' },
 	{ name: 'History', path: '/history' },
 	{ name: 'Export', path: '/export' },
 	{ name: 'Settings', path: '/settings' }
@@ -181,6 +182,51 @@ test('Understand (/understand) with data is axe-clean and a chart is keyboard-op
 		(v) => v.impact === 'critical' || v.impact === 'serious'
 	);
 	expect(serious).toEqual([]);
+});
+
+// Story 4.5 — the Maintain surface (AD-3). Reminders moved out of Settings to /maintain with
+// predicted dates + status. AI-3.2 mandates e2e for route-topology changes; /maintain had zero axe
+// coverage before this. Seeding a vehicle + a reminder exercises the list, status, and Edit affordance.
+test('Maintain (/maintain) with a reminder is axe-clean and Edit is keyboard-operable', async ({
+	page
+}) => {
+	// Seed a vehicle from Home's first-run flow.
+	await page.goto('/');
+	await page.waitForLoadState('networkidle');
+	await page.getByRole('button', { name: /Add your vehicle to get started/i }).click();
+	await page.getByLabel('Display Name').fill('Maintainer');
+	await page.getByLabel('Make').fill('Subaru');
+	await page.getByLabel('Model').fill('Outback');
+	await page.getByRole('button', { name: 'Save vehicle' }).click();
+	await expect(page.getByText(/No entries yet for/i)).toBeVisible();
+
+	// Add a reminder on the Maintain surface (reached via the bottom nav, PREP-3 flip).
+	await page
+		.getByRole('navigation', { name: 'Main navigation' })
+		.getByRole('link', { name: 'Maintain' })
+		.click();
+	await page.waitForLoadState('networkidle');
+	await page.getByRole('button', { name: /Add reminder/i }).click();
+	await page.getByLabel('Title').fill('Oil change');
+	await page.getByLabel('Every (km)').fill('10000');
+	await page.getByRole('button', { name: 'Save reminder' }).click();
+
+	const list = page.getByRole('list', { name: 'Service reminders' });
+	await expect(list.getByText('Oil change')).toBeVisible();
+
+	// axe-scan the seeded surface.
+	const results = await new AxeBuilder({ page }).withTags(WCAG_TAGS).analyze();
+	const serious = results.violations.filter(
+		(v) => v.impact === 'critical' || v.impact === 'serious'
+	);
+	expect(serious).toEqual([]);
+
+	// The Edit affordance is keyboard-operable: focus it and activate → the edit form opens.
+	const editButton = page.getByRole('button', { name: 'Edit Oil change' });
+	await editButton.focus();
+	await expect(editButton).toBeFocused();
+	await page.keyboard.press('Enter');
+	await expect(page.getByRole('heading', { name: 'Edit reminder' })).toBeVisible();
 });
 
 test('App is fully usable with prefers-reduced-motion: reduce', async ({ page }) => {

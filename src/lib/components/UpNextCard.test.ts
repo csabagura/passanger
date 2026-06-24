@@ -31,6 +31,16 @@ function fuelLogAt(odometer: number): FuelLog {
 	};
 }
 
+// 3 logs in the trailing 90-day window spanning 20 days → cadence reports 35 km/day; max odometer
+// 1700 fixes currentOdometer. Lets a distance reminder produce a real predicted date.
+function cadenceLogs(): FuelLog[] {
+	return [
+		{ ...fuelLogAt(1000), id: 1, date: new Date(2026, 4, 26) },
+		{ ...fuelLogAt(1300), id: 2, date: new Date(2026, 5, 5) },
+		{ ...fuelLogAt(1700), id: 3, date: new Date(2026, 5, 15) }
+	];
+}
+
 const openSheet = vi.fn();
 
 function renderCard(fuelLogs: FuelLog[] = [fuelLogAt(60000)]) {
@@ -180,6 +190,53 @@ describe('UpNextCard', () => {
 		renderCard();
 		await flushLoad();
 		expect(screen.queryByText('Oil change')).toBeNull();
+	});
+
+	it('shows a predicted due date for a due-soon distance reminder with sufficient cadence (FR-10/12)', async () => {
+		// due at 2000, currentOdometer 1700 → 300 km remaining → due-soon; 35 km/day → ~9 days out.
+		mockGetServiceRemindersForVehicle.mockResolvedValue({
+			data: [
+				makeReminder({ id: 2, title: 'Oil change', intervalKm: 1000, lastServiceOdometer: 1000 })
+			],
+			error: null
+		});
+		renderCard(cadenceLogs());
+		await screen.findByText('Oil change');
+		// The "≈ due …" prefix is a literal in the helper (the relative words are locale-dependent).
+		expect(screen.getByText(/≈ due/)).toBeTruthy();
+	});
+
+	it('omits the date with an honest note when cadence is insufficient (AC4)', async () => {
+		// A single log → cadence too-few-logs. Due-soon distance reminder still renders, with the note.
+		mockGetServiceRemindersForVehicle.mockResolvedValue({
+			data: [
+				makeReminder({ id: 2, title: 'Oil change', intervalKm: 10300, lastServiceOdometer: 50000 })
+			],
+			error: null
+		});
+		renderCard([fuelLogAt(60000)]);
+		await screen.findByText('Oil change');
+		expect(screen.getByText('Not enough recent driving to estimate a date yet.')).toBeTruthy();
+		expect(screen.queryByText(/≈ due/)).toBeNull();
+	});
+
+	it('shows neither a date nor a cadence note for a time-only reminder', async () => {
+		// 14-day interval, serviced ~10 days ago → due-soon on time, no distance interval to predict.
+		mockGetServiceRemindersForVehicle.mockResolvedValue({
+			data: [
+				makeReminder({
+					id: 2,
+					title: 'Inspection',
+					intervalDays: 14,
+					lastServiceDate: new Date(2026, 5, 5)
+				})
+			],
+			error: null
+		});
+		renderCard(cadenceLogs());
+		await screen.findByText('Inspection');
+		expect(screen.queryByText(/≈ due/)).toBeNull();
+		expect(screen.queryByText(/Not enough recent driving/)).toBeNull();
 	});
 
 	it('re-surfaces a dismissed reminder after driving a full due-soon window further', async () => {

@@ -15,6 +15,17 @@ export const KILOMETERS_PER_MILE = 1.609344;
 export function isFiniteNumber(value: unknown): value is number {
 	return typeof value === 'number' && Number.isFinite(value);
 }
+
+/**
+ * Convert a distance between km and mi (Story 4.5). The single shared, exported version of the
+ * `convertDistanceToUnit` helper that previously lived privately in `cadence.ts`/`analytics.ts`/
+ * `historyEntries.ts` — extracted so the reminder-prediction math can divide `kmRemaining` by the
+ * cadence rate in one common unit (never mixing km/mi). Identity when units match.
+ */
+export function convertDistanceUnit(distance: number, from: 'km' | 'mi', to: 'km' | 'mi'): number {
+	if (from === to) return distance;
+	return from === 'km' ? distance / KILOMETERS_PER_MILE : distance * KILOMETERS_PER_MILE;
+}
 const MPG_L_PER_100KM_CONVERSION_FACTOR = (LITERS_PER_GALLON * 100) / KILOMETERS_PER_MILE;
 
 /**

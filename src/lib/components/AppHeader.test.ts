@@ -74,6 +74,12 @@ describe('AppHeader', () => {
 		expect(screen.getByText('Understand')).toBeTruthy();
 	});
 
+	it('derives title from /maintain route', () => {
+		mockPathname = '/maintain';
+		renderHeader();
+		expect(screen.getByText('Maintain')).toBeTruthy();
+	});
+
 	it('derives title from /export route', () => {
 		mockPathname = '/export';
 		renderHeader();

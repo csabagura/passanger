@@ -4,7 +4,6 @@
 	import { saveSettings, type AppSettings, type ThemePreference } from '$lib/utils/settings';
 	import { notifySettingsChanged, notifyTabsRestored } from '$lib/utils/tabSync';
 	import { readStoredVehicleId } from '$lib/utils/vehicleStorage';
-	import { getAllFuelLogs } from '$lib/db/repositories/fuelLogs';
 	import { exportAllTables, restoreAllTables, type BackupData } from '$lib/db/backup';
 	import {
 		serializeBackup,
@@ -12,9 +11,7 @@
 		downloadBackupFile,
 		buildBackupFilename
 	} from '$lib/utils/backup';
-	import type { VehiclesContext } from '$lib/utils/vehicleContext';
 	import VehicleListManager from '$lib/components/VehicleListManager.svelte';
-	import ServiceReminderManager from '$lib/components/ServiceReminderManager.svelte';
 	import { Button } from '$lib/components/ui/button';
 	import { Field } from '$lib/components/ui/field';
 
@@ -23,33 +20,6 @@
 	function handleActiveVehicleChange(id: number | null) {
 		activeVehicleId = id;
 	}
-
-	const vehiclesCtx = getContext<VehiclesContext>('vehicles');
-	const activeVehicle = $derived(vehiclesCtx?.activeVehicle ?? null);
-
-	// Current odometer for the active vehicle = max odometer across its fuel logs.
-	let currentOdometer = $state<number | undefined>(undefined);
-
-	$effect(() => {
-		const vehicle = activeVehicle;
-		if (!vehicle) {
-			currentOdometer = undefined;
-			return;
-		}
-		let cancelled = false;
-		(async () => {
-			const result = await getAllFuelLogs(vehicle.id);
-			if (cancelled) return;
-			if (result.error || result.data.length === 0) {
-				currentOdometer = undefined;
-				return;
-			}
-			currentOdometer = result.data.reduce((max, log) => Math.max(max, log.odometer), 0);
-		})();
-		return () => {
-			cancelled = true;
-		};
-	});
 
 	const THEME_OPTIONS: { value: ThemePreference; label: string; description: string }[] = [
 		{ value: 'system', label: 'System', description: 'Follows your device setting' },
@@ -342,25 +312,6 @@
 			<p class="text-sm text-muted-foreground">Manage your vehicles</p>
 		</div>
 		<VehicleListManager {activeVehicleId} onActiveVehicleChange={handleActiveVehicleChange} />
-	</section>
-
-	<section
-		aria-labelledby="settings-reminders-heading"
-		class="space-y-5 rounded-2xl border border-border bg-card p-5 shadow-sm"
-	>
-		<div class="space-y-1">
-			<h2 id="settings-reminders-heading" class="text-lg font-semibold text-foreground">
-				Reminders
-			</h2>
-			<p class="text-sm text-muted-foreground">Set maintenance reminders</p>
-		</div>
-		{#if activeVehicle}
-			<ServiceReminderManager vehicleId={activeVehicle.id} {currentOdometer} />
-		{:else}
-			<p class="text-sm text-muted-foreground">
-				Add a vehicle and select it as active to set maintenance reminders.
-			</p>
-		{/if}
 	</section>
 
 	<section
