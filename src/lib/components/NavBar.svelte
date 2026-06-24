@@ -10,14 +10,14 @@
 	// the floating <Fab> (mounted by the layout, visually centred over the bar) — it is NOT a nav link,
 	// so the bar renders four links with an empty centre spacer the FAB sits above.
 	//
-	// DEC-1 targets: Understand now points at the shipped /understand surface (Story 4.4 / PREP-3 — the
-	// /analytics precursor redirects there). Maintain still points at /settings (reminders live there
-	// today); its retarget to /maintain is Story 4.5. No nav item may 404.
+	// DEC-1 targets: Understand points at the shipped /understand surface (Story 4.4 / PREP-3 — the
+	// /analytics precursor redirects there). Maintain points at the shipped /maintain surface (Story 4.5
+	// / PREP-3's last flip — reminders moved out of Settings, DEC-16). No nav item may 404.
 	const tabs = [
 		{ href: '/', label: 'Home', icon: House },
 		{ href: '/understand', label: 'Understand', icon: BarChart3 },
 		{ href: '/history', label: 'History', icon: ClipboardList },
-		{ href: '/settings', label: 'Maintain', icon: Wrench }
+		{ href: '/maintain', label: 'Maintain', icon: Wrench }
 	] as const;
 
 	// Index in `tabs` BEFORE which the centre FAB spacer is inserted (between Understand and History),

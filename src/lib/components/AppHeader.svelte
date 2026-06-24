@@ -5,12 +5,13 @@
 	import VehicleSwitcher from '$lib/components/VehicleSwitcher.svelte';
 
 	// Story 3.3: `/` is Home (the default surface); `/log` is retired (redirects to the Capture sheet).
-	// Story 4.4: Understand → /understand (the /analytics precursor redirects there). Maintain still
-	// points at /settings until the /maintain body lands in Story 4.5, so that title stays 'Settings'.
+	// Story 4.4: Understand → /understand (the /analytics precursor redirects there). Story 4.5: Maintain
+	// → /maintain (its own surface). /settings stays a route (the gear link below) and keeps its title.
 	const resolvedTitles: Array<[string, string]> = [
 		[resolve('/'), 'Home'],
 		[resolve('/history'), 'History'],
 		[resolve('/understand'), 'Understand'],
+		[resolve('/maintain'), 'Maintain'],
 		[resolve('/export'), 'Export'],
 		[resolve('/settings'), 'Settings']
 	];

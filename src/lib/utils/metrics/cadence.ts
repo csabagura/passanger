@@ -1,6 +1,6 @@
 import type { FuelLog } from '$lib/db/schema';
 import { CADENCE_WINDOW_DAYS, CADENCE_MIN_LOGS, CADENCE_MIN_SPAN_DAYS } from '$lib/config';
-import { isFiniteNumber, KILOMETERS_PER_MILE } from '$lib/utils/calculations';
+import { isFiniteNumber, convertDistanceUnit } from '$lib/utils/calculations';
 import { wholeCalendarDaysBetween } from '$lib/utils/metrics/recency';
 
 /**
@@ -36,18 +36,6 @@ export type CadenceResult =
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
-function convertDistanceToUnit(
-	distance: number,
-	fromUnit: 'km' | 'mi',
-	toUnit: 'km' | 'mi'
-): number {
-	if (fromUnit === toUnit) {
-		return distance;
-	}
-
-	return fromUnit === 'km' ? distance / KILOMETERS_PER_MILE : distance * KILOMETERS_PER_MILE;
-}
-
 export function cadence(fuelLogs: FuelLog[], now: Date = new Date()): CadenceResult {
 	const windowStart = now.getTime() - CADENCE_WINDOW_DAYS * MS_PER_DAY;
 
@@ -82,16 +70,12 @@ export function cadence(fuelLogs: FuelLog[], now: Date = new Date()): CadenceRes
 	// Net forward travel = latest − earliest odometer in DATE order. NOT max − min: that would count a
 	// backwards/typo/rollover reading or a single high outlier as real distance. A non-positive net
 	// means the odometer didn't advance across the window — not a guessable rate.
-	const startOdometer = convertDistanceToUnit(
+	const startOdometer = convertDistanceUnit(
 		earliestLog.odometer,
 		earliestLog.distanceUnit,
 		distanceUnit
 	);
-	const endOdometer = convertDistanceToUnit(
-		latestLog.odometer,
-		latestLog.distanceUnit,
-		distanceUnit
-	);
+	const endOdometer = convertDistanceUnit(latestLog.odometer, latestLog.distanceUnit, distanceUnit);
 	const distance = endOdometer - startOdometer;
 	const distancePerDay = distance / spanDays;
 	if (!isFiniteNumber(distancePerDay) || distancePerDay <= 0) {

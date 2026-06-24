@@ -20,12 +20,19 @@ async function createVehicle(page: Page, name: string): Promise<void> {
 test('reminders smoke: add a service reminder and see its due status', async ({ page }) => {
 	await createVehicle(page, 'Trail Wagon');
 
-	// Settings is reached from the header (not the bottom nav).
-	await page.getByRole('link', { name: 'Settings' }).click();
+	// Story 4.5: reminders now live on the dedicated Maintain surface (bottom nav), not Settings.
+	await page
+		.getByRole('navigation', { name: 'Main navigation' })
+		.getByRole('link', { name: 'Maintain' })
+		.click();
 	await page.waitForLoadState('networkidle');
-	await expect(page.getByRole('heading', { name: 'Reminders' })).toBeVisible();
+	await expect(page).toHaveURL(/\/maintain$/);
+	// The dashboard heading (scoped to <main> — the AppHeader also renders an h1 "Maintain").
+	await expect(
+		page.getByRole('main').getByRole('heading', { name: 'Maintain', level: 1 })
+	).toBeVisible();
 
-	// With an active vehicle, the reminders section offers an "Add reminder" action.
+	// With an active vehicle, Maintain offers an "Add reminder" action.
 	await page.getByRole('button', { name: /Add reminder/i }).click();
 	await expect(page.getByRole('heading', { name: 'Add reminder' })).toBeVisible();
 
@@ -62,8 +69,11 @@ test('Up-Next card: an overdue reminder surfaces on Home and "Log this service" 
 }) => {
 	await createVehicle(page, 'Trail Wagon');
 
-	// Add an overdue reminder via Settings: 7-day interval, last serviced 60 days ago.
-	await page.getByRole('link', { name: 'Settings' }).click();
+	// Add an overdue reminder via Maintain: 7-day interval, last serviced 60 days ago.
+	await page
+		.getByRole('navigation', { name: 'Main navigation' })
+		.getByRole('link', { name: 'Maintain' })
+		.click();
 	await page.waitForLoadState('networkidle');
 	await page.getByRole('button', { name: /Add reminder/i }).click();
 
@@ -80,11 +90,11 @@ test('Up-Next card: an overdue reminder surfaces on Home and "Log this service" 
 	await page.getByLabel(/^Last service date/).fill(sixtyDaysAgo);
 	await page.getByRole('button', { name: 'Save reminder' }).click();
 
-	// Confirm it saved as overdue in the Settings list before leaving.
-	const settingsList = page.getByRole('list', { name: 'Service reminders' });
-	const settingsItem = settingsList.getByRole('listitem').filter({ hasText: 'Oil change' });
-	await expect(settingsItem).toBeVisible();
-	await expect(settingsItem.getByText('Overdue', { exact: true })).toBeVisible();
+	// Confirm it saved as overdue in the Maintain list before leaving.
+	const maintainList = page.getByRole('list', { name: 'Service reminders' });
+	const maintainItem = maintainList.getByRole('listitem').filter({ hasText: 'Oil change' });
+	await expect(maintainItem).toBeVisible();
+	await expect(maintainItem.getByText('Overdue', { exact: true })).toBeVisible();
 
 	// Story 3.5: the rich Up-Next card now lives in Home's Up-Next slot.
 	await page.goto('/');

@@ -15,6 +15,7 @@
 	} from '$lib/utils/reminderDismissal';
 	import type { CaptureSheetContext } from '$lib/state/captureSheet.svelte';
 	import { isFiniteNumber } from '$lib/utils/calculations';
+	import { predictedDateView } from '$lib/utils/metrics/reminderPrediction';
 	import type { FuelLog } from '$lib/db/schema';
 
 	interface Props {
@@ -128,6 +129,7 @@
 {#if visible}
 	{@const status = visible.status.status}
 	{@const presentation = REMINDER_STATUS_PRESENTATION[status]}
+	{@const dateView = predictedDateView(visible.reminder, fuelLogs, currentOdometer, today)}
 	<section
 		aria-labelledby="up-next-card-heading"
 		class="mb-4 flex gap-3 overflow-hidden rounded-xl border border-border bg-card p-4"
@@ -147,6 +149,12 @@
 				<!-- Short status word (text, not color-only — AC7) + remaining distance/time label. -->
 				{presentation.label} · {visible.status.label}
 			</p>
+			{#if dateView.kind !== 'none'}
+				<!-- Predicted service date (FR-10/FR-12) — an ADDITIONAL line under the remaining-distance
+				     line, never replacing it. A sufficient cadence shows the "≈ due …" estimate; an
+				     insufficient one shows the honest note instead of a guess (AC4). -->
+				<p class="mt-0.5 text-sm text-muted-foreground">{dateView.text}</p>
+			{/if}
 			<button
 				type="button"
 				onclick={handleLogService}
