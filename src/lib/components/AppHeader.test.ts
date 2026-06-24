@@ -68,10 +68,10 @@ describe('AppHeader', () => {
 		expect(screen.getByText('History')).toBeTruthy();
 	});
 
-	it('derives title from /analytics route', () => {
-		mockPathname = '/analytics';
+	it('derives title from /understand route', () => {
+		mockPathname = '/understand';
 		renderHeader();
-		expect(screen.getByText('Analytics')).toBeTruthy();
+		expect(screen.getByText('Understand')).toBeTruthy();
 	});
 
 	it('derives title from /export route', () => {

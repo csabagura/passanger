@@ -9,6 +9,7 @@ const WCAG_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'];
 // scanned separately below (it is a portalled dialog, not a route).
 const routes = [
 	{ name: 'Home', path: '/' },
+	{ name: 'Understand', path: '/understand' },
 	{ name: 'History', path: '/history' },
 	{ name: 'Export', path: '/export' },
 	{ name: 'Settings', path: '/settings' }
@@ -148,6 +149,40 @@ test('Home Hero Metric toggles cost ↔ consumption, persists across reload, sta
 	);
 });
 
+// Story 4.4 — the Understand surface. /analytics merges into /understand (PREP-3); the surface shows
+// four interactive charts + ≤3 plain-language insights. AI-3.2 mandates e2e for route-topology changes.
+test('Legacy /analytics redirects to /understand', async ({ page }) => {
+	await page.goto('/analytics');
+	await page.waitForLoadState('networkidle');
+	await expect(page).toHaveURL(/\/understand$/);
+	// The Understand surface renders — not a 404 / the old /analytics. This fresh context has no vehicle,
+	// so the no-vehicle empty state is shown (deterministic).
+	await expect(page.getByText('No vehicle yet')).toBeVisible();
+});
+
+test('Understand (/understand) with data is axe-clean and a chart is keyboard-operable', async ({
+	page
+}) => {
+	await seedVehicleAndFill(page);
+	await page.goto('/understand');
+	await page.waitForLoadState('networkidle');
+
+	await expect(page.getByRole('heading', { name: 'Consumption trend' })).toBeVisible();
+	await expect(page.getByRole('heading', { name: 'Maintenance cost trend' })).toBeVisible();
+
+	// The view-as-table toggle swaps a chart for the mandated screen-reader table (FR-17).
+	const tableToggle = page.getByRole('button', { name: 'View as table' }).first();
+	await tableToggle.click();
+	await expect(page.getByRole('table').first()).toBeVisible();
+	await expect(page.getByRole('button', { name: 'View as chart' }).first()).toBeVisible();
+
+	const results = await new AxeBuilder({ page }).withTags(WCAG_TAGS).analyze();
+	const serious = results.violations.filter(
+		(v) => v.impact === 'critical' || v.impact === 'serious'
+	);
+	expect(serious).toEqual([]);
+});
+
 test('App is fully usable with prefers-reduced-motion: reduce', async ({ page }) => {
 	await page.emulateMedia({ reducedMotion: 'reduce' });
 	await page.goto('/');
@@ -188,8 +223,8 @@ test('NavBar tabs are reachable via keyboard', async ({ page }) => {
 	});
 	expect(navLink).toBe(true);
 
-	// Arrow right should move to the next tab (Home → Understand / /analytics in the DEC-1 NavBar)
+	// Arrow right should move to the next tab (Home → Understand / /understand in the DEC-1 NavBar)
 	await page.keyboard.press('ArrowRight');
 	const href = await page.evaluate(() => (document.activeElement as HTMLAnchorElement)?.pathname);
-	expect(href).toBe('/analytics');
+	expect(href).toBe('/understand');
 });
