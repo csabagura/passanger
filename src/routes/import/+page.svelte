@@ -1,15 +1,16 @@
 <script lang="ts">
 	import ImportWizard from '$lib/components/ImportWizard.svelte';
+	import { m } from '$lib/paraglide/messages';
 </script>
 
 <svelte:head>
-	<title>Import | passanger</title>
+	<title>{m.import_page_title()} | passanger</title>
 </svelte:head>
 
 <div class="px-4 pt-4">
 	<header class="space-y-1">
 		<p class="text-sm text-muted-foreground">
-			Import fuel and maintenance history from another app.
+			{m.import_page_intro()}
 		</p>
 	</header>
 

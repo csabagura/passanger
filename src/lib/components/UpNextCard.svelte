@@ -16,6 +16,7 @@
 	import type { CaptureSheetContext } from '$lib/state/captureSheet.svelte';
 	import { isFiniteNumber } from '$lib/utils/calculations';
 	import { predictedDateView } from '$lib/utils/metrics/reminderPrediction';
+	import { m } from '$lib/paraglide/messages';
 	import type { FuelLog } from '$lib/db/schema';
 
 	interface Props {
@@ -143,7 +144,9 @@
 				: 'bg-due-soon-accent'}"
 		></span>
 		<div class="min-w-0 flex-1">
-			<h2 id="up-next-card-heading" class="text-label text-muted-foreground uppercase">Up next</h2>
+			<h2 id="up-next-card-heading" class="text-label text-muted-foreground uppercase">
+				{m.upnext_heading()}
+			</h2>
 			<p class="mt-1 truncate font-medium text-foreground">{visible.reminder.title}</p>
 			<p class="text-sm {status === 'overdue' ? 'text-destructive' : 'text-due-soon'}">
 				<!-- Short status word (text, not color-only — AC7) + remaining distance/time label. -->
@@ -160,13 +163,13 @@
 				onclick={handleLogService}
 				class="mt-3 inline-flex min-h-11 items-center rounded-lg bg-accent px-4 text-sm font-semibold text-accent-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
 			>
-				Log this service
+				{m.upnext_log_service()}
 			</button>
 		</div>
 		<button
 			type="button"
 			onclick={handleDismiss}
-			aria-label={`Dismiss ${visible.reminder.title} reminder`}
+			aria-label={m.upnext_dismiss_aria({ title: visible.reminder.title })}
 			class="-mt-1 -mr-1 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
 		>
 			<X aria-hidden="true" class="h-5 w-5" />

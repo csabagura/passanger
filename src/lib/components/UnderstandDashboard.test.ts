@@ -3,6 +3,7 @@ import { describe, it, expect, afterEach, vi } from 'vitest';
 import { cleanup, render, screen, waitFor } from '@testing-library/svelte';
 import type { Expense, FuelLog } from '$lib/db/schema';
 import { ok } from '$lib/utils/result';
+import { m } from '$lib/paraglide/messages';
 import UnderstandDashboard from './UnderstandDashboard.svelte';
 
 vi.mock('$app/paths', () => ({
@@ -82,7 +83,7 @@ describe('UnderstandDashboard', () => {
 		mockGetAllFuelLogs.mockReturnValue(new Promise(() => {})); // never resolves
 		mockGetAllExpenses.mockReturnValue(new Promise(() => {}));
 		renderDashboard();
-		expect(screen.getByText(/loading your analytics/i)).toBeTruthy();
+		expect(screen.getByText(m.understand_loading())).toBeTruthy();
 	});
 
 	it('renders the four chart headings once data loads', async () => {
@@ -108,11 +109,11 @@ describe('UnderstandDashboard', () => {
 		renderDashboard();
 
 		await waitFor(() => {
-			expect(screen.getByRole('heading', { name: 'Monthly spend' })).toBeTruthy();
+			expect(screen.getByRole('heading', { name: m.chart_monthly_spend_title() })).toBeTruthy();
 		});
-		expect(screen.getByRole('heading', { name: 'Consumption trend' })).toBeTruthy();
-		expect(screen.getByRole('heading', { name: 'Maintenance cost trend' })).toBeTruthy();
-		expect(screen.getByRole('heading', { name: 'Fuel vs maintenance' })).toBeTruthy();
+		expect(screen.getByRole('heading', { name: m.chart_consumption_title() })).toBeTruthy();
+		expect(screen.getByRole('heading', { name: m.chart_maintenance_title() })).toBeTruthy();
+		expect(screen.getByRole('heading', { name: m.understand_split_title() })).toBeTruthy();
 	});
 
 	it('shows the no-data empty state when both reads are empty', async () => {
@@ -121,9 +122,9 @@ describe('UnderstandDashboard', () => {
 		renderDashboard();
 
 		await waitFor(() => {
-			expect(screen.getByRole('region', { name: 'No data yet' })).toBeTruthy();
+			expect(screen.getByRole('region', { name: m.understand_no_data_region() })).toBeTruthy();
 		});
-		expect(screen.getByText('Nothing to chart yet')).toBeTruthy();
+		expect(screen.getByText(m.understand_no_data_title())).toBeTruthy();
 	});
 
 	it('shows the database error state when a read rejects', async () => {
@@ -134,7 +135,7 @@ describe('UnderstandDashboard', () => {
 		await waitFor(() => {
 			expect(screen.getByRole('alert')).toBeTruthy();
 		});
-		expect(screen.getByText('Could not load your analytics')).toBeTruthy();
+		expect(screen.getByText(m.understand_db_error_title())).toBeTruthy();
 	});
 
 	it('notes other-currency totals that cannot be merged into the home-currency charts', async () => {
@@ -166,7 +167,11 @@ describe('UnderstandDashboard', () => {
 
 		await waitFor(() => {
 			// €78 + 20000 Ft × 0.0025 = €128.00.
-			expect(screen.getByText('≈ €128.00 using your rate (1 € = 400 Ft)')).toBeTruthy();
+			expect(
+				screen.getByText(
+					m.understand_blend_total({ amount: '€128.00', label: 'using your rate (1 € = 400 Ft)' })
+				)
+			).toBeTruthy();
 		});
 		// Every foreign currency is now rated → no leftover "not converted" note.
 		expect(screen.queryByText(/Other currencies aren't converted/i)).toBeNull();
@@ -184,7 +189,11 @@ describe('UnderstandDashboard', () => {
 		renderDashboard({}, { exchangeRates: { Ft: 0.0025 } });
 
 		await waitFor(() => {
-			expect(screen.getByText('≈ €128.00 using your rate (1 € = 400 Ft)')).toBeTruthy();
+			expect(
+				screen.getByText(
+					m.understand_blend_total({ amount: '€128.00', label: 'using your rate (1 € = 400 Ft)' })
+				)
+			).toBeTruthy();
 		});
 		// $ has no rate → still listed in the honest note; Ft is converted so it is no longer listed.
 		expect(screen.getByText(/Other currencies aren't converted/i)).toBeTruthy();
@@ -248,7 +257,7 @@ describe('UnderstandDashboard', () => {
 		renderDashboard({ now: new Date(2026, 5, 20) });
 
 		await waitFor(() => {
-			expect(screen.getByRole('heading', { name: 'Monthly spend' })).toBeTruthy();
+			expect(screen.getByRole('heading', { name: m.chart_monthly_spend_title() })).toBeTruthy();
 		});
 		expect(screen.queryByText(/this month\.$/i)).toBeNull();
 		expect(screen.queryByText(/running about average/i)).toBeNull();

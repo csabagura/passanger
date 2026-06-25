@@ -1,11 +1,22 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
 	computeReminderStatus,
 	selectDueReminders,
 	REMINDER_DUE_SOON_KM,
 	REMINDER_DUE_SOON_DAYS
 } from './serviceReminder';
+import { setLocale } from '$lib/paraglide/runtime';
 import type { ServiceReminder } from '$lib/db/schema';
+
+// Labels now resolve through Paraglide (Epic 6 i18n). Pin the base locale so these assertions check
+// the English output deterministically (the active locale is module-level — mirror i18n.test.ts).
+beforeEach(() => {
+	setLocale('en', { reload: false });
+});
+
+afterEach(() => {
+	setLocale('en', { reload: false });
+});
 
 function makeReminder(overrides: Partial<ServiceReminder> = {}): ServiceReminder {
 	return { id: 1, vehicleId: 1, title: 'Oil change', ...overrides };
@@ -246,5 +257,30 @@ describe('selectDueReminders', () => {
 
 	it('returns an empty array for empty input', () => {
 		expect(selectDueReminders([], 60000, TODAY)).toEqual([]);
+	});
+});
+
+describe('localised labels (Hungarian)', () => {
+	// Real i18n path: switch the active locale and assert the labels resolve in Hungarian (not an
+	// English echo), proving the wrapper templates place {value} natively and the days plural is HU.
+	it('renders the due / overdue / no-date labels in Hungarian', async () => {
+		const { m } = await import('$lib/paraglide/messages');
+		setLocale('hu', { reload: false });
+
+		// Overdue by distance.
+		const overdue = makeReminder({ intervalKm: 10000, lastServiceOdometer: 50000 });
+		expect(computeReminderStatus(overdue, 60120, TODAY).label).toBe(
+			m.reminder_overdue_by({ value: m.reminder_distance_km({ km: '120' }) })
+		);
+
+		// Due in days (plural).
+		const due = makeReminder({ intervalDays: 30, lastServiceDate: daysFromToday(-2) });
+		expect(computeReminderStatus(due, undefined, TODAY).label).toBe(
+			m.reminder_due_in({ value: m.reminder_days_count({ count: 28 }) })
+		);
+
+		// No actionable signal.
+		const none = makeReminder({ intervalKm: 10000, lastServiceOdometer: 50000 });
+		expect(computeReminderStatus(none, undefined, TODAY).label).toBe(m.reminder_no_due_date());
 	});
 });

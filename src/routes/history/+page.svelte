@@ -28,14 +28,15 @@
 	} from '$lib/utils/historyEntries';
 	import { readHistoryEntryFilter, writeHistoryEntryFilter } from '$lib/utils/historyFilterStorage';
 	import type { AppSettings } from '$lib/utils/settings';
+	import { m } from '$lib/paraglide/messages';
 
 	const LOADING_INDICATOR_DELAY_MS = 300;
 	const MAX_TIMER_DELAY_MS = 2_147_483_647;
 	type PostDeleteFocusTarget = { type: 'entry'; key: string } | { type: 'empty' };
 	const historyFilterOptions = [
-		{ label: 'All', value: 'all' },
-		{ label: 'Fuel', value: 'fuel' },
-		{ label: 'Maintenance', value: 'maintenance' }
+		{ label: m.history_filter_all(), value: 'all' },
+		{ label: m.common_fuel(), value: 'fuel' },
+		{ label: m.history_filter_maintenance(), value: 'maintenance' }
 	] as const satisfies ReadonlyArray<{ label: string; value: HistoryEntryFilter }>;
 
 	const vehiclesCtx = getContext<VehiclesContext>('vehicles');
@@ -108,24 +109,30 @@
 	);
 	const selectedHistoryTimePeriodAriaLabel = $derived(
 		selectedHistoryFilter === 'fuel'
-			? `Fuel costs for ${visibleHistoryTimePeriodSummary.periodAriaLabel}`
+			? m.history_aria_fuel_costs({ period: visibleHistoryTimePeriodSummary.periodAriaLabel })
 			: selectedHistoryFilter === 'maintenance'
-				? `Maintenance costs for ${visibleHistoryTimePeriodSummary.periodAriaLabel}`
-				: `Total car costs for ${visibleHistoryTimePeriodSummary.periodAriaLabel}`
+				? m.history_aria_maintenance_costs({
+						period: visibleHistoryTimePeriodSummary.periodAriaLabel
+					})
+				: m.history_aria_total_costs({ period: visibleHistoryTimePeriodSummary.periodAriaLabel })
 	);
 	const showFilteredEmptyState = $derived(
 		historyEntries.length > 0 && visibleHistoryEntries.length === 0
 	);
 	const filteredEmptyStateTitle = $derived.by(() => {
-		const vehicleSuffix = currentVehicle ? ` for ${currentVehicle.name}` : '';
-		return selectedHistoryFilter === 'fuel'
-			? `No fuel entries${vehicleSuffix} yet.`
-			: `No maintenance entries${vehicleSuffix} yet.`;
+		if (selectedHistoryFilter === 'fuel') {
+			return currentVehicle
+				? m.history_filtered_empty_fuel_vehicle({ vehicleName: currentVehicle.name })
+				: m.history_filtered_empty_fuel();
+		}
+		return currentVehicle
+			? m.history_filtered_empty_maintenance_vehicle({ vehicleName: currentVehicle.name })
+			: m.history_filtered_empty_maintenance();
 	});
 	const filteredEmptyStateDescription = $derived(
 		selectedHistoryFilter === 'fuel'
-			? 'Show all entries to review your saved maintenance records.'
-			: 'Show all entries to review your saved fuel fill-ups.'
+			? m.history_filtered_empty_fuel_description()
+			: m.history_filtered_empty_maintenance_description()
 	);
 
 	const editingFuelLog = $derived(editingEntry?.kind === 'fuel' ? editingEntry.entry : undefined);
@@ -364,13 +371,13 @@
 			if (request.kind === 'maintenance') {
 				const result = await deleteExpense(request.entry.id);
 				if (result.error) {
-					toast?.error('Could not delete maintenance entry. Please try again.');
+					toast?.error(m.history_delete_maintenance_error());
 					return;
 				}
 			} else {
 				const result = await deleteFuelLog(request.entry.id);
 				if (result.error) {
-					toast?.error('Could not delete fuel entry. Please try again.');
+					toast?.error(m.history_delete_fuel_error());
 					return;
 				}
 
@@ -405,8 +412,8 @@
 			// flips one of them and disables the pending Undo (AC 4).
 			const gen = getDataGeneration();
 			const rev = tabSyncCtx?.dataRevision ?? 0;
-			toast?.action('Deleted. Undo?', {
-				label: 'Undo',
+			toast?.action(m.history_delete_undo_toast(), {
+				label: m.history_undo_action_label(),
 				onClick: () => void handleUndo(request.kind, snapshot, gen, rev)
 			});
 		} finally {
@@ -427,7 +434,7 @@
 		// Re-check the guard at click time. If the timeline changed since the delete, the snapshot's
 		// own consumption may be stale — refuse rather than risk an inconsistent recompute (AC 4).
 		if (getDataGeneration() !== gen || (tabSyncCtx?.dataRevision ?? 0) !== rev) {
-			toast?.error("Couldn't undo — the timeline changed since you deleted.");
+			toast?.error(m.history_undo_timeline_changed_error());
 			return;
 		}
 
@@ -438,7 +445,7 @@
 					? await restoreFuelLog(snapshot as FuelLog)
 					: await restoreExpense(snapshot as Expense);
 			if (result.error) {
-				toast?.error('Could not restore the entry. Please try again.');
+				toast?.error(m.history_restore_error());
 				return;
 			}
 
@@ -455,7 +462,7 @@
 					key: getHistoryEntryKey({ kind, entry: snapshot } as HistoryEntry)
 				});
 			}
-			toast?.success('Restored.');
+			toast?.success(m.history_restore_success());
 		} finally {
 			undoInFlight = false;
 		}
@@ -592,7 +599,7 @@
 		class:pointer-events-none={selectedDetailEntry !== null}
 	>
 		<header class="space-y-1">
-			<h1 class="text-xl font-semibold text-foreground">History</h1>
+			<h1 class="text-xl font-semibold text-foreground">{m.nav_history()}</h1>
 			{#if currentVehicle}
 				<p class="text-sm text-muted-foreground">
 					{currentVehicle.name} · {currentVehicle.make}
@@ -603,7 +610,7 @@
 				</p>
 			{:else}
 				<p class="text-sm text-muted-foreground">
-					Review your fuel fill-ups and maintenance costs in one place.
+					{m.history_subtitle_no_vehicle()}
 				</p>
 			{/if}
 		</header>
@@ -614,19 +621,19 @@
 				class="flex min-h-[50vh] flex-col items-center justify-center gap-6 p-8 text-center"
 			>
 				<div class="flex flex-col items-center gap-2">
-					<p class="text-lg font-semibold text-foreground">Could not load your history</p>
+					<p class="text-lg font-semibold text-foreground">{m.history_db_error_title()}</p>
 					<p class="text-sm text-muted-foreground">
-						There was a problem reaching the database. Please restart the app to try again.
+						{m.history_db_error_body()}
 					</p>
 					<p class="text-sm text-muted-foreground">
-						If the problem persists, export your data before clearing app storage.
+						{m.history_db_error_export_hint()}
 					</p>
 				</div>
 				<a
 					href={resolve('/export')}
 					class="rounded-xl bg-accent px-5 py-3 text-sm font-semibold text-accent-foreground"
 				>
-					Export My Data
+					{m.history_db_error_export_cta()}
 				</a>
 			</div>
 		{:else if loading && showLoadingState}
@@ -635,21 +642,25 @@
 				aria-live="polite"
 				class="rounded-2xl border border-border bg-card px-4 py-6 text-center"
 			>
-				<p class="text-sm text-muted-foreground">Loading history...</p>
+				<p class="text-sm text-muted-foreground">{m.history_loading()}</p>
 			</div>
 		{:else if !loading}
 			{#if editingEntry && currentVehicle}
 				<section class="space-y-4">
 					<div class="space-y-1">
 						{#if editingFuelLog}
-							<h2 class="text-lg font-semibold text-foreground">Editing fuel entry</h2>
+							<h2 class="text-lg font-semibold text-foreground">
+								{m.history_editing_fuel_title()}
+							</h2>
 							<p class="text-sm text-muted-foreground">
-								Save your changes or cancel to return to history.
+								{m.history_editing_subtitle()}
 							</p>
 						{:else if editingExpense}
-							<h2 class="text-lg font-semibold text-foreground">Editing maintenance entry</h2>
+							<h2 class="text-lg font-semibold text-foreground">
+								{m.history_editing_maintenance_title()}
+							</h2>
 							<p class="text-sm text-muted-foreground">
-								Save your changes or cancel to return to history.
+								{m.history_editing_subtitle()}
 							</p>
 						{/if}
 					</div>
@@ -681,7 +692,7 @@
 
 			{#if historyEntries.length > 0}
 				<fieldset class="space-y-3">
-					<legend class="text-sm font-medium text-foreground">Entry type</legend>
+					<legend class="text-sm font-medium text-foreground">{m.history_filter_legend()}</legend>
 					<div class="flex rounded-2xl bg-muted/50 p-1">
 						{#each historyFilterOptions as option (option.value)}
 							<label class="flex-1">
@@ -703,7 +714,9 @@
 				</fieldset>
 
 				<fieldset class="space-y-3">
-					<legend class="text-sm font-medium text-foreground">Time period</legend>
+					<legend class="text-sm font-medium text-foreground"
+						>{m.history_time_period_legend()}</legend
+					>
 					<div class="flex rounded-2xl bg-muted/50 p-1">
 						{#each historyTimePeriodOptions as option (option.value)}
 							<label class="flex-1">
@@ -755,7 +768,7 @@
 						onclick={resetHistoryFilter}
 						class="mt-4 inline-flex min-h-11 items-center justify-center rounded-xl bg-accent px-5 py-3 text-sm font-semibold text-accent-foreground"
 					>
-						Show all entries
+						{m.history_show_all_entries()}
 					</button>
 				</div>
 			{:else}

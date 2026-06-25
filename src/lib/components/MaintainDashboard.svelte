@@ -16,6 +16,7 @@
 	import { isFiniteNumber } from '$lib/utils/calculations';
 	import ServiceReminderForm from '$lib/components/ServiceReminderForm.svelte';
 	import { Button } from '$lib/components/ui/button';
+	import { m } from '$lib/paraglide/messages';
 	import type { FuelLog, ServiceReminder } from '$lib/db/schema';
 
 	interface Props {
@@ -162,7 +163,7 @@
 
 		const result = await deleteServiceReminder(deleteTarget.id);
 		if (result.error) {
-			deleteError = 'Could not delete reminder. Please try again.';
+			deleteError = m.maintain_delete_error();
 			deleteState = 'armed';
 			return;
 		}
@@ -178,12 +179,14 @@
 <div class="px-4 pt-4">
 	<div class="space-y-6">
 		<header class="space-y-1">
-			<h1 class="text-xl font-semibold text-foreground">Maintain</h1>
+			<h1 class="text-xl font-semibold text-foreground">{m.maintain_heading()}</h1>
 			{#if vehicleName}
-				<p class="text-sm text-muted-foreground">Service reminders for {vehicleName}.</p>
+				<p class="text-sm text-muted-foreground">
+					{m.maintain_reminders_for({ vehicle: vehicleName })}
+				</p>
 			{:else}
 				<p class="text-sm text-muted-foreground">
-					Track when maintenance is due — by distance and by time.
+					{m.maintain_subtitle_generic()}
 				</p>
 			{/if}
 		</header>
@@ -191,15 +194,15 @@
 		{#if dbError}
 			<!-- DB-error takes precedence over loading (a rejected read never emits `current`). -->
 			<div role="alert" class="flex flex-col items-center justify-center gap-4 p-8 text-center">
-				<p class="text-lg font-semibold text-foreground">Could not load your reminders</p>
+				<p class="text-lg font-semibold text-foreground">{m.maintain_error_heading()}</p>
 				<p class="text-sm text-muted-foreground">
-					There was a problem reaching the database. Please restart the app to try again.
+					{m.maintain_error_body()}
 				</p>
 				<a
 					href={resolve('/export')}
 					class="rounded-xl bg-accent px-5 py-3 text-sm font-semibold text-accent-foreground"
 				>
-					Export My Data
+					{m.maintain_export_cta()}
 				</a>
 			</div>
 		{:else if viewState.mode === 'create'}
@@ -215,7 +218,7 @@
 		{:else if loading}
 			<!-- Cold-load skeleton: hand-rolled motion-safe pulse (mirror Understand — NO shadcn, protects
 			     NFR-4). aria-hidden shapes + a polite status sibling for screen readers. -->
-			<p class="sr-only" role="status" aria-live="polite">Loading your reminders…</p>
+			<p class="sr-only" role="status" aria-live="polite">{m.maintain_loading()}</p>
 			<div aria-hidden="true" class="space-y-3">
 				{#each [0, 1, 2] as block (block)}
 					<div class="rounded-xl border border-border p-4">
@@ -227,17 +230,19 @@
 		{:else if rows.length === 0}
 			<div
 				role="region"
-				aria-label="No reminders yet"
+				aria-label={m.maintain_empty_region_label()}
 				class="space-y-3 rounded-2xl border border-dashed border-border bg-card px-4 py-10 text-center"
 			>
-				<p class="text-base font-semibold text-foreground">No reminders yet</p>
+				<p class="text-base font-semibold text-foreground">{m.maintain_empty_heading()}</p>
 				<p class="text-sm text-muted-foreground">
-					Add one to track when maintenance is due — by distance, time, or both.
+					{m.maintain_empty_body()}
 				</p>
-				<Button bind:ref={addButtonEl} onclick={handleCreateClick}>+ Add reminder</Button>
+				<Button bind:ref={addButtonEl} onclick={handleCreateClick}
+					>{m.maintain_add_reminder()}</Button
+				>
 			</div>
 		{:else}
-			<ul class="space-y-3" aria-label="Service reminders" bind:this={listContainerEl}>
+			<ul class="space-y-3" aria-label={m.maintain_list_label()} bind:this={listContainerEl}>
 				{#each rows as row (row.reminder.id)}
 					{@const styles = REMINDER_STATUS_PRESENTATION[row.status.status]}
 					{@const isDeleteTarget = deleteTarget?.id === row.reminder.id && deletePromptVisible}
@@ -266,9 +271,9 @@
 									variant="outline"
 									size="icon"
 									onclick={() => handleEditClick(row.reminder)}
-									aria-label="Edit {row.reminder.title}"
+									aria-label={m.maintain_edit_reminder_label({ title: row.reminder.title })}
 								>
-									Edit
+									{m.common_edit()}
 								</Button>
 								<!-- Outline + destructive TEXT (not the destructive fill variant): red-on-card meets the
 							     4.5:1 AA floor, whereas `bg-destructive/10 text-destructive` is only ~3.86:1 (C-5/AC9). -->
@@ -278,9 +283,9 @@
 									class="text-destructive hover:text-destructive"
 									disabled={deletePromptVisible}
 									onclick={() => handleDeleteRequest(row.reminder)}
-									aria-label="Delete {row.reminder.title}"
+									aria-label={m.maintain_delete_reminder_label({ title: row.reminder.title })}
 								>
-									Delete
+									{m.common_delete()}
 								</Button>
 							</div>
 						</div>
@@ -292,7 +297,7 @@
 								class="mt-4 rounded-2xl border border-destructive/20 bg-destructive/10 p-4"
 							>
 								<p id={deleteDialogId} class="text-sm font-semibold text-destructive">
-									Delete {row.reminder.title}? This reminder will be removed permanently.
+									{m.maintain_delete_confirm({ title: row.reminder.title })}
 								</p>
 
 								{#if deleteError}
@@ -310,14 +315,16 @@
 										disabled={deleteState === 'loading'}
 										onclick={handleDeleteCancel}
 									>
-										Cancel
+										{m.common_cancel()}
 									</Button>
 									<Button
 										variant="destructive"
 										disabled={deleteState === 'loading'}
 										onclick={handleDeleteConfirm}
 									>
-										{deleteState === 'loading' ? 'Deleting…' : 'Confirm delete'}
+										{deleteState === 'loading'
+											? m.maintain_deleting()
+											: m.maintain_delete_confirm_action()}
 									</Button>
 								</div>
 							</div>
@@ -327,7 +334,9 @@
 			</ul>
 
 			<div class="mt-4">
-				<Button bind:ref={addButtonEl} onclick={handleCreateClick}>+ Add reminder</Button>
+				<Button bind:ref={addButtonEl} onclick={handleCreateClick}
+					>{m.maintain_add_reminder()}</Button
+				>
 			</div>
 		{/if}
 	</div>

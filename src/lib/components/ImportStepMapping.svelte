@@ -12,6 +12,7 @@
 	import { formatCurrency } from '$lib/utils/calculations';
 	import { getSettings } from '$lib/utils/settings';
 	import { DEFAULT_CURRENCY } from '$lib/config';
+	import { m } from '$lib/paraglide/messages';
 
 	// Home currency, resolved EXACTLY as commitImportRows does (importCommit.ts:26) so the
 	// preview can never claim a different currency than the commit writes. Imported rows carry
@@ -91,8 +92,8 @@
 	}
 
 	function getEntryTypeLabel(type: string | undefined): string {
-		if (type === 'fuel') return 'Fuel';
-		if (type === 'maintenance') return 'Service';
+		if (type === 'fuel') return m.common_fuel();
+		if (type === 'maintenance') return m.import_entry_type_service();
 		return '';
 	}
 
@@ -121,12 +122,12 @@
 				return parseACarCSV(csv);
 			}
 			case 'drivvo': {
-				if (!userUnits) return err('PARSE_FAILED', 'Units must be selected before parsing.');
+				if (!userUnits) return err('PARSE_FAILED', m.import_mapping_error_units_required());
 				const { parseDrivvoCSV } = await import('$lib/utils/importParseDrivvo');
 				return parseDrivvoCSV(csv, userUnits);
 			}
 			default:
-				return err('PARSE_FAILED', 'This format is not yet supported.');
+				return err('PARSE_FAILED', m.import_mapping_error_unsupported());
 		}
 	}
 
@@ -222,13 +223,13 @@
 	<!-- Drivvo: unit selection required before parsing -->
 	<div class="space-y-4">
 		<div class="rounded-2xl border border-border bg-card p-5 shadow-sm">
-			<p class="text-sm text-foreground">What units does your data use?</p>
+			<p class="text-sm text-foreground">{m.import_mapping_drivvo_units_q()}</p>
 			<p class="mt-1 text-xs text-muted-foreground">
-				Drivvo files don't include unit information — please select the units your data uses.
+				{m.import_mapping_drivvo_units_help()}
 			</p>
 			<div class="mt-3 flex gap-4">
 				<label class="flex flex-col gap-1">
-					<span class="text-xs text-muted-foreground">Fuel unit</span>
+					<span class="text-xs text-muted-foreground">{m.import_mapping_fuel_unit()}</span>
 					<select
 						class="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
 						value={drivvoFuelUnit}
@@ -236,13 +237,13 @@
 							drivvoFuelUnit = (e.target as HTMLSelectElement).value as 'L' | 'gal' | '';
 						}}
 					>
-						<option value="" disabled>Select...</option>
+						<option value="" disabled>{m.import_mapping_select_placeholder()}</option>
 						<option value="L">L</option>
 						<option value="gal">gal</option>
 					</select>
 				</label>
 				<label class="flex flex-col gap-1">
-					<span class="text-xs text-muted-foreground">Distance</span>
+					<span class="text-xs text-muted-foreground">{m.import_mapping_distance()}</span>
 					<select
 						class="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
 						value={drivvoDistanceUnit}
@@ -250,7 +251,7 @@
 							drivvoDistanceUnit = (e.target as HTMLSelectElement).value as 'km' | 'mi' | '';
 						}}
 					>
-						<option value="" disabled>Select...</option>
+						<option value="" disabled>{m.import_mapping_select_placeholder()}</option>
 						<option value="km">km</option>
 						<option value="mi">mi</option>
 					</select>
@@ -263,7 +264,7 @@
 			class="inline-flex min-h-11 items-center justify-center rounded-xl bg-accent px-5 py-3 text-sm font-semibold text-accent-foreground disabled:cursor-not-allowed disabled:opacity-70"
 			onclick={handleDrivvoParse}
 		>
-			Parse data
+			{m.import_mapping_parse_button()}
 		</button>
 	</div>
 {/if}
@@ -276,7 +277,7 @@
 		<div
 			class="h-5 w-5 animate-spin rounded-full border-2 border-accent border-t-transparent"
 		></div>
-		<p class="text-sm text-muted-foreground">Parsing your data...</p>
+		<p class="text-sm text-muted-foreground">{m.import_mapping_parsing()}</p>
 	</div>
 {/if}
 
@@ -285,10 +286,10 @@
 		role="alert"
 		class="space-y-3 rounded-2xl border border-destructive/20 bg-destructive/10 p-4"
 	>
-		<p class="text-sm font-semibold text-destructive">Could not parse file</p>
+		<p class="text-sm font-semibold text-destructive">{m.import_mapping_error_title()}</p>
 		<p class="text-sm text-destructive">{parseState.error.message}</p>
 		<p class="text-sm text-muted-foreground">
-			Try re-uploading your {getFormatLabel()} export file.
+			{m.import_mapping_error_retry({ format: getFormatLabel() })}
 		</p>
 	</div>
 {/if}
@@ -310,14 +311,18 @@
 		(sum, r) => sum + (Number.isFinite(r.data.totalCost) ? (r.data.totalCost as number) : 0),
 		0
 	)}
+	<!-- splitText: a comma-separated LIST of two complete count phrases (fuel-ups, expenses), each a
+	     plural message; the ', ' is a list separator, not sentence glue. FLAGGED (list-join). -->
 	{@const splitText =
-		(fuelCount > 0 ? `${fuelCount} fuel-up${fuelCount !== 1 ? 's' : ''}` : '') +
+		(fuelCount > 0 ? m.import_preview_fuelups({ count: fuelCount }) : '') +
 		(fuelCount > 0 && expenseCount > 0 ? ', ' : '') +
-		(expenseCount > 0 ? `${expenseCount} expense${expenseCount !== 1 ? 's' : ''}` : '')}
+		(expenseCount > 0 ? m.import_preview_expenses({ count: expenseCount }) : '')}
 	{@const dateRangeText = formatImportDateRange(summary.dateRange)}
-	{@const headline = `${committable.length} ${committable.length === 1 ? 'entry' : 'entries'}${
-		dateRangeText ? ` spanning ${dateRangeText}` : ''
-	}`}
+	<!-- headline: pick the spanning vs count-only variant (each a plural message) so the date span
+	     (a date-seam RESULT) is passed as a param, never concatenated as a translated fragment. -->
+	{@const headline = dateRangeText
+		? m.import_preview_headline_spanning({ count: committable.length, range: dateRangeText })
+		: m.import_preview_headline({ count: committable.length })}
 
 	<div class="space-y-4">
 		<!-- Value-first preview — the primary content of the Preview step (AC1) -->
@@ -330,9 +335,12 @@
 				<p class="mt-2 text-sm text-muted-foreground">{splitText}</p>
 			{/if}
 			<p class="mt-1 text-sm text-foreground">
-				Total spend <span class="font-semibold">{formatCurrency(totalSpend, homeCurrency)}</span>
+				{m.import_preview_total_spend()}
+				<span class="font-semibold">{formatCurrency(totalSpend, homeCurrency)}</span>
 			</p>
-			<p class="mt-1 text-xs text-muted-foreground">Amounts shown in {homeCurrency}</p>
+			<p class="mt-1 text-xs text-muted-foreground">
+				{m.import_preview_amounts_in({ currency: homeCurrency })}
+			</p>
 		</div>
 
 		<!-- Mapping + units demoted to an optional, default-collapsed disclosure (AC2). -->
@@ -343,12 +351,12 @@
 			<summary
 				class="cursor-pointer list-none px-5 py-4 text-sm font-semibold text-foreground [&::-webkit-details-marker]:hidden"
 			>
-				How we mapped this
+				{m.import_mapping_disclosure_title()}
 			</summary>
 			<div class="space-y-4 px-5 pb-5">
 				<!-- Column mapping table -->
 				<div>
-					<p class="mb-3 text-sm text-muted-foreground">Here's how we'll map your data</p>
+					<p class="mb-3 text-sm text-muted-foreground">{m.import_mapping_table_intro()}</p>
 					<div class="space-y-2">
 						{#each mapped as entry (entry.sourceColumn)}
 							<div class="flex items-center justify-between rounded-lg bg-muted/40 px-3 py-2">
@@ -358,12 +366,12 @@
 								{#if entry.status === 'calculated'}
 									<span
 										class="ml-2 inline-flex items-center rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-800 dark:bg-blue-900/30 dark:text-blue-400"
-										>calc</span
+										>{m.import_mapping_badge_calc()}</span
 									>
 								{:else}
 									<span
 										class="ml-2 inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800 dark:bg-green-900/30 dark:text-green-400"
-										aria-label="mapped"
+										aria-label={m.import_mapping_badge_mapped()}
 									>
 										&#10003;
 									</span>
@@ -378,8 +386,9 @@
 							class="mt-3 text-xs text-muted-foreground underline"
 							onclick={() => (showIgnored = !showIgnored)}
 						>
-							{showIgnored ? 'Hide' : 'Show'}
-							{ignored.length} ignored columns
+							{showIgnored
+								? m.import_mapping_ignored_hide({ count: ignored.length })
+								: m.import_mapping_ignored_show({ count: ignored.length })}
 						</button>
 
 						{#if showIgnored}
@@ -395,29 +404,38 @@
 					{/if}
 				</div>
 
-				<!-- Unit confirmation / override (the units-fallback) -->
+				<!-- Unit confirmation / override (the units-fallback). The unit names (litres/gallons/km/
+				     miles) are translatable display words derived from the unit VALUE; they are passed as
+				     params into one whole-sentence template per variant (no fragment concatenation). -->
 				<div class="border-t border-border pt-4">
 					{#if isDrivvo}
 						<p class="text-sm text-foreground">
-							Units: <strong>{drivvoFuelUnit === 'L' ? 'litres' : 'gallons'}</strong>
-							and <strong>{drivvoDistanceUnit}</strong> (selected above)
+							{m.import_mapping_units_drivvo({
+								fuel: drivvoFuelUnit === 'L' ? m.import_unit_litres() : m.import_unit_gallons(),
+								distance: drivvoDistanceUnit
+							})}
 						</p>
 					{:else if confirmedFormat === 'acar' && detectedUnits}
 						<p class="text-sm text-foreground">
-							Your file declares <strong>{detectedUnits.fuel === 'L' ? 'litres' : 'gallons'}</strong
-							>
-							and <strong>{detectedUnits.distance === 'km' ? 'km' : 'miles'}</strong>. Correct?
+							{m.import_mapping_units_declares({
+								fuel: detectedUnits.fuel === 'L' ? m.import_unit_litres() : m.import_unit_gallons(),
+								distance:
+									detectedUnits.distance === 'km' ? m.import_unit_km() : m.import_unit_miles()
+							})}
 						</p>
 					{:else if detectedUnits}
 						<p class="text-sm text-foreground">
-							Your file uses <strong>{detectedUnits.fuel === 'L' ? 'litres' : 'gallons'}</strong>
-							and <strong>{detectedUnits.distance === 'km' ? 'km' : 'miles'}</strong>. Correct?
+							{m.import_mapping_units_uses({
+								fuel: detectedUnits.fuel === 'L' ? m.import_unit_litres() : m.import_unit_gallons(),
+								distance:
+									detectedUnits.distance === 'km' ? m.import_unit_km() : m.import_unit_miles()
+							})}
 						</p>
 					{/if}
 					{#if !isDrivvo && detectedUnits}
 						<div class="mt-3 flex gap-4">
 							<label class="flex flex-col gap-1">
-								<span class="text-xs text-muted-foreground">Fuel unit</span>
+								<span class="text-xs text-muted-foreground">{m.import_mapping_fuel_unit()}</span>
 								<select
 									class="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
 									value={effectiveUnits?.fuel ?? detectedUnits.fuel}
@@ -430,7 +448,7 @@
 								</select>
 							</label>
 							<label class="flex flex-col gap-1">
-								<span class="text-xs text-muted-foreground">Distance</span>
+								<span class="text-xs text-muted-foreground">{m.import_mapping_distance()}</span>
 								<select
 									class="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
 									value={effectiveUnits?.distance ?? detectedUnits.distance}
@@ -450,7 +468,7 @@
 				{#if confirmedFormat === 'fuelly'}
 					<div class="rounded-2xl border border-blue-500/20 bg-blue-500/10 p-4">
 						<p class="text-sm text-blue-700 dark:text-blue-400">
-							Total cost calculated as price &times; quantity
+							{m.import_mapping_price_note()}
 						</p>
 					</div>
 				{/if}
@@ -459,11 +477,11 @@
 
 		<!-- Data preview cards -->
 		<div class="space-y-2">
-			<h3 class="text-sm font-semibold text-foreground">Data preview</h3>
+			<h3 class="text-sm font-semibold text-foreground">{m.import_mapping_data_preview()}</h3>
 			{#each previewRows as row (row.rowNumber)}
 				<div class="rounded-xl border border-border bg-card px-4 py-3">
 					<p class="text-sm text-foreground">
-						<span class="font-medium">Row {row.rowNumber}:</span>
+						<span class="font-medium">{m.import_mapping_row_label({ row: row.rowNumber })}</span>
 						{#if hasMixedTypes}
 							<span
 								class="mr-1 inline-flex items-center rounded-full bg-muted px-1.5 py-0.5 text-xs font-medium text-muted-foreground"
@@ -491,18 +509,24 @@
 			{/each}
 		</div>
 
-		<!-- Dry-run summary strip -->
+		<!-- Dry-run summary strip — a status line of self-contained count clauses joined by punctuation
+		     separators (": ", ", ", " · "), each a complete message; the conditional warnings/errors keep
+		     the original fixed "warnings"/"errors" wording (NOT pluralised) so the headline stays stable.
+		     FLAGGED (clause-list join). -->
 		<div
 			class="rounded-xl border border-border bg-muted/50 px-4 py-3"
 			data-testid="dry-run-summary"
 		>
 			<p class="text-sm text-foreground">
-				{summary.totalRows} rows: {summary.validCount} ready{#if summary.warningCount > 0}, {summary.warningCount}
-					warnings{/if}{#if summary.errorCount > 0}, {summary.errorCount} errors{/if}
+				{m.import_preview_summary_rows({ total: summary.totalRows })}: {m.import_preview_summary_ready(
+					{ count: summary.validCount }
+				)}{#if summary.warningCount > 0}, {m.import_preview_summary_warnings({
+						count: summary.warningCount
+					})}{/if}{#if summary.errorCount > 0}, {m.import_preview_summary_errors({
+						count: summary.errorCount
+					})}{/if}
 				{#if summary.detectedVehicleNames.length > 0}
-					· {summary.detectedVehicleNames.length} vehicle{summary.detectedVehicleNames.length !== 1
-						? 's'
-						: ''} detected
+					· {m.import_preview_summary_vehicles({ count: summary.detectedVehicleNames.length })}
 				{/if}
 			</p>
 		</div>
@@ -514,7 +538,7 @@
 			class="inline-flex min-h-11 items-center justify-center rounded-xl bg-accent px-5 py-3 text-sm font-semibold text-accent-foreground disabled:cursor-not-allowed disabled:opacity-70"
 			onclick={handleContinue}
 		>
-			Continue
+			{m.import_continue()}
 		</button>
 	</div>
 {/if}

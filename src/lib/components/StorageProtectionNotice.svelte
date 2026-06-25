@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { m } from '$lib/paraglide/messages';
+
 	interface Props {
 		ondismiss: () => void;
 	}
@@ -17,14 +19,14 @@
 		class="flex items-start justify-between gap-3 rounded-lg border border-border bg-muted px-4 py-3 text-sm text-muted-foreground"
 	>
 		<p class="leading-snug">
-			Storage protection unavailable on this browser - export your data regularly to prevent loss
+			{m.storage_protection_unavailable()}
 		</p>
 		<button
 			class="shrink-0 rounded px-2 py-0.5 text-xs font-medium hover:bg-accent hover:text-accent-foreground"
 			onclick={ondismiss}
-			aria-label="Dismiss storage protection notice"
+			aria-label={m.storage_dismiss_notice()}
 		>
-			Dismiss
+			{m.common_dismiss()}
 		</button>
 	</div>
 </div>

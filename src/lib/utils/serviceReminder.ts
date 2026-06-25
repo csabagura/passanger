@@ -7,6 +7,7 @@
 
 import type { ServiceReminder } from '$lib/db/schema';
 import { REMINDER_DUE_SOON_KM, REMINDER_DUE_SOON_DAYS } from '$lib/config';
+import { m } from '$lib/paraglide/messages';
 
 export { REMINDER_DUE_SOON_KM, REMINDER_DUE_SOON_DAYS };
 
@@ -27,14 +28,28 @@ export interface ReminderStatusResult {
  */
 export const REMINDER_STATUS_PRESENTATION: Record<
 	ReminderStatus,
-	{ badge: string; label: string }
+	{ badge: string; readonly label: string }
 > = {
 	overdue: {
 		badge: 'border-destructive/30 bg-destructive/10 text-destructive',
-		label: 'Overdue'
+		// Getter so the badge word resolves at the active locale each read (the object is built once
+		// at module load, but consumers read `.label` per render).
+		get label() {
+			return m.reminder_status_overdue();
+		}
 	},
-	'due-soon': { badge: 'border-amber-500/30 bg-amber-500/10 text-amber-600', label: 'Due soon' },
-	ok: { badge: 'border-border bg-muted/40 text-muted-foreground', label: 'On track' }
+	'due-soon': {
+		badge: 'border-amber-500/30 bg-amber-500/10 text-amber-600',
+		get label() {
+			return m.reminder_status_due_soon();
+		}
+	},
+	ok: {
+		badge: 'border-border bg-muted/40 text-muted-foreground',
+		get label() {
+			return m.reminder_status_on_track();
+		}
+	}
 };
 
 export interface DueReminder {
@@ -120,8 +135,15 @@ export function computeReminderStatus(
 	};
 }
 
-function pluralizeDays(days: number): string {
-	return Math.abs(days) === 1 ? 'day' : 'days';
+/** Localised "{n} km" fragment (number formatted en-US via formatCount, passed as a param). */
+function kmFragment(value: number): string {
+	return m.reminder_distance_km({ km: formatCount(value) });
+}
+
+/** Localised "{n} day(s)" fragment (plural selected on the absolute count). HU keeps the noun
+ *  singular after a numeral, so its plural variants are authored natively. */
+function daysFragment(value: number): string {
+	return m.reminder_days_count({ count: Math.abs(value) });
 }
 
 function buildLabel(
@@ -130,31 +152,34 @@ function buildLabel(
 	daysRemaining: number | undefined
 ): string {
 	if (kmRemaining === undefined && daysRemaining === undefined) {
-		return 'No due date yet';
+		return m.reminder_no_due_date();
 	}
 
+	// Build the per-dimension fragments, then hand the joined value to a single wrapper template so
+	// the surrounding words never glue around translated text (HU word order differs — the wrapper
+	// places {value} natively). The " / " between dimensions is a neutral separator, not copy.
 	if (status === 'overdue') {
 		// Report whichever dimension(s) crossed zero, most-overdue first isn't needed —
 		// just show each overdue dimension; if only one is overdue, show that one.
 		const parts: string[] = [];
 		if (kmRemaining !== undefined && kmRemaining <= 0) {
-			parts.push(`${formatCount(kmRemaining)} km`);
+			parts.push(kmFragment(kmRemaining));
 		}
 		if (daysRemaining !== undefined && daysRemaining <= 0) {
-			parts.push(`${formatCount(daysRemaining)} ${pluralizeDays(daysRemaining)}`);
+			parts.push(daysFragment(daysRemaining));
 		}
-		return `Overdue by ${parts.join(' / ')}`;
+		return m.reminder_overdue_by({ value: parts.join(' / ') });
 	}
 
 	// ok or due-soon: show remaining across whichever dimensions are known.
 	const parts: string[] = [];
 	if (kmRemaining !== undefined) {
-		parts.push(`${formatCount(kmRemaining)} km`);
+		parts.push(kmFragment(kmRemaining));
 	}
 	if (daysRemaining !== undefined) {
-		parts.push(`${formatCount(daysRemaining)} ${pluralizeDays(daysRemaining)}`);
+		parts.push(daysFragment(daysRemaining));
 	}
-	return `Due in ${parts.join(' / ')}`;
+	return m.reminder_due_in({ value: parts.join(' / ') });
 }
 
 /**

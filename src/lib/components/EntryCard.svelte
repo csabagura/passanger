@@ -5,6 +5,7 @@
 	import type { Expense, FuelLog } from '$lib/db/schema';
 	import { formatConsumptionForDisplay, formatCurrency } from '$lib/utils/calculations';
 	import { formatLocalCalendarDate } from '$lib/utils/date';
+	import { m } from '$lib/paraglide/messages';
 
 	const HISTORY_ACTION_WIDTH = 144;
 	const HISTORY_SWIPE_REVEAL_THRESHOLD = 48;
@@ -87,7 +88,7 @@
 					fuelEntry.unit,
 					preferredFuelUnit
 				)
-			: 'Efficiency pending';
+			: m.entry_efficiency_pending();
 	}
 
 	function getHistorySecondaryDetail(): string {
@@ -101,24 +102,45 @@
 	function getEntryLabel(): string {
 		if (presentation !== 'history') {
 			if (isFuelEntry(entry)) {
-				const efficiencyLabel =
-					entry.calculatedConsumption > 0 ? getFuelEfficiencyLabel(entry) : 'efficiency pending';
+				const efficiency =
+					entry.calculatedConsumption > 0
+						? getFuelEfficiencyLabel(entry)
+						: m.entry_efficiency_pending_lc();
 
-				return `Fuel entry, ${formatLocalCalendarDate(entry.date)}, ${entry.quantity} ${entry.unit}, ${formatCurrency(entry.totalCost, entry.currency ?? currency)}, ${efficiencyLabel}`;
+				return m.entry_aria_fuel_full({
+					date: formatLocalCalendarDate(entry.date),
+					quantity: entry.quantity,
+					unit: entry.unit,
+					cost: formatCurrency(entry.totalCost, entry.currency ?? currency),
+					efficiency
+				});
 			}
 
-			return `Maintenance entry, ${formatLocalCalendarDate(entry.date)}, ${entry.type}, ${formatCurrency(entry.cost, entry.currency ?? currency)}`;
+			return m.entry_aria_maintenance_full({
+				date: formatLocalCalendarDate(entry.date),
+				type: entry.type,
+				cost: formatCurrency(entry.cost, entry.currency ?? currency)
+			});
 		}
 
 		if (isFuelEntry(entry)) {
-			return `Fuel entry, ${formatLocalCalendarDate(entry.date)}, ${formatCurrency(entry.totalCost, entry.currency ?? currency)}, ${getHistorySecondaryDetail()}`;
+			return m.entry_aria_fuel_history({
+				date: formatLocalCalendarDate(entry.date),
+				cost: formatCurrency(entry.totalCost, entry.currency ?? currency),
+				secondary: getHistorySecondaryDetail()
+			});
 		}
 
-		return `Maintenance entry, ${formatLocalCalendarDate(entry.date)}, ${formatCurrency(entry.cost, entry.currency ?? currency)}, ${entry.type}`;
+		return m.entry_aria_maintenance_history({
+			date: formatLocalCalendarDate(entry.date),
+			cost: formatCurrency(entry.cost, entry.currency ?? currency),
+			type: entry.type
+		});
 	}
 
 	function getEntryContextLabel(): string {
-		return `${kind} entry from ${formatLocalCalendarDate(entry.date)}`;
+		const type = kind === 'fuel' ? m.entry_type_fuel_lc() : m.entry_type_maintenance_lc();
+		return m.entry_context_label({ type, date: formatLocalCalendarDate(entry.date) });
 	}
 
 	function getEntryActionRequest(): EntryActionRequest {
@@ -306,14 +328,16 @@
 				{#if presentation === 'history'}
 					<p class="text-sm text-muted-foreground">{formatLocalCalendarDate(entry.date)}</p>
 					{#if isFuelEntry(entry)}
-						<h3 class="truncate text-base font-semibold text-foreground">Fuel</h3>
+						<h3 class="truncate text-base font-semibold text-foreground">{m.common_fuel()}</h3>
 					{:else}
-						<h3 class="truncate text-base font-semibold text-foreground">Maintenance</h3>
+						<h3 class="truncate text-base font-semibold text-foreground">
+							{m.entry_card_maintenance()}
+						</h3>
 					{/if}
 					<p class="text-sm text-muted-foreground">{getHistorySecondaryDetail()}</p>
 				{:else if isFuelEntry(entry)}
 					<h3 class="truncate text-base font-semibold text-foreground">
-						Fuel
+						{m.common_fuel()}
 						<span class="font-normal text-muted-foreground">
 							{entry.quantity}
 							{entry.unit}
@@ -326,7 +350,7 @@
 							·
 							{getFuelEfficiencyLabel(entry)}
 						{:else}
-							· Efficiency pending
+							· {m.entry_efficiency_pending()}
 						{/if}
 					</p>
 				{:else}
@@ -370,19 +394,19 @@
 				onclick={handleEdit}
 				disabled={editDisabled}
 				tabindex={actionsRevealed ? 0 : -1}
-				aria-label={`Edit ${getEntryContextLabel()}`}
+				aria-label={m.entry_edit_aria({ context: getEntryContextLabel() })}
 				class="flex-1 bg-card px-4 text-sm font-semibold text-foreground disabled:cursor-not-allowed disabled:opacity-70"
 			>
-				Edit
+				{m.common_edit()}
 			</button>
 			<button
 				type="button"
 				onclick={handleDelete}
 				tabindex={actionsRevealed ? 0 : -1}
-				aria-label={`Delete ${getEntryContextLabel()}`}
+				aria-label={m.entry_delete_aria({ context: getEntryContextLabel() })}
 				class="flex-1 bg-destructive px-4 text-sm font-semibold text-destructive-foreground disabled:cursor-not-allowed disabled:opacity-70"
 			>
-				Delete
+				{m.common_delete()}
 			</button>
 		</div>
 	{/if}
@@ -411,7 +435,7 @@
 			<button
 				type="button"
 				aria-haspopup="dialog"
-				aria-label={`View details for ${getEntryContextLabel()}`}
+				aria-label={m.entry_view_details_aria({ context: getEntryContextLabel() })}
 				disabled={detailDisabled}
 				onclick={handleOpenDetail}
 				onkeydown={handleOpenDetailKeydown}
@@ -433,18 +457,18 @@
 					type="button"
 					onclick={handleEdit}
 					disabled={editDisabled}
-					aria-label={`Edit ${getEntryContextLabel()}`}
+					aria-label={m.entry_edit_aria({ context: getEntryContextLabel() })}
 					class="rounded-xl border border-border px-3 py-2 text-sm font-semibold text-foreground disabled:cursor-not-allowed disabled:opacity-70"
 				>
-					Edit
+					{m.common_edit()}
 				</button>
 				<button
 					type="button"
 					onclick={handleDelete}
-					aria-label={`Delete ${getEntryContextLabel()}`}
+					aria-label={m.entry_delete_aria({ context: getEntryContextLabel() })}
 					class="rounded-xl border border-destructive/20 px-3 py-2 text-sm font-semibold text-destructive disabled:cursor-not-allowed disabled:opacity-70"
 				>
-					Delete
+					{m.common_delete()}
 				</button>
 			</div>
 		{:else}
@@ -452,10 +476,12 @@
 				type="button"
 				onclick={handleToggleActions}
 				aria-expanded={actionsRevealed}
-				aria-label={`${actionsRevealed ? 'Hide' : 'Show'} actions for ${getEntryContextLabel()}`}
+				aria-label={actionsRevealed
+					? m.entry_hide_actions_aria({ context: getEntryContextLabel() })
+					: m.entry_show_actions_aria({ context: getEntryContextLabel() })}
 				class="sr-only focus:not-sr-only focus:absolute focus:right-4 focus:top-4 focus:rounded-xl focus:bg-card focus:px-3 focus:py-2 focus:text-sm focus:font-semibold focus:text-foreground"
 			>
-				{actionsRevealed ? 'Hide actions' : 'Show actions'}
+				{actionsRevealed ? m.entry_hide_actions() : m.entry_show_actions()}
 			</button>
 		{/if}
 	</div>

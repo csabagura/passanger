@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { m } from '$lib/paraglide/messages';
 	// Story 2.2 (FR-4 / AC-2): one-tap recent-currency chips next to the currency <select>.
 	// Dumb + presentational — no store/context reads — so both forms (Fuel, Expense) can mount
 	// it and it stays trivially testable. The parent filters out the currently-selected value
@@ -17,7 +18,11 @@
 </script>
 
 {#if chips.length > 0}
-	<div class="mt-2 flex flex-wrap gap-2" role="group" aria-label="Recent currencies">
+	<div
+		class="mt-2 flex flex-wrap gap-2"
+		role="group"
+		aria-label={m.capture_recent_currencies_aria()}
+	>
 		{#each chips as currency (currency)}
 			<button
 				type="button"

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onDestroy } from 'svelte';
 	import type { OnboardingSurveyResponse } from '$lib/utils/onboardingSurvey';
+	import { m } from '$lib/paraglide/messages';
 
 	interface Props {
 		onSubmit: (response: OnboardingSurveyResponse) => void;
@@ -10,10 +11,10 @@
 	let { onSubmit, onDismiss }: Props = $props();
 
 	const OPTIONS: { value: OnboardingSurveyResponse; label: string }[] = [
-		{ value: 'track-costs', label: 'Track my costs' },
-		{ value: 'switching-app', label: 'Switching from another app' },
-		{ value: 'multiple-vehicles', label: 'Manage multiple vehicles' },
-		{ value: 'maintenance-reminders', label: 'Maintenance reminders' }
+		{ value: 'track-costs', label: m.onboarding_reason_track_costs() },
+		{ value: 'switching-app', label: m.onboarding_reason_switching_app() },
+		{ value: 'multiple-vehicles', label: m.onboarding_reason_multiple_vehicles() },
+		{ value: 'maintenance-reminders', label: m.onboarding_reason_maintenance_reminders() }
 	];
 
 	let selectedResponse = $state<OnboardingSurveyResponse | null>(null);
@@ -67,28 +68,28 @@
 {#if showMigrationHint}
 	<section
 		role="complementary"
-		aria-label="Import data hint"
+		aria-label={m.onboarding_import_hint_landmark()}
 		class="rounded-[1.5rem] border border-border/80 bg-card px-4 py-4 shadow-sm"
 	>
 		<div class="mx-auto mb-3 h-1.5 w-12 rounded-full bg-border/80"></div>
 		<p class="text-sm text-foreground">
-			Head to Export &gt; Import data when you're ready to bring your history over.
+			{m.onboarding_import_hint_body()}
 		</p>
 	</section>
 {:else}
 	<section
 		role="complementary"
-		aria-label="Onboarding survey"
+		aria-label={m.onboarding_survey_landmark()}
 		class="rounded-[1.5rem] border border-border/80 bg-card px-4 py-4 shadow-sm"
 	>
 		<div class="mx-auto mb-3 h-1.5 w-12 rounded-full bg-border/80"></div>
 
-		<p class="text-sm font-semibold text-foreground">What brings you to passanger?</p>
+		<p class="text-sm font-semibold text-foreground">{m.onboarding_question()}</p>
 
 		<!-- svelte-ignore a11y_interactive_supports_focus -->
 		<div
 			role="radiogroup"
-			aria-label="Why are you using passanger?"
+			aria-label={m.onboarding_radiogroup_label()}
 			class="mt-3 space-y-2"
 			onkeydown={handleOptionKeydown}
 		>
@@ -130,14 +131,14 @@
 				onclick={handleSubmit}
 				class="min-h-11 rounded-full bg-accent px-4 py-2 text-sm font-semibold text-accent-foreground hover:bg-accent/90 disabled:cursor-not-allowed disabled:opacity-70"
 			>
-				Submit
+				{m.onboarding_submit()}
 			</button>
 			<button
 				type="button"
 				onclick={onDismiss}
 				class="min-h-11 rounded-full border border-border px-4 py-2 text-sm font-medium text-foreground hover:bg-muted"
 			>
-				Skip
+				{m.onboarding_skip()}
 			</button>
 		</div>
 	</section>

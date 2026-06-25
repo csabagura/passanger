@@ -3,6 +3,7 @@
 	import Download from '@lucide/svelte/icons/download';
 	import Share2 from '@lucide/svelte/icons/share-2';
 	import type { InstallPromptPlatform } from '$lib/utils/installPrompt';
+	import { m } from '$lib/paraglide/messages';
 
 	interface Props {
 		platform: InstallPromptPlatform;
@@ -40,7 +41,7 @@
 {#if isIos || showAndroidInstall}
 	<section
 		role="complementary"
-		aria-label="Install passanger on your home screen"
+		aria-label={m.install_landmark()}
 		class="rounded-[1.5rem] border border-border/80 bg-card px-4 py-4 shadow-sm"
 	>
 		<div class="mx-auto mb-3 h-1.5 w-12 rounded-full bg-border/80"></div>
@@ -58,12 +59,12 @@
 			</div>
 
 			<div class="min-w-0 flex-1">
-				<p class="text-sm font-semibold text-foreground">Keep passanger one tap away</p>
+				<p class="text-sm font-semibold text-foreground">{m.install_headline()}</p>
 				<p class="mt-1 text-sm leading-6 text-muted-foreground">
 					{#if isIos}
-						Add it to your iPhone home screen so fill-up logging stays easy at the pump.
+						{m.install_body_ios()}
 					{:else}
-						Install it from your browser now for faster fuel logging next time.
+						{m.install_body_android()}
 					{/if}
 				</p>
 			</div>
@@ -73,14 +74,14 @@
 			<div class="mt-4 rounded-[1.25rem] border border-border/70 bg-muted/70 px-4 py-4">
 				<div class="flex items-center gap-2 text-sm font-medium text-foreground">
 					<ArrowUp size={16} class="text-primary" aria-hidden="true" />
-					<span>Look for Safari&apos;s Share button</span>
+					<span>{m.install_ios_share_button()}</span>
 				</div>
 				<p class="mt-3 text-sm text-muted-foreground">
-					Tap the Share icon -&gt; select &quot;Add to Home Screen&quot;.
+					{m.install_ios_steps()}
 				</p>
 				<div class="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
 					<Share2 size={14} aria-hidden="true" />
-					<span>Then return here whenever you need to log a fill-up.</span>
+					<span>{m.install_ios_return_note()}</span>
 				</div>
 			</div>
 
@@ -90,7 +91,7 @@
 					class="rounded-full border border-border px-4 py-2 text-sm font-medium text-foreground hover:bg-muted"
 					onclick={onDismiss}
 				>
-					Dismiss
+					{m.common_dismiss()}
 				</button>
 			</div>
 		{:else}
@@ -103,9 +104,9 @@
 					onclick={handleInstall}
 				>
 					{#if isInstalling}
-						Opening install dialog...
+						{m.install_opening_dialog()}
 					{:else}
-						Install
+						{m.install_cta()}
 					{/if}
 				</button>
 				<button
@@ -113,7 +114,7 @@
 					class="rounded-full border border-border px-4 py-2 text-sm font-medium text-foreground hover:bg-muted"
 					onclick={onDismiss}
 				>
-					Maybe later
+					{m.install_maybe_later()}
 				</button>
 			</div>
 		{/if}

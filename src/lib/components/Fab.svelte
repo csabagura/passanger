@@ -3,6 +3,7 @@
 	import Plus from '@lucide/svelte/icons/plus';
 	import { Button } from '$lib/components/ui/button';
 	import type { CaptureSheetContext } from '$lib/state/captureSheet.svelte';
+	import { m } from '$lib/paraglide/messages';
 
 	// The one persistent Capture entry (AD-3 / EXPERIENCE.md): a 56px floating circle that opens the
 	// global Capture sheet from any surface. A fresh tap always defaults to Fuel (AC-1).
@@ -16,7 +17,7 @@
 -->
 <Button
 	size="icon"
-	aria-label="Log a fill-up or expense"
+	aria-label={m.fab_capture()}
 	onclick={() => capture.openSheet('fuel')}
 	class="fixed left-1/2 z-40 size-14 -translate-x-1/2 rounded-full shadow-lg"
 	style="bottom: calc(64px + env(safe-area-inset-bottom) + 12px);"

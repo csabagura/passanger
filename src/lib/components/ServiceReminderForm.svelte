@@ -15,6 +15,7 @@
 	import { Button } from '$lib/components/ui/button';
 	import { Field } from '$lib/components/ui/field';
 	import { Label } from '$lib/components/ui/label';
+	import { m } from '$lib/paraglide/messages';
 
 	type AsyncState<T> =
 		| { status: 'idle' }
@@ -76,22 +77,22 @@
 	);
 
 	function validateTitle() {
-		titleError = title.trim() === '' ? 'Enter a reminder title' : '';
+		titleError = title.trim() === '' ? m.reminderform_error_title() : '';
 	}
 
 	function validateIntervals() {
 		const hasKm = intervalKmStr.trim() !== '';
 		const hasDays = intervalDaysStr.trim() !== '';
 		if (!hasKm && !hasDays) {
-			intervalError = 'Set a distance or time interval';
+			intervalError = m.reminderform_error_interval_required();
 			return;
 		}
 		if (hasKm && parsePositiveNumeric(intervalKmStr) === null) {
-			intervalError = 'Enter a positive distance interval';
+			intervalError = m.reminderform_error_interval_km();
 			return;
 		}
 		if (hasDays && parsePositiveNumeric(intervalDaysStr) === null) {
-			intervalError = 'Enter a positive time interval (days)';
+			intervalError = m.reminderform_error_interval_days();
 			return;
 		}
 		intervalError = '';
@@ -104,7 +105,7 @@
 			return;
 		}
 		lastServiceOdometerError =
-			parsePositiveNumeric(trimmed) === null ? 'Enter a positive odometer reading' : '';
+			parsePositiveNumeric(trimmed) === null ? m.reminderform_error_odometer() : '';
 	}
 
 	function validateLastServiceDate() {
@@ -113,7 +114,7 @@
 			lastServiceDateError = '';
 			return;
 		}
-		lastServiceDateError = parseDateInputValue(trimmed) === null ? 'Enter a valid date' : '';
+		lastServiceDateError = parseDateInputValue(trimmed) === null ? m.reminderform_error_date() : '';
 	}
 
 	function showToast(message: string) {
@@ -176,7 +177,7 @@
 			const result = await updateServiceReminder(initialReminder.id, payload);
 			if (result.error) {
 				saveState = { status: 'error', error: result.error };
-				showToast('Failed to save reminder. Please try again.');
+				showToast(m.reminderform_error_save());
 			} else {
 				saveState = { status: 'success', data: result.data };
 				onUpdate?.(result.data);
@@ -185,7 +186,7 @@
 			const result = await saveServiceReminder(payload);
 			if (result.error) {
 				saveState = { status: 'error', error: result.error };
-				showToast('Failed to save reminder. Please try again.');
+				showToast(m.reminderform_error_save());
 			} else {
 				saveState = { status: 'success', data: result.data };
 				onSave(result.data);
@@ -211,16 +212,16 @@
 	class="flex flex-col gap-4 p-4"
 >
 	<h3 class="text-lg font-semibold text-foreground">
-		{isEditMode ? 'Edit reminder' : 'Add reminder'}
+		{isEditMode ? m.reminderform_title_edit() : m.reminderform_title_add()}
 	</h3>
 
 	<Field
 		id="reminder-title"
-		label="Title"
+		label={m.reminderform_field_title()}
 		type="text"
 		bind:value={title}
 		error={titleError}
-		placeholder="e.g. Oil change"
+		placeholder={m.reminderform_placeholder_title()}
 		oninput={() => {
 			if (title.trim() !== '') titleError = '';
 		}}
@@ -231,20 +232,20 @@
 		aria-describedby={intervalError ? 'reminder-interval-error' : 'reminder-interval-help'}
 		class="space-y-2"
 	>
-		<legend class="text-sm font-medium text-foreground">Interval</legend>
+		<legend class="text-sm font-medium text-foreground">{m.reminderform_legend_interval()}</legend>
 		<p id="reminder-interval-help" class="text-sm text-muted-foreground">
-			Set a distance interval, a time interval, or both.
+			{m.reminderform_interval_help()}
 		</p>
 		<div class="grid gap-3 sm:grid-cols-2">
 			<!-- km/days share one fieldset-level error region, so the error stays below; the Fields
 			     carry only the input chrome (no per-field error prop). -->
 			<Field
 				id="reminder-interval-km"
-				label="Every (km)"
+				label={m.reminderform_field_interval_km()}
 				type="text"
 				inputmode="numeric"
 				bind:value={intervalKmStr}
-				placeholder="e.g. 10000"
+				placeholder={m.reminderform_placeholder_interval_km()}
 				oninput={() => {
 					if (intervalError) intervalError = '';
 				}}
@@ -252,11 +253,11 @@
 			/>
 			<Field
 				id="reminder-interval-days"
-				label="Every (days)"
+				label={m.reminderform_field_interval_days()}
 				type="text"
 				inputmode="numeric"
 				bind:value={intervalDaysStr}
-				placeholder="e.g. 365"
+				placeholder={m.reminderform_placeholder_interval_days()}
 				oninput={() => {
 					if (intervalError) intervalError = '';
 				}}
@@ -272,12 +273,12 @@
 
 	<Field
 		id="reminder-last-odometer"
-		label="Last service odometer (optional)"
+		label={m.reminderform_field_last_odometer()}
 		type="text"
 		inputmode="numeric"
 		bind:value={lastServiceOdometerStr}
 		error={lastServiceOdometerError}
-		placeholder="e.g. 50000"
+		placeholder={m.reminderform_placeholder_last_odometer()}
 		oninput={() => {
 			if (lastServiceOdometerError) lastServiceOdometerError = '';
 		}}
@@ -286,7 +287,7 @@
 
 	<Field
 		id="reminder-last-date"
-		label="Last service date (optional)"
+		label={m.reminderform_field_last_date()}
 		type="date"
 		max={todayValue}
 		bind:value={lastServiceDateStr}
@@ -298,19 +299,19 @@
 	/>
 
 	<div class="flex flex-col gap-2">
-		<Label for="reminder-notes" class="text-foreground">Notes (optional)</Label>
+		<Label for="reminder-notes" class="text-foreground">{m.form_notes_optional()}</Label>
 		<textarea
 			id="reminder-notes"
 			bind:value={notes}
 			rows="2"
 			class="w-full rounded-md border border-border bg-card px-3 py-2 text-base text-foreground outline-none focus:ring-2 focus:ring-ring"
-			placeholder="Anything to remember"
+			placeholder={m.reminderform_placeholder_notes()}
 		></textarea>
 	</div>
 
 	<div class="flex gap-3">
 		{#if onCancel}
-			<Button variant="outline" onclick={onCancel}>Cancel</Button>
+			<Button variant="outline" onclick={onCancel}>{m.common_cancel()}</Button>
 		{/if}
 		<Button
 			type="submit"
@@ -320,9 +321,9 @@
 			aria-busy={saveState.status === 'loading'}
 		>
 			{#if saveState.status === 'loading'}
-				Saving…
+				{m.form_saving()}
 			{:else}
-				{isEditMode ? 'Save changes' : 'Save reminder'}
+				{isEditMode ? m.form_save_changes() : m.reminderform_save()}
 			{/if}
 		</Button>
 	</div>

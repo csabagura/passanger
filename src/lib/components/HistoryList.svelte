@@ -9,6 +9,7 @@
 		type HistoryEntry
 	} from '$lib/utils/historyEntries';
 	import { formatCurrency } from '$lib/utils/calculations';
+	import { m } from '$lib/paraglide/messages';
 
 	interface Props {
 		monthGroups: HistoryMonthGroup[];
@@ -96,20 +97,20 @@
 	>
 		<p id="history-empty-state-title" class="text-base font-semibold text-foreground">
 			{#if !hasVehicles}
-				Add a vehicle to get started
+				{m.history_empty_no_vehicles_title()}
 			{:else if vehicleName}
-				No entries yet for {vehicleName}
+				{m.history_empty_vehicle_title({ vehicleName })}
 			{:else}
-				No entries yet — log your first fill-up!
+				{m.history_empty_generic_title()}
 			{/if}
 		</p>
 		<p id="history-empty-state-description" class="mt-1 text-sm text-muted-foreground">
 			{#if !hasVehicles}
-				Create your first vehicle in Settings, then start logging fuel and maintenance.
+				{m.history_empty_no_vehicles_description()}
 			{:else if vehicleName}
-				Log a fuel fill-up or maintenance event for {vehicleName} to get started.
+				{m.history_empty_vehicle_description({ vehicleName })}
 			{:else}
-				Your saved fuel and maintenance records will appear here in newest-first order.
+				{m.history_empty_generic_description()}
 			{/if}
 		</p>
 		<a
@@ -118,7 +119,7 @@
 			href={resolve(!hasVehicles ? '/settings' : '/fuel-entry')}
 			class="mt-4 inline-flex rounded-xl bg-accent px-5 py-3 text-sm font-semibold text-accent-foreground"
 		>
-			{!hasVehicles ? 'Go to Settings' : 'Go to Fuel'}
+			{!hasVehicles ? m.history_empty_go_to_settings() : m.history_empty_go_to_fuel()}
 		</a>
 	</div>
 {:else}
@@ -137,7 +138,7 @@
 					</p>
 				</div>
 
-				<ul aria-label={`History entries for ${group.label}`} class="space-y-3">
+				<ul aria-label={m.history_entries_for_month_aria({ month: group.label })} class="space-y-3">
 					{#each group.entries as item (getHistoryEntryKey(item))}
 						<li>
 							<EntryCard

@@ -5,6 +5,7 @@
 	import type { ImportRow, VehicleAssignment, VehicleGroup } from '$lib/utils/importTypes';
 	import type { NewVehicle } from '$lib/db/schema';
 	import type { VehiclesContext } from '$lib/utils/vehicleContext';
+	import { m } from '$lib/paraglide/messages';
 
 	interface ImportStepVehiclesProps {
 		rows: ImportRow[];
@@ -159,16 +160,16 @@
 		if (!formData) return false;
 
 		const errors: string[] = [];
-		if (!formData.name?.trim()) errors.push('Name is required');
-		if (!formData.make?.trim()) errors.push('Make is required');
-		if (!formData.model?.trim()) errors.push('Model is required');
+		if (!formData.name?.trim()) errors.push(m.import_vehicles_error_name_required());
+		if (!formData.make?.trim()) errors.push(m.import_vehicles_error_make_required());
+		if (!formData.model?.trim()) errors.push(m.import_vehicles_error_model_required());
 		if (formData.year !== undefined) {
 			if (
 				!Number.isInteger(formData.year) ||
 				formData.year < 1900 ||
 				formData.year > new Date().getFullYear()
 			) {
-				errors.push(`Year must be between 1900 and ${new Date().getFullYear()}`);
+				errors.push(m.import_vehicles_error_year_range({ year: new Date().getFullYear() }));
 			}
 		}
 
@@ -229,17 +230,17 @@
 
 <div class="space-y-4">
 	<p class="text-sm text-muted-foreground">
-		Assign each vehicle from your import file to a passanger vehicle.
+		{m.import_vehicles_intro()}
 	</p>
 
 	<!-- Auto-match confirmation -->
 	{#if autoMatched && vehicleGroups.length === 1 && vehiclesContext.vehicles.length === 1}
 		<div class="rounded-lg border border-accent/50 bg-accent/10 p-3" aria-live="polite">
 			<p class="text-sm text-foreground">
-				We'll add these rows to <strong>{vehiclesContext.vehicles[0].name}</strong>. Correct?
+				{m.import_vehicles_automatch({ name: vehiclesContext.vehicles[0].name })}
 			</p>
 			<p class="mt-1 text-xs text-muted-foreground">
-				You can change the assignment below if needed.
+				{m.import_vehicles_automatch_hint()}
 			</p>
 		</div>
 	{/if}
@@ -262,14 +263,14 @@
 				<div>
 					<p class="text-sm font-semibold text-foreground">"{group.sourceVehicleName}"</p>
 					<p class="text-xs text-muted-foreground">
-						{group.rowCount} row{group.rowCount !== 1 ? 's' : ''}
+						{m.import_vehicles_row_count({ count: group.rowCount })}
 					</p>
 				</div>
 				{#if assigned}
 					<span
 						class="inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800 dark:bg-green-900/30 dark:text-green-400"
 					>
-						Matched
+						{m.import_vehicles_matched()}
 					</span>
 				{/if}
 			</div>
@@ -277,28 +278,28 @@
 			<!-- Assignment dropdown -->
 			<div>
 				<label class="sr-only" for="assign-{group.sourceVehicleName}">
-					Assign {group.sourceVehicleName} to a passanger vehicle
+					{m.import_vehicles_assign_label({ name: group.sourceVehicleName })}
 				</label>
 				<select
 					id="assign-{group.sourceVehicleName}"
 					class="h-12 w-full rounded-md border border-border bg-card px-3 text-sm text-foreground"
-					aria-label="Assign {group.sourceVehicleName} to a passanger vehicle"
+					aria-label={m.import_vehicles_assign_label({ name: group.sourceVehicleName })}
 					value={getDropdownValue(group.sourceVehicleName)}
 					onchange={(e) =>
 						handleAssignmentChange(group.sourceVehicleName, (e.target as HTMLSelectElement).value)}
 				>
-					<option value="">Select vehicle…</option>
+					<option value="">{m.import_vehicles_select_option()}</option>
 					{#each vehiclesContext.vehicles as vehicle (vehicle.id)}
 						<option value={String(vehicle.id)}>{vehicle.name}</option>
 					{/each}
-					<option value="__new__">Create new vehicle</option>
+					<option value="__new__">{m.import_vehicles_create_option()}</option>
 				</select>
 			</div>
 
 			<!-- MAX_VEHICLES error -->
 			{#if maxVehiclesError === group.sourceVehicleName}
 				<p class="text-sm text-destructive" role="alert">
-					You already have {MAX_VEHICLES} vehicles. Delete or reassign one in Settings before importing.
+					{m.import_vehicles_max_error({ max: MAX_VEHICLES })}
 				</p>
 			{/if}
 
@@ -310,7 +311,7 @@
 							class="block text-xs font-medium text-muted-foreground"
 							for="new-vehicle-name-{group.sourceVehicleName}"
 						>
-							Name
+							{m.import_vehicles_field_name()}
 						</label>
 						<input
 							id="new-vehicle-name-{group.sourceVehicleName}"
@@ -330,7 +331,7 @@
 							class="block text-xs font-medium text-muted-foreground"
 							for="new-vehicle-make-{group.sourceVehicleName}"
 						>
-							Make
+							{m.import_vehicles_field_make()}
 						</label>
 						<input
 							id="new-vehicle-make-{group.sourceVehicleName}"
@@ -350,7 +351,7 @@
 							class="block text-xs font-medium text-muted-foreground"
 							for="new-vehicle-model-{group.sourceVehicleName}"
 						>
-							Model
+							{m.import_vehicles_field_model()}
 						</label>
 						<input
 							id="new-vehicle-model-{group.sourceVehicleName}"
@@ -370,7 +371,7 @@
 							class="block text-xs font-medium text-muted-foreground"
 							for="new-vehicle-year-{group.sourceVehicleName}"
 						>
-							Year (optional)
+							{m.import_vehicles_field_year()}
 						</label>
 						<input
 							id="new-vehicle-year-{group.sourceVehicleName}"
@@ -402,6 +403,6 @@
 		data-testid="review-import-btn"
 		onclick={handleReviewImport}
 	>
-		Review & Import
+		{m.import_vehicles_review_button()}
 	</button>
 </div>

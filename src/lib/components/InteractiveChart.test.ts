@@ -1,5 +1,6 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { cleanup, render, screen, within, fireEvent } from '@testing-library/svelte';
+import { m } from '$lib/paraglide/messages';
 import InteractiveChart, { type ChartDatum } from './InteractiveChart.svelte';
 
 function makePoints(...values: Array<Partial<ChartDatum>>): ChartDatum[] {
@@ -68,10 +69,12 @@ describe('InteractiveChart', () => {
 			)
 		});
 		await fireEvent.click(screen.getByRole('button', { name: '10 Mar: 7.0 L/100km' }));
-		expect(screen.getByRole('link', { name: 'View entry' }).getAttribute('href')).toBe('/history');
+		expect(screen.getByRole('link', { name: m.chart_view_entry() }).getAttribute('href')).toBe(
+			'/history'
+		);
 
 		await fireEvent.click(screen.getByRole('button', { name: '12 Mar: 8.0 L/100km' }));
-		expect(screen.queryByRole('link', { name: 'View entry' })).toBeNull();
+		expect(screen.queryByRole('link', { name: m.chart_view_entry() })).toBeNull();
 	});
 
 	it('shows the value (not a chart path) for a single data point', () => {
@@ -88,12 +91,14 @@ describe('InteractiveChart', () => {
 			points: makePoints({ label: 'Mar', valueText: '7.0 L/100km', entryHref: '/history' })
 		});
 		// Reachable directly in the default (non-table) single-point view — AC4.
-		expect(screen.getByRole('link', { name: 'View entry' }).getAttribute('href')).toBe('/history');
+		expect(screen.getByRole('link', { name: m.chart_view_entry() }).getAttribute('href')).toBe(
+			'/history'
+		);
 	});
 
 	it('omits the "View entry" link for a single aggregate datum (no entryHref)', () => {
 		renderChart({ points: makePoints({ label: 'Mar', valueText: '€42.00' }) });
-		expect(screen.queryByRole('link', { name: 'View entry' })).toBeNull();
+		expect(screen.queryByRole('link', { name: m.chart_view_entry() })).toBeNull();
 	});
 
 	it('renders the empty affordance for zero points', () => {
@@ -109,7 +114,7 @@ describe('InteractiveChart', () => {
 				{ label: 'Feb', valueText: '€20.00' }
 			)
 		});
-		const toggle = screen.getByRole('button', { name: 'View as table' });
+		const toggle = screen.getByRole('button', { name: m.chart_view_as_table() });
 		expect(toggle.getAttribute('aria-pressed')).toBe('false');
 
 		await fireEvent.click(toggle);
@@ -118,9 +123,9 @@ describe('InteractiveChart', () => {
 		// One row per datum (+ the header row).
 		expect(within(table).getAllByRole('row')).toHaveLength(3);
 		expect(within(table).getByText('€20.00')).toBeTruthy();
-		expect(screen.getByRole('button', { name: 'View as chart' }).getAttribute('aria-pressed')).toBe(
-			'true'
-		);
+		expect(
+			screen.getByRole('button', { name: m.chart_view_as_chart() }).getAttribute('aria-pressed')
+		).toBe('true');
 	});
 
 	it('the table exposes "View entry" links for 1:1 datums', async () => {
@@ -128,11 +133,11 @@ describe('InteractiveChart', () => {
 			kind: 'line',
 			points: makePoints({ label: '10 Mar', valueText: '7.0 L/100km', entryHref: '/history' })
 		});
-		await fireEvent.click(screen.getByRole('button', { name: 'View as table' }));
+		await fireEvent.click(screen.getByRole('button', { name: m.chart_view_as_table() }));
 		const table = screen.getByRole('table');
-		expect(within(table).getByRole('link', { name: 'View entry' }).getAttribute('href')).toBe(
-			'/history'
-		);
+		expect(
+			within(table).getByRole('link', { name: m.chart_view_entry() }).getAttribute('href')
+		).toBe('/history');
 	});
 
 	it('datum buttons are focusable (native button keyboard semantics)', () => {

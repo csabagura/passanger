@@ -7,5 +7,814 @@
 	"settings_title": "Settings",
 	"settings_language_label": "Language",
 	"settings_language_english": "English",
-	"settings_language_hungarian": "Magyar"
+	"settings_language_hungarian": "Magyar",
+	"common_cancel": "Cancel",
+	"common_save": "Save",
+	"common_delete": "Delete",
+	"common_edit": "Edit",
+	"common_close": "Close",
+	"common_dismiss": "Dismiss",
+	"common_reload": "Reload",
+	"common_retry": "Retry",
+	"common_add_vehicle": "Add a vehicle",
+	"common_loading": "Loading…",
+	"common_fuel": "Fuel",
+	"common_expense": "Expense",
+	"capture_title": "Log an entry",
+	"capture_no_vehicle_cta": "Add your car to get started.",
+	"capture_recent_currencies_aria": "Recent currencies",
+	"form_currency_aria": "Currency",
+	"form_done": "Done",
+	"form_saving": "Saving…",
+	"form_save_changes": "Save changes",
+	"form_notes_optional": "Notes (optional)",
+	"form_error_odometer_invalid": "Enter a valid odometer reading (e.g. 87400)",
+	"fuel_error_load_history": "Could not load previous fuel history. Try again before saving.",
+	"fuel_warning_below_previous": "This is at or below your last reading — you can still save, but efficiency won’t be calculated for this fill.",
+	"fuel_warning_implausible_high": "That’s a much bigger jump than usual — double-check the reading, or save it as-is.",
+	"fuel_saved_no_consumption": "Saved. — log one more to see your consumption · {cost}",
+	"fuel_updated_no_consumption": "Updated. — log one more to see your consumption · {cost}",
+	"fuel_saved_with_consumption": "Saved. — {consumption} this tank · {cost}",
+	"fuel_updated_with_consumption": "Updated. — {consumption} this tank · {cost}",
+	"fuel_error_odometer_commas": "Enter odometer without commas (e.g. 87400)",
+	"fuel_error_quantity": "Enter the fuel quantity (e.g. 42)",
+	"fuel_error_cost": "Enter the total cost (e.g. 78.00)",
+	"fuel_error_odometer_too_low": "Enter an odometer reading higher than the last logged value",
+	"fuel_error_odometer_too_high": "Enter an odometer reading lower than the next logged value",
+	"fuel_error_update_failed": "Could not update fuel entry. Please try again.",
+	"fuel_error_save_failed": "Could not save fuel entry. Please try again.",
+	"fuel_stale_draft_notice": "We kept your earlier draft — double-check the odometer.",
+	"fuel_field_odometer": "Odometer ({unit})",
+	"fuel_previous_odometer": "Last: {value} {unit}",
+	"fuel_field_quantity": "Quantity ({unit})",
+	"fuel_field_cost": "Total Cost",
+	"fuel_retrying": "Retrying…",
+	"fuel_retry_load_history": "Retry loading history",
+	"maintenance_error_date": "Choose a valid date",
+	"maintenance_error_type": "Enter a maintenance type",
+	"maintenance_error_odometer_grouping": "Enter odometer without grouping separators (e.g. 87400)",
+	"maintenance_error_cost": "Enter the cost (e.g. 78.00)",
+	"maintenance_error_update_failed": "Could not update maintenance entry. Please try again.",
+	"maintenance_error_save_failed": "Could not save maintenance entry. Please try again.",
+	"maintenance_saved_summary": "Saved {type} for {cost} on {date}.",
+	"maintenance_updated_summary": "Updated {type} for {cost} on {date}.",
+	"maintenance_stale_draft_notice": "We kept your earlier draft — double-check the odometer and date.",
+	"maintenance_field_date": "Date",
+	"maintenance_field_type": "Type",
+	"maintenance_placeholder_type": "e.g. Oil Change",
+	"maintenance_field_odometer": "Odometer (optional)",
+	"maintenance_placeholder_odometer": "e.g. 87400",
+	"maintenance_odometer_help": "Maintenance entries keep the odometer value exactly as entered. Settings do not relabel it.",
+	"maintenance_field_cost": "Cost",
+	"maintenance_placeholder_cost": "e.g. 78.00",
+	"maintenance_placeholder_notes": "Add any details worth remembering",
+	"maintenance_type_tyres": "Tyres",
+	"maintenance_type_oil_change": "Oil Change",
+	"maintenance_type_service": "Service",
+	"maintenance_type_insurance": "Insurance",
+	"maintenance_type_other": "Other",
+	"reminderform_error_title": "Enter a reminder title",
+	"reminderform_error_interval_required": "Set a distance or time interval",
+	"reminderform_error_interval_km": "Enter a positive distance interval",
+	"reminderform_error_interval_days": "Enter a positive time interval (days)",
+	"reminderform_error_odometer": "Enter a positive odometer reading",
+	"reminderform_error_date": "Enter a valid date",
+	"reminderform_error_save": "Failed to save reminder. Please try again.",
+	"reminderform_title_edit": "Edit reminder",
+	"reminderform_title_add": "Add reminder",
+	"reminderform_field_title": "Title",
+	"reminderform_placeholder_title": "e.g. Oil change",
+	"reminderform_legend_interval": "Interval",
+	"reminderform_interval_help": "Set a distance interval, a time interval, or both.",
+	"reminderform_field_interval_km": "Every (km)",
+	"reminderform_placeholder_interval_km": "e.g. 10000",
+	"reminderform_field_interval_days": "Every (days)",
+	"reminderform_placeholder_interval_days": "e.g. 365",
+	"reminderform_field_last_odometer": "Last service odometer (optional)",
+	"reminderform_placeholder_last_odometer": "e.g. 50000",
+	"reminderform_field_last_date": "Last service date (optional)",
+	"reminderform_placeholder_notes": "Anything to remember",
+	"reminderform_save": "Save reminder",
+	"vehicleform_error_name": "Enter a display name",
+	"vehicleform_error_make": "Enter the vehicle make (e.g. Toyota)",
+	"vehicleform_error_model": "Enter the vehicle model (e.g. Corolla)",
+	"vehicleform_error_year": "Enter a valid year (1900–{max})",
+	"vehicleform_error_save": "Failed to save vehicle. Please try again.",
+	"vehicleform_title_edit": "Edit Vehicle",
+	"vehicleform_title_add": "Add Vehicle",
+	"vehicleform_field_name": "Display Name",
+	"vehicleform_placeholder_name": "e.g. My Honda",
+	"vehicleform_field_make": "Make",
+	"vehicleform_placeholder_make": "e.g. Toyota",
+	"vehicleform_field_model": "Model",
+	"vehicleform_placeholder_model": "e.g. Corolla",
+	"vehicleform_field_year": "Year (optional)",
+	"vehicleform_placeholder_year": "e.g. 2020",
+	"vehicleform_save": "Save vehicle",
+	"shell_nav_main": "Main navigation",
+	"appheader_landmark": "App header",
+	"appheader_title_export": "Export",
+	"vehicleswitcher_no_vehicle": "No vehicle",
+	"vehicleswitcher_pill_aria": "Switch vehicle: {name}",
+	"vehicleswitcher_choose_vehicle": "Choose vehicle",
+	"vehicleswitcher_max_vehicles": "Maximum {count} vehicles",
+	"vehicleswitcher_add_vehicle": "Add vehicle",
+	"vehicleswitcher_close": "Close vehicle switcher",
+	"vehicleswitcher_vehicle_list": "Vehicle list",
+	"update_available": "Update available",
+	"storage_protection_unavailable": "Storage protection unavailable on this browser - export your data regularly to prevent loss",
+	"storage_dismiss_notice": "Dismiss storage protection notice",
+	"tabsync_restore_replaced": "This tab's data was replaced by a restore in another tab. Reload to see the current data.",
+	"tabsync_updated_in_another_tab": "Updated in another tab",
+	"install_landmark": "Install passanger on your home screen",
+	"install_headline": "Keep passanger one tap away",
+	"install_body_ios": "Add it to your iPhone home screen so fill-up logging stays easy at the pump.",
+	"install_body_android": "Install it from your browser now for faster fuel logging next time.",
+	"install_ios_share_button": "Look for Safari's Share button",
+	"install_ios_steps": "Tap the Share icon -> select \"Add to Home Screen\".",
+	"install_ios_return_note": "Then return here whenever you need to log a fill-up.",
+	"install_opening_dialog": "Opening install dialog...",
+	"install_cta": "Install",
+	"install_maybe_later": "Maybe later",
+	"onboarding_reason_track_costs": "Track my costs",
+	"onboarding_reason_switching_app": "Switching from another app",
+	"onboarding_reason_multiple_vehicles": "Manage multiple vehicles",
+	"onboarding_reason_maintenance_reminders": "Maintenance reminders",
+	"onboarding_import_hint_landmark": "Import data hint",
+	"onboarding_import_hint_body": "Head to Export > Import data when you're ready to bring your history over.",
+	"onboarding_survey_landmark": "Onboarding survey",
+	"onboarding_question": "What brings you to passanger?",
+	"onboarding_radiogroup_label": "Why are you using passanger?",
+	"onboarding_submit": "Submit",
+	"onboarding_skip": "Skip",
+	"fab_capture": "Log a fill-up or expense",
+	"maintain_page_title": "Maintain | passanger",
+	"maintain_no_vehicle_region_label": "No vehicle selected",
+	"maintain_no_vehicle_heading": "No vehicle yet",
+	"maintain_no_vehicle_body": "Add a vehicle to start tracking service reminders, and they'll appear here.",
+	"maintain_heading": "Maintain",
+	"maintain_reminders_for": "Service reminders for {vehicle}.",
+	"maintain_subtitle_generic": "Track when maintenance is due — by distance and by time.",
+	"maintain_error_heading": "Could not load your reminders",
+	"maintain_error_body": "There was a problem reaching the database. Please restart the app to try again.",
+	"maintain_export_cta": "Export My Data",
+	"maintain_loading": "Loading your reminders…",
+	"maintain_empty_region_label": "No reminders yet",
+	"maintain_empty_heading": "No reminders yet",
+	"maintain_empty_body": "Add one to track when maintenance is due — by distance, time, or both.",
+	"maintain_add_reminder": "+ Add reminder",
+	"maintain_list_label": "Service reminders",
+	"maintain_edit_reminder_label": "Edit {title}",
+	"maintain_delete_reminder_label": "Delete {title}",
+	"maintain_delete_confirm": "Delete {title}? This reminder will be removed permanently.",
+	"maintain_deleting": "Deleting…",
+	"maintain_delete_confirm_action": "Confirm delete",
+	"maintain_delete_error": "Could not delete reminder. Please try again.",
+	"reminder_status_overdue": "Overdue",
+	"reminder_status_due_soon": "Due soon",
+	"reminder_status_on_track": "On track",
+	"reminder_no_due_date": "No due date yet",
+	"reminder_overdue_by": "Overdue by {value}",
+	"reminder_due_in": "Due in {value}",
+	"reminder_distance_km": "{km} km",
+	"reminder_days_count": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} day",
+				"countPlural=other": "{count} days"
+			}
+		}
+	],
+	"entry_efficiency_pending": "Efficiency pending",
+	"entry_efficiency_pending_lc": "efficiency pending",
+	"entry_type_fuel_lc": "fuel",
+	"entry_type_maintenance_lc": "maintenance",
+	"entry_context_label": "{type} entry from {date}",
+	"entry_edit_aria": "Edit {context}",
+	"entry_delete_aria": "Delete {context}",
+	"entry_view_details_aria": "View details for {context}",
+	"entry_show_actions_aria": "Show actions for {context}",
+	"entry_hide_actions_aria": "Hide actions for {context}",
+	"entry_show_actions": "Show actions",
+	"entry_hide_actions": "Hide actions",
+	"entry_aria_fuel_full": "Fuel entry, {date}, {quantity} {unit}, {cost}, {efficiency}",
+	"entry_aria_maintenance_full": "Maintenance entry, {date}, {type}, {cost}",
+	"entry_aria_fuel_history": "Fuel entry, {date}, {cost}, {secondary}",
+	"entry_aria_maintenance_history": "Maintenance entry, {date}, {cost}, {type}",
+	"entry_card_maintenance": "Maintenance",
+	"entry_detail_title": "Entry details",
+	"entry_detail_subtitle": "Review the full record, then edit or delete it without leaving History.",
+	"entry_detail_close_backdrop_aria": "Close entry details",
+	"entry_detail_date_label": "Date",
+	"entry_detail_type_label": "Entry type",
+	"entry_detail_vehicle_label": "Vehicle",
+	"entry_detail_odometer_label": "Odometer",
+	"entry_detail_quantity_label": "Quantity",
+	"entry_detail_unit_label": "Unit",
+	"entry_detail_cost_label": "Cost",
+	"entry_detail_consumption_label": "Calculated consumption",
+	"entry_detail_notes_label": "Notes",
+	"history_filter_all": "All",
+	"history_filter_maintenance": "Maintenance",
+	"history_filter_legend": "Entry type",
+	"history_time_period_legend": "Time period",
+	"history_aria_fuel_costs": "Fuel costs for {period}",
+	"history_aria_maintenance_costs": "Maintenance costs for {period}",
+	"history_aria_total_costs": "Total car costs for {period}",
+	"history_filtered_empty_fuel_vehicle": "No fuel entries for {vehicleName} yet.",
+	"history_filtered_empty_fuel": "No fuel entries yet.",
+	"history_filtered_empty_maintenance_vehicle": "No maintenance entries for {vehicleName} yet.",
+	"history_filtered_empty_maintenance": "No maintenance entries yet.",
+	"history_filtered_empty_fuel_description": "Show all entries to review your saved maintenance records.",
+	"history_filtered_empty_maintenance_description": "Show all entries to review your saved fuel fill-ups.",
+	"history_show_all_entries": "Show all entries",
+	"history_subtitle_no_vehicle": "Review your fuel fill-ups and maintenance costs in one place.",
+	"history_db_error_title": "Could not load your history",
+	"history_db_error_body": "There was a problem reaching the database. Please restart the app to try again.",
+	"history_db_error_export_hint": "If the problem persists, export your data before clearing app storage.",
+	"history_db_error_export_cta": "Export My Data",
+	"history_loading": "Loading history...",
+	"history_editing_fuel_title": "Editing fuel entry",
+	"history_editing_maintenance_title": "Editing maintenance entry",
+	"history_editing_subtitle": "Save your changes or cancel to return to history.",
+	"history_delete_fuel_error": "Could not delete fuel entry. Please try again.",
+	"history_delete_maintenance_error": "Could not delete maintenance entry. Please try again.",
+	"history_delete_undo_toast": "Deleted. Undo?",
+	"history_undo_action_label": "Undo",
+	"history_undo_timeline_changed_error": "Couldn't undo — the timeline changed since you deleted.",
+	"history_restore_error": "Could not restore the entry. Please try again.",
+	"history_restore_success": "Restored.",
+	"history_empty_no_vehicles_title": "Add a vehicle to get started",
+	"history_empty_vehicle_title": "No entries yet for {vehicleName}",
+	"history_empty_generic_title": "No entries yet — log your first fill-up!",
+	"history_empty_no_vehicles_description": "Create your first vehicle in Settings, then start logging fuel and maintenance.",
+	"history_empty_vehicle_description": "Log a fuel fill-up or maintenance event for {vehicleName} to get started.",
+	"history_empty_generic_description": "Your saved fuel and maintenance records will appear here in newest-first order.",
+	"history_empty_go_to_settings": "Go to Settings",
+	"history_empty_go_to_fuel": "Go to Fuel",
+	"history_entries_for_month_aria": "History entries for {month}",
+	"understand_page_title": "Understand | passanger",
+	"understand_no_vehicle_region": "No vehicle selected",
+	"understand_no_vehicle_title": "No vehicle yet",
+	"understand_no_vehicle_body": "Add a vehicle to start tracking fuel and maintenance, and your trends will appear here.",
+	"understand_title": "Understand",
+	"understand_subtitle_vehicle": "Trends and maintenance for {name}.",
+	"understand_subtitle_generic": "Spot trends in your fuel and maintenance spending over time.",
+	"understand_db_error_title": "Could not load your analytics",
+	"understand_db_error_body": "There was a problem reaching the database. Please restart the app to try again.",
+	"understand_export_data": "Export My Data",
+	"understand_loading": "Loading your analytics…",
+	"understand_no_data_region": "No data yet",
+	"understand_no_data_title": "Nothing to chart yet",
+	"understand_no_data_body": "Log a few fill-ups and expenses and your spending and consumption trends will show up here.",
+	"understand_blend_total": "≈ {amount} {label}",
+	"understand_unconverted_note_lead": "Charts show amounts in your home currency ({currency}). Other currencies aren't converted (no exchange rate offline) — their totals are:",
+	"chart_monthly_spend_title": "Monthly spend",
+	"chart_monthly_spend_subtitle": "Total per month in {currency}",
+	"chart_monthly_spend_aria": "Monthly spend in {currency}.",
+	"chart_consumption_title": "Consumption trend",
+	"chart_consumption_subtitle": "{unit} per fill-up, oldest to newest",
+	"chart_consumption_aria": "Fuel consumption per fill-up, oldest to newest.",
+	"chart_consumption_empty": "No consumption data yet. Add a second fill-up to start the trend.",
+	"chart_consumption_single_hint": "One fill-up so far. Add more to see a trend.",
+	"chart_maintenance_title": "Maintenance cost trend",
+	"chart_maintenance_subtitle": "Maintenance per month in {currency}",
+	"chart_maintenance_aria": "Monthly maintenance spend in {currency}.",
+	"understand_no_spend_in_currency": "No spending recorded in {currency} yet.",
+	"understand_no_maintenance_in_currency": "No maintenance recorded in {currency} yet.",
+	"chart_view_as_chart": "View as chart",
+	"chart_view_as_table": "View as table",
+	"chart_view_entry": "View entry",
+	"chart_col_period": "Period",
+	"chart_col_value": "Value",
+	"chart_col_entry": "Entry",
+	"chart_caption": "{title}. {summary}",
+	"chart_point_aria": "{label}: {value}",
+	"chart_select_point_hint": "Select a point to see its exact value.",
+	"understand_split_title": "Fuel vs maintenance",
+	"understand_split_subtitle": "Share of spend in {currency}",
+	"understand_split_aria": "Spending split in {currency}. Fuel: {fuelAmount} ({fuelPercent}%). Maintenance: {maintenanceAmount} ({maintenancePercent}%).",
+	"understand_split_aria_empty": "Fuel versus maintenance split with no data in your home currency.",
+	"understand_split_caption": "Fuel vs maintenance. {detail}",
+	"understand_split_col_category": "Category",
+	"understand_split_col_amount": "Amount",
+	"understand_split_col_share": "Share",
+	"understand_maintenance": "Maintenance",
+	"understand_split_legend_fuel": "Fuel ({percent}%)",
+	"understand_split_legend_maintenance": "Maintenance ({percent}%)",
+	"stat_section_title": "History totals",
+	"stat_period_aria": "{label}: {total}",
+	"stat_converted_total": "≈ {amount} · your rates",
+	"stat_unconverted_suffix": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "· {count} unconverted",
+				"countPlural=other": "· {count} unconverted"
+			}
+		}
+	],
+	"stat_total_spend": "Total spend",
+	"stat_fuel_volume": "Fuel volume",
+	"stat_avg_consumption": "Avg consumption",
+	"stat_no_data": "No data",
+	"settings_theme_system": "System",
+	"settings_theme_system_desc": "Follows your device setting",
+	"settings_theme_light": "Light",
+	"settings_theme_light_desc": "Always light",
+	"settings_theme_dark": "Dark",
+	"settings_theme_dark_desc": "Always dark",
+	"settings_currency_error_blank": "Enter a currency symbol or prefix.",
+	"settings_save_error": "Could not save settings on this device. Allow storage access and try again.",
+	"settings_save_success": "Settings saved.",
+	"settings_backup_error_read": "Could not read your data to back up. Please try again.",
+	"settings_backup_downloaded": "Backup downloaded.",
+	"settings_backup_error_too_large": "This file is too large to be a passanger backup.",
+	"settings_restore_settings_failed": "Your data was restored, but settings could not be saved.",
+	"settings_appearance_heading": "Appearance",
+	"settings_appearance_desc": "Choose how passanger looks",
+	"settings_theme_label": "Theme",
+	"settings_vehicles_heading": "Vehicles",
+	"settings_vehicles_desc": "Manage your vehicles",
+	"settings_backup_heading": "Backup & Restore",
+	"settings_backup_desc": "Save a full copy of your data as a file, or restore one. Everything stays on your device.",
+	"settings_backup_download": "Download backup",
+	"settings_backup_restore_label": "Restore from a backup",
+	"settings_restore_confirm_heading": "Replace all data?",
+	"settings_restore_confirm_body": "This REPLACES all current data and settings with the backup. This cannot be undone.",
+	"settings_restore_confirm_replace": "Replace all",
+	"settings_units_currency_heading": "Units & Currency",
+	"settings_units_currency_desc": "Choose how fuel efficiency and costs are displayed everywhere in the app.",
+	"settings_fuel_unit_legend": "Fuel efficiency unit",
+	"settings_fuel_unit_help": "Save a unit preference to refresh result cards, history summaries, and entry details.",
+	"settings_currency_help": "Choose a preset or enter a custom value such as `EUR `.",
+	"settings_currency_prefix_label": "Currency prefix",
+	"settings_display_rate_legend": "Display rate",
+	"settings_display_rate_help": "Optional. Enter how much each currency is worth in {currency} to see an approximate combined total. Leave blank to skip.",
+	"settings_rate_row_label": "1 {currency} =",
+	"settings_save_button": "Save settings",
+	"settings_data_heading": "Data",
+	"settings_data_desc": "Manage your app data",
+	"settings_data_coming_soon": "Coming soon",
+	"export_scope_all_vehicles": "All vehicles",
+	"export_error_prepare": "Could not prepare your export. Please try again.",
+	"export_error_export": "Could not export your data. Please try again.",
+	"export_page_title": "Export",
+	"export_intro": "Download a CSV backup of your saved fuel and maintenance history.",
+	"export_scope_legend": "Export scope",
+	"export_scope_current_vehicle": "Current vehicle",
+	"export_date_range": "Date range: {range}",
+	"export_csv_button": "Export CSV",
+	"export_checking_history": "Checking your saved history on this device.",
+	"export_csv_button_busy": "Exporting...",
+	"export_empty_state_label": "Export empty state",
+	"export_empty_title": "Nothing to export yet - log your first fill-up!",
+	"export_empty_body": "Your saved entries will be ready here as soon as you log them.",
+	"export_empty_cta": "Go to Log",
+	"export_import_cta_title": "Switching from another app?",
+	"export_import_cta_body": "Bring your history from Fuelly, aCar, Drivvo, or any CSV export.",
+	"export_import_cta_link": "Import data from another app",
+	"import_page_title": "Import",
+	"import_page_intro": "Import fuel and maintenance history from another app.",
+	"vehiclelist_error_load": "Could not load vehicles. Please try again.",
+	"vehiclelist_error_delete": "Could not delete vehicle. Please try again.",
+	"vehiclelist_loading": "Loading vehicles…",
+	"vehiclelist_empty": "No vehicles yet. Add your first vehicle to get started.",
+	"vehiclelist_list_label": "Vehicle list",
+	"vehiclelist_active": "Active",
+	"vehiclelist_edit_label": "Edit {name}",
+	"vehiclelist_delete_label": "Delete {name}",
+	"vehiclelist_delete_confirm": "Delete {name}? Entries linked to this vehicle will remain but won't be associated with any vehicle.",
+	"vehiclelist_delete_confirm_busy": "Deleting…",
+	"vehiclelist_delete_confirm_button": "Confirm delete",
+	"vehiclelist_limit_reached": "Maximum {max} vehicles reached. Delete a vehicle to add a new one.",
+	"vehiclelist_count": "{count} of {max} vehicles",
+	"import_step_source": "Source",
+	"import_step_upload": "Upload",
+	"import_step_preview": "Preview",
+	"import_step_review": "Review",
+	"import_step_vehicles": "Vehicles",
+	"import_step_confirm": "Confirm",
+	"import_wizard_progress_label": "Import wizard progress",
+	"import_wizard_step_heading": "Step {step} of 6: {label}",
+	"import_unsupported_title": "We couldn't recognize this format",
+	"import_unsupported_body": "This file doesn't match one of the exports we can read yet. Imports work with files from {fuelly}, {acar}, and {drivvo}.",
+	"import_unsupported_retry": "Try exporting again from one of those apps, then upload that file.",
+	"import_unsupported_choose_different": "Choose a different format",
+	"import_wizard_back": "Back",
+	"import_cancel_dialog_label": "Confirm cancel import",
+	"import_cancel_dialog_heading": "Cancel import?",
+	"import_cancel_dialog_body": "Your uploaded file and progress will be lost.",
+	"import_cancel_dialog_keep": "Keep working",
+	"import_cancel_dialog_confirm": "Cancel import",
+	"import_source_fuelly_desc": "Import from Fuelly CSV export",
+	"import_source_acar_desc": "Import from aCar or Fuelio CSV export",
+	"import_source_drivvo_desc": "Import from Drivvo CSV export",
+	"import_source_generic_label": "Generic CSV",
+	"import_source_generic_desc": "Import from any CSV file",
+	"import_source_intro": "Select the app you exported from. We'll use this to map your data correctly.",
+	"import_source_card_label": "Import from {source}",
+	"import_upload_error_too_large": "File too large. Try exporting a smaller date range.",
+	"import_upload_error_empty": "This file appears to be empty. Check that you exported your data correctly.",
+	"import_upload_size_warning": "This is a large file. Processing may take a moment.",
+	"import_upload_error_too_many_rows": "This file has more than {max} rows. Import the most recent data first, then import older records in a second pass.",
+	"import_upload_error_parse": "Could not read this file. Make sure it is a valid CSV or text file.",
+	"import_upload_area_label": "File upload area",
+	"import_upload_drag_drop": "Drag and drop your CSV file here, or",
+	"import_upload_choose_mobile": "Choose your CSV file to begin.",
+	"import_upload_choose_file": "Choose File",
+	"import_upload_analyzing": "Analyzing your file...",
+	"import_upload_file_meta": "{size} · Found {count} rows",
+	"import_upload_change": "Change",
+	"import_upload_detected": "Detected: {format}",
+	"import_upload_conflict_body": "We detected {detected} format, but you selected {selected}. Which is correct?",
+	"import_upload_conflict_use": "Use {format}",
+	"import_continue": "Continue",
+	"import_vehicles_error_name_required": "Name is required",
+	"import_vehicles_error_make_required": "Make is required",
+	"import_vehicles_error_model_required": "Model is required",
+	"import_vehicles_error_year_range": "Year must be between 1900 and {year}",
+	"import_vehicles_intro": "Assign each vehicle from your import file to a passanger vehicle.",
+	"import_vehicles_automatch": "We'll add these rows to {name}. Correct?",
+	"import_vehicles_automatch_hint": "You can change the assignment below if needed.",
+	"import_vehicles_matched": "Matched",
+	"import_vehicles_assign_label": "Assign {name} to a passanger vehicle",
+	"import_vehicles_select_option": "Select vehicle…",
+	"import_vehicles_create_option": "Create new vehicle",
+	"import_vehicles_max_error": "You already have {max} vehicles. Delete or reassign one in Settings before importing.",
+	"import_vehicles_field_name": "Name",
+	"import_vehicles_field_make": "Make",
+	"import_vehicles_field_model": "Model",
+	"import_vehicles_field_year": "Year (optional)",
+	"import_vehicles_review_button": "Review & Import",
+	"import_entry_type_service": "Service",
+	"import_mapping_error_units_required": "Units must be selected before parsing.",
+	"import_mapping_error_unsupported": "This format is not yet supported.",
+	"import_mapping_drivvo_units_q": "What units does your data use?",
+	"import_mapping_drivvo_units_help": "Drivvo files don't include unit information — please select the units your data uses.",
+	"import_mapping_fuel_unit": "Fuel unit",
+	"import_mapping_select_placeholder": "Select...",
+	"import_mapping_distance": "Distance",
+	"import_mapping_parse_button": "Parse data",
+	"import_mapping_parsing": "Parsing your data...",
+	"import_mapping_error_title": "Could not parse file",
+	"import_mapping_error_retry": "Try re-uploading your {format} export file.",
+	"import_preview_total_spend": "Total spend",
+	"import_preview_amounts_in": "Amounts shown in {currency}",
+	"import_mapping_disclosure_title": "How we mapped this",
+	"import_mapping_table_intro": "Here's how we'll map your data",
+	"import_mapping_badge_calc": "calc",
+	"import_mapping_badge_mapped": "mapped",
+	"import_mapping_units_drivvo": "Units: {fuel} and {distance} (selected above)",
+	"import_mapping_units_declares": "Your file declares {fuel} and {distance}. Correct?",
+	"import_mapping_units_uses": "Your file uses {fuel} and {distance}. Correct?",
+	"import_unit_litres": "litres",
+	"import_unit_gallons": "gallons",
+	"import_unit_km": "km",
+	"import_unit_miles": "miles",
+	"import_mapping_price_note": "Total cost calculated as price × quantity",
+	"import_mapping_data_preview": "Data preview",
+	"import_mapping_row_label": "Row {row}:",
+	"import_confirm_will_import": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} row will be imported",
+				"countPlural=other": "{count} rows will be imported"
+			}
+		}
+	],
+	"import_confirm_skipped": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} row skipped",
+				"countPlural=other": "{count} rows skipped"
+			}
+		}
+	],
+	"import_confirm_hide": "Hide",
+	"import_confirm_show_skipped": "Show skipped",
+	"import_confirm_skipped_row": "Row {row}: {issues}",
+	"import_confirm_corrected": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} row corrected",
+				"countPlural=other": "{count} rows corrected"
+			}
+		}
+	],
+	"import_confirm_new_vehicles": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} new vehicle will be created",
+				"countPlural=other": "{count} new vehicles will be created"
+			}
+		}
+	],
+	"import_confirm_breakdown": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural", "input name"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} row → {name}",
+				"countPlural=other": "{count} rows → {name}"
+			}
+		}
+	],
+	"import_confirm_breakdown_new": "{count} rows → {name} (new)",
+	"import_confirm_data_spans": "Data spans {range}",
+	"import_confirm_caution": "Imported data will appear in your History immediately. This cannot be undone.",
+	"import_confirm_progress": "Importing… {current} of {total} rows",
+	"import_confirm_progress_label": "Import progress",
+	"import_confirm_importing": "Importing…",
+	"import_confirm_import_button": "Import {count} Rows",
+	"import_confirm_failed_title": "Import failed",
+	"import_confirm_failed_unchanged": "Your existing data is unchanged.",
+	"import_confirm_try_again": "Try Again",
+	"import_confirm_complete": "Import complete",
+	"import_confirm_view_history": "View imported history",
+	"import_confirm_view_trends": "See trends in Understand",
+	"import_confirm_import_another": "Import another file",
+	"import_review_field_date": "Date",
+	"import_review_field_odometer": "Odometer",
+	"import_review_field_quantity": "Quantity",
+	"import_review_field_cost": "Cost",
+	"import_review_field_notes": "Notes",
+	"import_review_status_counts": "{valid} valid, {warning} warning, {error} error, {skipped} skipped",
+	"import_review_issue_count": "{count} issues",
+	"import_review_row_label": "Row {row}",
+	"import_review_badge_corrected": "Corrected",
+	"import_review_badge_skipped": "Skipped",
+	"import_review_undo_aria": "Undo skip for Row {row}",
+	"import_review_edit_aria": "Edit Row {row}: {summary}, {issues}",
+	"import_review_undo": "Undo",
+	"import_review_skipped_note": "This row is currently skipped and will not be imported.",
+	"import_review_include_row": "Include This Row",
+	"import_review_valid_suffix": "(valid)",
+	"import_review_save_corrections": "Save Corrections",
+	"import_review_skip_row": "Skip This Row",
+	"import_review_skip_all": "Skip all remaining flagged rows",
+	"import_review_assign_vehicles": "Assign Vehicles",
+	"import_review_needs_attention": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} row needs attention",
+				"countPlural=other": "{count} rows need attention"
+			}
+		}
+	],
+	"import_review_reviewed_progress": "{reviewed} of {total} reviewed",
+	"import_review_announce": "{reviewed} of {total} rows reviewed",
+	"import_vehicles_row_count": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} row",
+				"countPlural=other": "{count} rows"
+			}
+		}
+	],
+	"import_preview_fuelups": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} fuel-up",
+				"countPlural=other": "{count} fuel-ups"
+			}
+		}
+	],
+	"import_preview_expenses": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} expense",
+				"countPlural=other": "{count} expenses"
+			}
+		}
+	],
+	"import_preview_headline": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} entry",
+				"countPlural=other": "{count} entries"
+			}
+		}
+	],
+	"import_preview_headline_spanning": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural", "input range"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} entry spanning {range}",
+				"countPlural=other": "{count} entries spanning {range}"
+			}
+		}
+	],
+	"import_preview_summary_rows": "{total} rows",
+	"import_preview_summary_ready": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} ready",
+				"countPlural=other": "{count} ready"
+			}
+		}
+	],
+	"import_preview_summary_warnings": "{count} warnings",
+	"import_preview_summary_errors": "{count} errors",
+	"import_preview_summary_vehicles": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} vehicle detected",
+				"countPlural=other": "{count} vehicles detected"
+			}
+		}
+	],
+	"import_mapping_ignored_hide": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "Hide {count} ignored column",
+				"countPlural=other": "Hide {count} ignored columns"
+			}
+		}
+	],
+	"import_mapping_ignored_show": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "Show {count} ignored column",
+				"countPlural=other": "Show {count} ignored columns"
+			}
+		}
+	],
+	"import_review_error_count": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} error",
+				"countPlural=other": "{count} errors"
+			}
+		}
+	],
+	"import_review_warning_count": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} warning",
+				"countPlural=other": "{count} warnings"
+			}
+		}
+	],
+	"import_confirm_fuel_imported": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} fuel entry imported",
+				"countPlural=other": "{count} fuel entries imported"
+			}
+		}
+	],
+	"import_confirm_maintenance_imported": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} maintenance entry imported",
+				"countPlural=other": "{count} maintenance entries imported"
+			}
+		}
+	],
+	"import_confirm_rows_skipped": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} row skipped",
+				"countPlural=other": "{count} rows skipped"
+			}
+		}
+	],
+	"import_confirm_vehicles_created": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} vehicle created",
+				"countPlural=other": "{count} vehicles created"
+			}
+		}
+	],
+	"export_entry_summary_scoped": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural", "input scope"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} entry ready ({scope})",
+				"countPlural=other": "{count} entries ready ({scope})"
+			}
+		}
+	],
+	"export_entry_summary": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} entry ready",
+				"countPlural=other": "{count} entries ready"
+			}
+		}
+	],
+	"home_page_title": "Home | passanger",
+	"home_vehicle_setup_aria": "Vehicle setup",
+	"home_no_vehicle_title": "No vehicle yet",
+	"home_no_vehicle_body": "Your entries will be tied to this vehicle",
+	"home_add_vehicle_cta": "Add your vehicle to get started",
+	"home_loading": "Loading your dashboard…",
+	"home_summary_empty": "No entries yet for {vehicleName} — tap the + to log your first.",
+	"home_tracking_fuel": "Tracking {fuelPart} for {vehicleName}.",
+	"home_tracking_fuel_expense": "Tracking {fuelPart} · {expensePart} for {vehicleName}.",
+	"home_last_fillup": "Last fill-up: {recency}",
+	"hero_label_cost": "Cost per {unit}",
+	"hero_label_consumption": "Consumption",
+	"hero_trend_up": "up from last month",
+	"hero_trend_down": "down from last month",
+	"hero_trend_flat": "level with last month",
+	"hero_next_consumption_first": "Log your first fill-up to see consumption.",
+	"hero_next_consumption_more": "Log another fill-up to calculate consumption.",
+	"hero_next_cost_first": "Log your first fill-up to see cost per {unit}.",
+	"hero_next_cost_more": "Log another fill-up to calculate cost per {unit}.",
+	"hero_trend_hint": "add a couple more fill-ups to see a trend",
+	"hero_announcement": "{heading}: {value}{trend}",
+	"hero_accessible_name": "{heading}: {value}{trend}. Tap to switch to {otherLabel}.",
+	"upnext_heading": "Up next",
+	"upnext_log_service": "Log this service",
+	"upnext_dismiss_aria": "Dismiss {title} reminder",
+	"insight_baseline": "Running about average this month.",
+	"insight_consumption_up": "Consumption is up about {pct}% this month.",
+	"insight_consumption_down": "Consumption is down about {pct}% this month.",
+	"insight_spend_up": "Spending is up about {pct}% this month.",
+	"insight_spend_down": "Spending is down about {pct}% this month.",
+	"insight_fuel_price_up": "Fuel prices are up about {pct}% lately.",
+	"insight_fuel_price_down": "Fuel prices are down about {pct}% lately.",
+	"reset_offer": "Logged. Reset the {title} reminder?",
+	"reset_action_label": "Reset",
+	"reset_error": "Could not reset the reminder. Please try again.",
+	"reset_success": "Reset. Next {title} is set from today.",
+	"reminder_prediction_insufficient": "Not enough recent driving to estimate a date yet.",
+	"reminder_prediction_due": "≈ due {phrase}",
+	"display_rate_label_multi": "using your rates",
+	"display_rate_label_single": "using your rate (1 {from} = {to})",
+	"history_period_current_month": "This month",
+	"history_period_year_to_date": "This year",
+	"history_period_all_time": "All time",
+	"history_period_aria_current_month": "this month",
+	"history_period_aria_year_to_date": "this year",
+	"history_period_aria_all_time": "all time",
+	"home_fillups_count": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} fill-up",
+				"countPlural=other": "{count} fill-ups"
+			}
+		}
+	],
+	"home_expenses_count": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} expense",
+				"countPlural=other": "{count} expenses"
+			}
+		}
+	],
+	"vehiclelist_add_vehicle": "Add vehicle"
 }

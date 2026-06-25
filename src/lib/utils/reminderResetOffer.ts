@@ -21,6 +21,7 @@ import {
 } from '$lib/utils/reminderLoopClose';
 import type { ToastApi } from '$lib/state/toast';
 import type { Expense } from '$lib/db/schema';
+import { m } from '$lib/paraglide/messages';
 
 type OfferToast = Pick<ToastApi, 'action' | 'success' | 'error'>;
 
@@ -82,8 +83,8 @@ export async function offerReminderReset(
 	// Re-entrancy guard (mirrors history/+page.svelte): a rapid double-tap can't fire two resets.
 	// Cleared only on failure so a retry stays possible; on success the toast dismisses.
 	let resetInFlight = false;
-	toast.action(`Logged. Reset the ${target.title} reminder?`, {
-		label: 'Reset',
+	toast.action(m.reset_offer({ title: target.title }), {
+		label: m.reset_action_label(),
 		onClick: () => {
 			if (resetInFlight) return;
 			resetInFlight = true;
@@ -99,13 +100,13 @@ export async function offerReminderReset(
 		const odometer = logs.error ? undefined : currentOdometerFromLogs(logs.data);
 		const result = await updateServiceReminder(target.id, resetMarkerPatch(expense.date, odometer));
 		if (result.error) {
-			toast.error('Could not reset the reminder. Please try again.');
+			toast.error(m.reset_error());
 			resetInFlight = false;
 			return;
 		}
 		// Same-tab nudge so the Home Up-Next card re-reads and recomputes to `ok` without navigating
 		// (the cross-tab notifyDataChanged in the repo never reaches this tab).
 		options.onApplied?.();
-		toast.success(`Reset. Next ${target.title} is set from today.`);
+		toast.success(m.reset_success({ title: target.title }));
 	}
 }

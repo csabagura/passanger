@@ -38,10 +38,16 @@
 		}
 	}
 
+	// THEME_OPTIONS values are the persisted enum (system|light|dark) and MUST NOT change; only the
+	// user-facing label/description are translated.
 	const THEME_OPTIONS: { value: ThemePreference; label: string; description: string }[] = [
-		{ value: 'system', label: 'System', description: 'Follows your device setting' },
-		{ value: 'light', label: 'Light', description: 'Always light' },
-		{ value: 'dark', label: 'Dark', description: 'Always dark' }
+		{
+			value: 'system',
+			label: m.settings_theme_system(),
+			description: m.settings_theme_system_desc()
+		},
+		{ value: 'light', label: m.settings_theme_light(), description: m.settings_theme_light_desc() },
+		{ value: 'dark', label: m.settings_theme_dark(), description: m.settings_theme_dark_desc() }
 	];
 
 	let settingsFuelUnit = $state<AppSettings['fuelUnit']>('L/100km');
@@ -143,7 +149,7 @@
 		event.preventDefault();
 
 		if (settingsCurrency.trim().length === 0) {
-			currencyError = 'Enter a currency symbol or prefix.';
+			currencyError = m.settings_currency_error_blank();
 			settingsStatusMessage = '';
 			settingsErrorMessage = '';
 			return;
@@ -165,14 +171,13 @@
 		settingsErrorMessage = '';
 
 		if (!saveSettings(nextSettings)) {
-			settingsErrorMessage =
-				'Could not save settings on this device. Allow storage access and try again.';
+			settingsErrorMessage = m.settings_save_error();
 			return;
 		}
 
 		settingsCtx.updateSettings(nextSettings);
 		notifySettingsChanged();
-		settingsStatusMessage = 'Settings saved.';
+		settingsStatusMessage = m.settings_save_success();
 	}
 
 	// Backup & Restore --------------------------------------------------------------------------
@@ -195,12 +200,12 @@
 		resetBackupMessages();
 		const result = await exportAllTables();
 		if (result.error) {
-			backupErrorMessage = 'Could not read your data to back up. Please try again.';
+			backupErrorMessage = m.settings_backup_error_read();
 			return;
 		}
 		const json = serializeBackup(result.data, settingsCtx.settings);
 		downloadBackupFile(json, buildBackupFilename(new Date()));
-		backupStatusMessage = 'Backup downloaded.';
+		backupStatusMessage = m.settings_backup_downloaded();
 	}
 
 	async function handleRestoreFileChange(event: Event): Promise<void> {
@@ -212,7 +217,7 @@
 		if (!file) return;
 
 		if (file.size > IMPORT_FILE_SIZE_MAX_BYTES) {
-			backupErrorMessage = 'This file is too large to be a passanger backup.';
+			backupErrorMessage = m.settings_backup_error_too_large();
 			input.value = '';
 			return;
 		}
@@ -251,7 +256,7 @@
 		if (!saveSettings(restore.settings)) {
 			// Data restored, but the settings write failed (e.g. storage full). Surface it instead of
 			// reloading into restored-data-with-stale-settings with no signal.
-			backupErrorMessage = 'Your data was restored, but settings could not be saved.';
+			backupErrorMessage = m.settings_restore_settings_failed();
 			// The DB is already replaced for every tab (shared IndexedDB), so other tabs must still be
 			// told to reload — even though this tab stays put to show the settings-save error.
 			notifyTabsRestored();
@@ -276,15 +281,15 @@
 	>
 		<div class="space-y-1">
 			<h2 id="settings-appearance-heading" class="text-lg font-semibold text-foreground">
-				Appearance
+				{m.settings_appearance_heading()}
 			</h2>
-			<p class="text-sm text-muted-foreground">Choose how passanger looks</p>
+			<p class="text-sm text-muted-foreground">{m.settings_appearance_desc()}</p>
 		</div>
 
 		<!-- svelte-ignore a11y_interactive_supports_focus -->
 		<div
 			role="radiogroup"
-			aria-label="Theme"
+			aria-label={m.settings_theme_label()}
 			class="grid grid-cols-3 gap-2"
 			onkeydown={(e: KeyboardEvent) => {
 				const currentIndex = THEME_OPTIONS.findIndex((o) => o.value === settingsCtx.settings.theme);
@@ -355,8 +360,10 @@
 		class="space-y-5 rounded-2xl border border-border bg-card p-5 shadow-sm"
 	>
 		<div class="space-y-1">
-			<h2 id="settings-vehicles-heading" class="text-lg font-semibold text-foreground">Vehicles</h2>
-			<p class="text-sm text-muted-foreground">Manage your vehicles</p>
+			<h2 id="settings-vehicles-heading" class="text-lg font-semibold text-foreground">
+				{m.settings_vehicles_heading()}
+			</h2>
+			<p class="text-sm text-muted-foreground">{m.settings_vehicles_desc()}</p>
 		</div>
 		<VehicleListManager {activeVehicleId} onActiveVehicleChange={handleActiveVehicleChange} />
 	</section>
@@ -367,19 +374,19 @@
 	>
 		<div class="space-y-1">
 			<h2 id="settings-backup-heading" class="text-lg font-semibold text-foreground">
-				Backup & Restore
+				{m.settings_backup_heading()}
 			</h2>
 			<p class="text-sm text-muted-foreground">
-				Save a full copy of your data as a file, or restore one. Everything stays on your device.
+				{m.settings_backup_desc()}
 			</p>
 		</div>
 
 		<div class="space-y-3">
-			<Button onclick={handleDownloadBackup}>Download backup</Button>
+			<Button onclick={handleDownloadBackup}>{m.settings_backup_download()}</Button>
 
 			<div class="space-y-1">
 				<label for="settings-restore-file" class="text-sm font-medium text-foreground">
-					Restore from a backup
+					{m.settings_backup_restore_label()}
 				</label>
 				<!-- File input stays a raw input: Field omits type=file/files. Restyle only; keep the id. -->
 				<input
@@ -401,14 +408,16 @@
 				class="space-y-3 rounded-xl border border-destructive/40 bg-destructive/5 p-4"
 			>
 				<h3 id="settings-restore-confirm-heading" class="text-sm font-semibold text-foreground">
-					Replace all data?
+					{m.settings_restore_confirm_heading()}
 				</h3>
 				<p id="settings-restore-confirm-body" class="text-sm text-muted-foreground">
-					This REPLACES all current data and settings with the backup. This cannot be undone.
+					{m.settings_restore_confirm_body()}
 				</p>
 				<div class="flex flex-wrap gap-2">
-					<Button variant="destructive" onclick={confirmRestore}>Replace all</Button>
-					<Button variant="outline" onclick={cancelRestore}>Cancel</Button>
+					<Button variant="destructive" onclick={confirmRestore}
+						>{m.settings_restore_confirm_replace()}</Button
+					>
+					<Button variant="outline" onclick={cancelRestore}>{m.common_cancel()}</Button>
 				</div>
 			</div>
 		{/if}
@@ -426,18 +435,18 @@
 	>
 		<div class="space-y-1">
 			<h2 id="settings-units-currency-heading" class="text-lg font-semibold text-foreground">
-				Units & Currency
+				{m.settings_units_currency_heading()}
 			</h2>
 			<p class="text-sm text-muted-foreground">
-				Choose how fuel efficiency and costs are displayed everywhere in the app.
+				{m.settings_units_currency_desc()}
 			</p>
 		</div>
 
 		<form class="space-y-5" onsubmit={handleSettingsSubmit}>
 			<fieldset aria-describedby={fuelUnitHelpId} class="space-y-3">
-				<legend class="text-sm font-medium text-foreground">Fuel efficiency unit</legend>
+				<legend class="text-sm font-medium text-foreground">{m.settings_fuel_unit_legend()}</legend>
 				<p id={fuelUnitHelpId} class="text-sm text-muted-foreground">
-					Save a unit preference to refresh result cards, history summaries, and entry details.
+					{m.settings_fuel_unit_help()}
 				</p>
 
 				<div class="grid gap-2 sm:grid-cols-2">
@@ -454,7 +463,7 @@
 
 			<div class="space-y-3">
 				<p id={currencyHelpId} class="text-sm text-muted-foreground">
-					Choose a preset or enter a custom value such as `EUR `.
+					{m.settings_currency_help()}
 				</p>
 
 				<div class="flex flex-wrap gap-2">
@@ -470,7 +479,7 @@
 				</div>
 
 				<Field
-					label="Currency prefix"
+					label={m.settings_currency_prefix_label()}
 					type="text"
 					inputmode="text"
 					bind:value={settingsCurrency}
@@ -481,17 +490,20 @@
 			</div>
 
 			<fieldset class="space-y-3">
-				<legend class="text-sm font-medium text-foreground">Display rate</legend>
+				<legend class="text-sm font-medium text-foreground"
+					>{m.settings_display_rate_legend()}</legend
+				>
 				<p id="settings-exchange-rates-help" class="text-sm text-muted-foreground">
-					Optional. Enter how much each currency is worth in {settingsCurrency.trim() ||
-						settingsCurrency} to see an approximate combined total. Leave blank to skip.
+					{m.settings_display_rate_help({
+						currency: settingsCurrency.trim() || settingsCurrency
+					})}
 				</p>
 
 				<div class="space-y-2">
 					{#each exchangeRateCurrencies as rateCurrency (rateCurrency)}
 						<div class="flex items-end gap-3">
 							<Field
-								label={`1 ${rateCurrency} =`}
+								label={m.settings_rate_row_label({ currency: rateCurrency })}
 								type="number"
 								inputmode="decimal"
 								min="0"
@@ -510,7 +522,7 @@
 			</fieldset>
 
 			<div class="border-t border-border pt-4">
-				<Button type="submit" size="lg">Save settings</Button>
+				<Button type="submit" size="lg">{m.settings_save_button()}</Button>
 			</div>
 
 			{#if settingsErrorMessage}
@@ -526,9 +538,11 @@
 		class="space-y-5 rounded-2xl border border-border bg-card p-5 shadow-sm"
 	>
 		<div class="space-y-1">
-			<h2 id="settings-data-heading" class="text-lg font-semibold text-foreground">Data</h2>
-			<p class="text-sm text-muted-foreground">Manage your app data</p>
+			<h2 id="settings-data-heading" class="text-lg font-semibold text-foreground">
+				{m.settings_data_heading()}
+			</h2>
+			<p class="text-sm text-muted-foreground">{m.settings_data_desc()}</p>
 		</div>
-		<p class="text-sm text-muted-foreground">Coming soon</p>
+		<p class="text-sm text-muted-foreground">{m.settings_data_coming_soon()}</p>
 	</section>
 </div>

@@ -5,6 +5,7 @@
 	import type { AppError } from '$lib/utils/result';
 	import { Button } from '$lib/components/ui/button';
 	import { Field } from '$lib/components/ui/field';
+	import { m } from '$lib/paraglide/messages';
 
 	type AsyncState<T> =
 		| { status: 'idle' }
@@ -50,15 +51,15 @@
 	);
 
 	function validateDisplayName() {
-		displayNameError = displayName.trim() === '' ? 'Enter a display name' : '';
+		displayNameError = displayName.trim() === '' ? m.vehicleform_error_name() : '';
 	}
 
 	function validateMake() {
-		makeError = make.trim() === '' ? 'Enter the vehicle make (e.g. Toyota)' : '';
+		makeError = make.trim() === '' ? m.vehicleform_error_make() : '';
 	}
 
 	function validateModel() {
-		modelError = model.trim() === '' ? 'Enter the vehicle model (e.g. Corolla)' : '';
+		modelError = model.trim() === '' ? m.vehicleform_error_model() : '';
 	}
 
 	function validateYear() {
@@ -68,12 +69,12 @@
 			return;
 		}
 		if (!/^\d+$/.test(trimmed)) {
-			yearError = `Enter a valid year (1900–${currentYear})`;
+			yearError = m.vehicleform_error_year({ max: currentYear });
 			return;
 		}
 		const n = parseInt(trimmed, 10);
 		if (n < 1900 || n > currentYear) {
-			yearError = `Enter a valid year (1900–${currentYear})`;
+			yearError = m.vehicleform_error_year({ max: currentYear });
 		} else {
 			yearError = '';
 		}
@@ -122,7 +123,7 @@
 
 			if (result.error) {
 				saveState = { status: 'error', error: result.error };
-				showToast('Failed to save vehicle. Please try again.');
+				showToast(m.vehicleform_error_save());
 			} else {
 				saveState = { status: 'success', data: result.data };
 				onUpdate?.(result.data);
@@ -137,7 +138,7 @@
 
 			if (result.error) {
 				saveState = { status: 'error', error: result.error };
-				showToast('Failed to save vehicle. Please try again.');
+				showToast(m.vehicleform_error_save());
 			} else {
 				saveState = { status: 'success', data: result.data };
 				onSave(result.data);
@@ -163,16 +164,16 @@
 	class="flex flex-col gap-4 p-4"
 >
 	<h1 class="text-lg font-semibold text-foreground">
-		{isEditMode ? 'Edit Vehicle' : 'Add Vehicle'}
+		{isEditMode ? m.vehicleform_title_edit() : m.vehicleform_title_add()}
 	</h1>
 
 	<Field
 		id="displayName"
-		label="Display Name"
+		label={m.vehicleform_field_name()}
 		type="text"
 		bind:value={displayName}
 		error={displayNameError}
-		placeholder="e.g. My Honda"
+		placeholder={m.vehicleform_placeholder_name()}
 		oninput={() => {
 			if (displayName.trim() !== '') displayNameError = '';
 		}}
@@ -181,11 +182,11 @@
 
 	<Field
 		id="make"
-		label="Make"
+		label={m.vehicleform_field_make()}
 		type="text"
 		bind:value={make}
 		error={makeError}
-		placeholder="e.g. Toyota"
+		placeholder={m.vehicleform_placeholder_make()}
 		oninput={() => {
 			if (make.trim() !== '') makeError = '';
 		}}
@@ -194,11 +195,11 @@
 
 	<Field
 		id="model"
-		label="Model"
+		label={m.vehicleform_field_model()}
 		type="text"
 		bind:value={model}
 		error={modelError}
-		placeholder="e.g. Corolla"
+		placeholder={m.vehicleform_placeholder_model()}
 		oninput={() => {
 			if (model.trim() !== '') modelError = '';
 		}}
@@ -207,22 +208,23 @@
 
 	<Field
 		id="year"
-		label="Year (optional)"
+		label={m.vehicleform_field_year()}
 		type="text"
 		inputmode="numeric"
 		pattern="[0-9]*"
 		bind:value={yearStr}
 		error={yearError}
-		placeholder="e.g. 2020"
+		placeholder={m.vehicleform_placeholder_year()}
 		oninput={() => {
 			const trimmed = yearStr.trim();
 			if (trimmed === '') {
 				yearError = '';
 			} else if (!/^\d+$/.test(trimmed)) {
-				yearError = `Enter a valid year (1900–${currentYear})`;
+				yearError = m.vehicleform_error_year({ max: currentYear });
 			} else {
 				const n = parseInt(trimmed, 10);
-				yearError = n >= 1900 && n <= currentYear ? '' : `Enter a valid year (1900–${currentYear})`;
+				yearError =
+					n >= 1900 && n <= currentYear ? '' : m.vehicleform_error_year({ max: currentYear });
 			}
 		}}
 		onblur={validateYear}
@@ -230,7 +232,7 @@
 
 	<div class="flex gap-3">
 		{#if onCancel}
-			<Button variant="outline" onclick={onCancel}>Cancel</Button>
+			<Button variant="outline" onclick={onCancel}>{m.common_cancel()}</Button>
 		{/if}
 		<Button
 			type="submit"
@@ -240,9 +242,9 @@
 			aria-busy={saveState.status === 'loading'}
 		>
 			{#if saveState.status === 'loading'}
-				Saving…
+				{m.form_saving()}
 			{:else}
-				{isEditMode ? 'Save changes' : 'Save vehicle'}
+				{isEditMode ? m.form_save_changes() : m.vehicleform_save()}
 			{/if}
 		</Button>
 	</div>

@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, screen, waitFor } from '@testing-library/svelte';
 import { flushSync } from 'svelte';
 import { ok } from '$lib/utils/result';
+import { m } from '$lib/paraglide/messages';
 import UnderstandPage from './+page.svelte';
 
 vi.mock('$app/paths', () => ({
@@ -67,15 +68,15 @@ describe('Understand page', () => {
 	it('sets the document title', () => {
 		mockActiveVehicle = null;
 		render(UnderstandPage);
-		expect(document.title).toBe('Understand | passanger');
+		expect(document.title).toBe(m.understand_page_title());
 	});
 
 	it('shows the no-vehicle empty state when no vehicle is active', () => {
 		mockActiveVehicle = null;
 		render(UnderstandPage);
-		expect(screen.getByRole('region', { name: 'No vehicle selected' })).toBeTruthy();
-		expect(screen.getByText('No vehicle yet')).toBeTruthy();
-		expect(screen.getByRole('link', { name: 'Add a vehicle' })).toBeTruthy();
+		expect(screen.getByRole('region', { name: m.understand_no_vehicle_region() })).toBeTruthy();
+		expect(screen.getByText(m.understand_no_vehicle_title())).toBeTruthy();
+		expect(screen.getByRole('link', { name: m.common_add_vehicle() })).toBeTruthy();
 		expect(mockGetAllFuelLogs).not.toHaveBeenCalled();
 	});
 
@@ -83,7 +84,7 @@ describe('Understand page', () => {
 		mockActiveVehicle = null;
 		mockLoaded = false;
 		render(UnderstandPage);
-		expect(screen.queryByRole('region', { name: 'No vehicle selected' })).toBeNull();
+		expect(screen.queryByRole('region', { name: m.understand_no_vehicle_region() })).toBeNull();
 	});
 
 	it('mounts the dashboard for an active vehicle', async () => {
@@ -93,7 +94,7 @@ describe('Understand page', () => {
 		render(UnderstandPage);
 		await settlePage();
 
-		expect(screen.getByText('Nothing to chart yet')).toBeTruthy();
+		expect(screen.getByText(m.understand_no_data_title())).toBeTruthy();
 		expect(screen.getByText(/Old Faithful/)).toBeTruthy();
 		expect(mockGetAllFuelLogs).toHaveBeenCalledWith(7);
 	});

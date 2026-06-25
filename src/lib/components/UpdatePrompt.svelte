@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { registerSW } from 'virtual:pwa-register';
 	import { UPDATE_PROMPT_BOTTOM_OFFSET } from '$lib/config';
+	import { m } from '$lib/paraglide/messages';
 
 	interface Props {
 		onVisibilityChange?: (visible: boolean) => void;
@@ -33,12 +34,12 @@
 		role="status"
 		aria-live="polite"
 	>
-		<span class="text-sm font-medium">Update available</span>
+		<span class="text-sm font-medium">{m.update_available()}</span>
 		<button
 			class="rounded-lg bg-primary-foreground px-3 py-1 text-sm font-medium text-primary hover:bg-secondary"
 			onclick={() => updateSW(true)}
 		>
-			Reload
+			{m.common_reload()}
 		</button>
 	</div>
 {/if}

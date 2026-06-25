@@ -7,6 +7,7 @@
 	import { detectCSVFormat } from '$lib/utils/importDetect';
 	import type { ImportSource } from '$lib/utils/importTypes';
 	import type { AppError } from '$lib/utils/result';
+	import { m } from '$lib/paraglide/messages';
 
 	type FileProcessingState =
 		| { status: 'idle' }
@@ -35,11 +36,12 @@
 	let rowCountRef = $state(0);
 	let fileInputEl: HTMLInputElement | undefined = $state();
 
+	// Brand/format names are NOT translated; only the generic label carries translatable copy.
 	const formatLabels: Record<ImportSource, string> = {
 		fuelly: 'Fuelly',
 		acar: 'aCar / Fuelio',
 		drivvo: 'Drivvo',
-		generic: 'Generic CSV'
+		generic: m.import_source_generic_label()
 	};
 
 	const canContinue = $derived(processingState.status === 'success' && !showConflict);
@@ -65,7 +67,7 @@
 				status: 'error',
 				error: {
 					code: 'FILE_TOO_LARGE',
-					message: 'File too large. Try exporting a smaller date range.'
+					message: m.import_upload_error_too_large()
 				}
 			};
 			return;
@@ -77,7 +79,7 @@
 				status: 'error',
 				error: {
 					code: 'EMPTY_FILE',
-					message: 'This file appears to be empty. Check that you exported your data correctly.'
+					message: m.import_upload_error_empty()
 				}
 			};
 			return;
@@ -85,7 +87,7 @@
 
 		// Size warning (>5MB)
 		if (file.size > IMPORT_FILE_SIZE_WARN_BYTES) {
-			sizeWarning = 'This is a large file. Processing may take a moment.';
+			sizeWarning = m.import_upload_size_warning();
 		}
 
 		try {
@@ -97,7 +99,7 @@
 					status: 'error',
 					error: {
 						code: 'EMPTY_FILE',
-						message: 'This file appears to be empty. Check that you exported your data correctly.'
+						message: m.import_upload_error_empty()
 					}
 				};
 				return;
@@ -121,7 +123,7 @@
 					status: 'error',
 					error: {
 						code: 'TOO_MANY_ROWS',
-						message: `This file has more than ${MAX_CSV_ROWS.toLocaleString()} rows. Import the most recent data first, then import older records in a second pass.`
+						message: m.import_upload_error_too_many_rows({ max: MAX_CSV_ROWS.toLocaleString() })
 					}
 				};
 				return;
@@ -133,7 +135,7 @@
 					status: 'error',
 					error: {
 						code: 'EMPTY_FILE',
-						message: 'This file appears to be empty. Check that you exported your data correctly.'
+						message: m.import_upload_error_empty()
 					}
 				};
 				return;
@@ -171,7 +173,7 @@
 				status: 'error',
 				error: {
 					code: 'PARSE_ERROR',
-					message: 'Could not read this file. Make sure it is a valid CSV or text file.'
+					message: m.import_upload_error_parse()
 				}
 			};
 		}
@@ -228,18 +230,18 @@
 		<div
 			class="flex flex-col items-center rounded-2xl border-2 border-dashed border-border bg-card p-6 text-center"
 			role="region"
-			aria-label="File upload area"
+			aria-label={m.import_upload_area_label()}
 			ondrop={handleDrop}
 			ondragover={handleDragOver}
 		>
 			<p class="text-sm text-muted-foreground">
-				<span class="hidden md:inline">Drag and drop your CSV file here, or </span>
-				<span class="md:hidden">Choose your CSV file to begin.</span>
+				<span class="hidden md:inline">{m.import_upload_drag_drop()} </span>
+				<span class="md:hidden">{m.import_upload_choose_mobile()}</span>
 			</p>
 			<label
 				class="mt-3 inline-flex min-h-12 cursor-pointer items-center justify-center rounded-xl bg-accent px-5 py-3 text-sm font-semibold text-accent-foreground"
 			>
-				Choose File
+				{m.import_upload_choose_file()}
 				<input
 					bind:this={fileInputEl}
 					type="file"
@@ -260,7 +262,7 @@
 			<div
 				class="h-5 w-5 animate-spin rounded-full border-2 border-accent border-t-transparent"
 			></div>
-			<p class="text-sm text-muted-foreground">Analyzing your file...</p>
+			<p class="text-sm text-muted-foreground">{m.import_upload_analyzing()}</p>
 		</div>
 	{/if}
 
@@ -285,7 +287,10 @@
 				<div>
 					<p class="text-sm font-semibold text-foreground">{processingState.fileName}</p>
 					<p class="text-sm text-muted-foreground">
-						{formatFileSize(processingState.fileSize)} · Found {processingState.rowCount} rows
+						{m.import_upload_file_meta({
+							size: formatFileSize(processingState.fileSize),
+							count: processingState.rowCount
+						})}
 					</p>
 				</div>
 				<button
@@ -296,7 +301,7 @@
 						if (fileInputEl) fileInputEl.value = '';
 					}}
 				>
-					Change
+					{m.import_upload_change()}
 				</button>
 			</div>
 
@@ -309,7 +314,7 @@
 							? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400'
 							: 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400'}"
 					>
-						Detected: {formatLabels[detectedFormat]}
+						{m.import_upload_detected({ format: formatLabels[detectedFormat] })}
 					</span>
 				</div>
 			{/if}
@@ -322,8 +327,10 @@
 				role="alert"
 			>
 				<p class="text-sm text-foreground">
-					We detected <strong>{formatLabels[detectedFormat]}</strong> format, but you selected
-					<strong>{formatLabels[selectedSource]}</strong>. Which is correct?
+					{m.import_upload_conflict_body({
+						detected: formatLabels[detectedFormat],
+						selected: formatLabels[selectedSource]
+					})}
 				</p>
 				<div class="flex gap-3">
 					<button
@@ -331,14 +338,14 @@
 						class="min-h-11 flex-1 rounded-xl border border-border bg-card px-4 py-2 text-sm font-semibold text-foreground"
 						onclick={() => resolveConflict(detectedFormat!)}
 					>
-						Use {formatLabels[detectedFormat]}
+						{m.import_upload_conflict_use({ format: formatLabels[detectedFormat] })}
 					</button>
 					<button
 						type="button"
 						class="min-h-11 flex-1 rounded-xl border border-border bg-card px-4 py-2 text-sm font-semibold text-foreground"
 						onclick={() => resolveConflict(selectedSource)}
 					>
-						Use {formatLabels[selectedSource]}
+						{m.import_upload_conflict_use({ format: formatLabels[selectedSource] })}
 					</button>
 				</div>
 			</div>
@@ -351,7 +358,7 @@
 			class="inline-flex min-h-11 items-center justify-center rounded-xl bg-accent px-5 py-3 text-sm font-semibold text-accent-foreground disabled:cursor-not-allowed disabled:opacity-70"
 			onclick={handleContinue}
 		>
-			Continue
+			{m.import_continue()}
 		</button>
 	{/if}
 </div>

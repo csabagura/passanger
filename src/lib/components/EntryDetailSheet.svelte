@@ -4,6 +4,7 @@
 	import type { HistoryEntry } from '$lib/utils/historyEntries';
 	import { formatConsumptionForDisplay, formatCurrency } from '$lib/utils/calculations';
 	import { formatLocalCalendarDate } from '$lib/utils/date';
+	import { m } from '$lib/paraglide/messages';
 
 	type PointerGestureLock = 'pending' | 'horizontal' | 'vertical';
 
@@ -53,21 +54,24 @@
 		dragOffsetY > 0 ? `transform: translateY(${dragOffsetY}px);` : undefined
 	);
 	const detailRows = $derived<DetailRow[]>([
-		{ label: 'Date', value: formatLocalCalendarDate(entry.entry.date) },
-		{ label: 'Entry type', value: entry.kind === 'fuel' ? 'Fuel' : entry.entry.type },
-		...(vehicleName ? [{ label: 'Vehicle', value: vehicleName }] : []),
-		{ label: 'Odometer', value: getOdometerValue(entry) },
-		{ label: 'Quantity', value: getQuantityValue(entry) },
-		{ label: 'Unit', value: getUnitValue(entry) },
+		{ label: m.entry_detail_date_label(), value: formatLocalCalendarDate(entry.entry.date) },
 		{
-			label: 'Cost',
+			label: m.entry_detail_type_label(),
+			value: entry.kind === 'fuel' ? m.common_fuel() : entry.entry.type
+		},
+		...(vehicleName ? [{ label: m.entry_detail_vehicle_label(), value: vehicleName }] : []),
+		{ label: m.entry_detail_odometer_label(), value: getOdometerValue(entry) },
+		{ label: m.entry_detail_quantity_label(), value: getQuantityValue(entry) },
+		{ label: m.entry_detail_unit_label(), value: getUnitValue(entry) },
+		{
+			label: m.entry_detail_cost_label(),
 			value: formatCurrency(
 				entry.kind === 'fuel' ? entry.entry.totalCost : entry.entry.cost,
 				entry.entry.currency ?? currency
 			)
 		},
-		{ label: 'Calculated consumption', value: getConsumptionValue(entry) },
-		{ label: 'Notes', value: getNotesValue(entry) }
+		{ label: m.entry_detail_consumption_label(), value: getConsumptionValue(entry) },
+		{ label: m.entry_detail_notes_label(), value: getNotesValue(entry) }
 	]);
 
 	function getOdometerValue(item: HistoryEntry): string {
@@ -101,7 +105,7 @@
 					item.entry.unit,
 					preferredFuelUnit
 				)
-			: 'Efficiency pending';
+			: m.entry_efficiency_pending();
 	}
 
 	function getNotesValue(item: HistoryEntry): string {
@@ -110,7 +114,8 @@
 	}
 
 	function getEntryContextLabel(): string {
-		return `${entry.kind} entry from ${formatLocalCalendarDate(entry.entry.date)}`;
+		const type = entry.kind === 'fuel' ? m.entry_type_fuel_lc() : m.entry_type_maintenance_lc();
+		return m.entry_context_label({ type, date: formatLocalCalendarDate(entry.entry.date) });
 	}
 
 	async function focusTitle(): Promise<void> {
@@ -294,7 +299,7 @@
 <div class="fixed inset-0 z-50 flex items-end justify-center">
 	<button
 		type="button"
-		aria-label="Close entry details"
+		aria-label={m.entry_detail_close_backdrop_aria()}
 		class="absolute inset-0 bg-black/45"
 		onclick={handleBackdropClick}
 	></button>
@@ -331,10 +336,10 @@
 						tabindex="-1"
 						class="text-lg font-semibold text-foreground outline-none"
 					>
-						Entry details
+						{m.entry_detail_title()}
 					</h2>
 					<p class="text-sm text-muted-foreground">
-						Review the full record, then edit or delete it without leaving History.
+						{m.entry_detail_subtitle()}
 					</p>
 				</div>
 
@@ -343,7 +348,7 @@
 					onclick={handleClose}
 					class="rounded-full border border-border px-4 py-2 text-sm font-medium text-foreground"
 				>
-					Close
+					{m.common_close()}
 				</button>
 			</div>
 
@@ -366,15 +371,15 @@
 					onclick={handleEdit}
 					class="min-h-11 rounded-xl border border-border px-4 py-2 text-sm font-semibold text-foreground"
 				>
-					Edit
+					{m.common_edit()}
 				</button>
 				<button
 					type="button"
-					aria-label={`Delete ${getEntryContextLabel()}`}
+					aria-label={m.entry_delete_aria({ context: getEntryContextLabel() })}
 					onclick={handleDelete}
 					class="min-h-11 rounded-xl border border-destructive/20 px-4 py-2 text-sm font-semibold text-destructive"
 				>
-					Delete
+					{m.common_delete()}
 				</button>
 			</div>
 		</div>

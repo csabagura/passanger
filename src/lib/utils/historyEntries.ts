@@ -2,6 +2,7 @@ import type { FuelUnit } from '$lib/config';
 import { DEFAULT_CURRENCY } from '$lib/config';
 import type { Expense, FuelLog } from '$lib/db/schema';
 import { isFiniteNumber } from '$lib/utils/calculations';
+import { m } from '$lib/paraglide/messages';
 
 export type HistoryEntryFilter = 'all' | 'fuel' | 'maintenance';
 export type HistoryFuelVolumeUnit = FuelLog['unit'];
@@ -13,8 +14,10 @@ export type HistoryEntry =
 
 export interface HistoryTimePeriodOption {
 	value: HistoryTimePeriod;
-	label: 'This month' | 'This year' | 'All time';
-	ariaLabel: 'this month' | 'this year' | 'all time';
+	// i18n (6.1): label + ariaLabel resolve through Paraglide (m.history_period_*), so they are
+	// `string` rather than the former English literal unions.
+	label: string;
+	ariaLabel: string;
 }
 
 export interface HistoryMonthGroup {
@@ -49,18 +52,18 @@ import { LITERS_PER_GALLON, KILOMETERS_PER_MILE } from '$lib/utils/calculations'
 export const historyTimePeriodOptions = [
 	{
 		value: 'current-month',
-		label: 'This month',
-		ariaLabel: 'this month'
+		label: m.history_period_current_month(),
+		ariaLabel: m.history_period_aria_current_month()
 	},
 	{
 		value: 'year-to-date',
-		label: 'This year',
-		ariaLabel: 'this year'
+		label: m.history_period_year_to_date(),
+		ariaLabel: m.history_period_aria_year_to_date()
 	},
 	{
 		value: 'all-time',
-		label: 'All time',
-		ariaLabel: 'all time'
+		label: m.history_period_all_time(),
+		ariaLabel: m.history_period_aria_all_time()
 	}
 ] as const satisfies ReadonlyArray<HistoryTimePeriodOption>;
 
