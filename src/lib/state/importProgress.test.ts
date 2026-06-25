@@ -262,4 +262,20 @@ describe('clear and quota', () => {
 		expect(localStorage.getItem(IMPORT_PROGRESS_STORAGE_KEY)).toBeNull();
 		spy.mockRestore();
 	});
+
+	it('drops a previously-persisted payload when a later write hits quota — no stale resume (AC7)', () => {
+		// An earlier, smaller write succeeds and persists.
+		saveImportProgress(makeStep4State(), noSatellites);
+		expect(localStorage.getItem(IMPORT_PROGRESS_STORAGE_KEY)).not.toBeNull();
+
+		// A later, larger write overflows the quota. The stale earlier payload must NOT survive —
+		// otherwise a reload would resume the user to an OLDER step, silently losing later progress.
+		const spy = vi.spyOn(Storage.prototype, 'setItem').mockImplementationOnce(() => {
+			throw new DOMException('quota', 'QuotaExceededError');
+		});
+		expect(() => saveImportProgress(makeStep4State(), noSatellites)).not.toThrow();
+		expect(localStorage.getItem(IMPORT_PROGRESS_STORAGE_KEY)).toBeNull();
+		expect(loadImportProgress()).toBeNull();
+		spy.mockRestore();
+	});
 });

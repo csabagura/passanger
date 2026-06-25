@@ -75,8 +75,12 @@ function safeSet(key: string, value: string): void {
 	try {
 		localStorage.setItem(key, value);
 	} catch {
-		// Silently handle QuotaExceededError, SecurityError, etc. — persistence is best-effort.
-		// A too-large import (rawCSV up to 10 MB) simply isn't resumable; the wizard never crashes.
+		// Best-effort persistence. On QuotaExceededError/SecurityError, DROP any prior value for this
+		// key (5.4 code-review) so a failed write degrades to "not resumable" — a clean Step-1 restart,
+		// which is AC7's documented "no worse than today". Without this, a large import that fits at
+		// step N but overflows the quota at step N+1 would leave the stale step-N payload behind, and a
+		// reload would resume the user to the OLDER step, silently losing the later progress.
+		safeRemove(key);
 	}
 }
 
