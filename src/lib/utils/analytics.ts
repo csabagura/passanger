@@ -118,7 +118,9 @@ function convertVolumeToUnit(volume: number, fromUnit: 'L' | 'gal', toUnit: 'L' 
 /**
  * Spend per calendar month, grouped by currency. Ordered OLDEST → NEWEST so the
  * series reads left-to-right as a timeline bar chart. Legacy entries with no
- * currency are attributed to `homeCurrency`.
+ * currency are attributed to `homeCurrency`. Non-finite `cost` rows are skipped
+ * (PREP-1 convention — `NaN <= 0 → false` would otherwise leak `€NaN` into the bar,
+ * the asymmetry the guarded `maintenanceCostTrend` already avoids).
  */
 export function monthlySpendByCurrency(
 	entries: HistoryEntry[],
@@ -128,6 +130,10 @@ export function monthlySpendByCurrency(
 	const bucketsByKey = new Map<string, MonthlySpendBucket>();
 
 	for (const entry of entries) {
+		const cost = getHistoryEntryCost(entry);
+		if (!isFiniteNumber(cost)) {
+			continue;
+		}
 		const date = entry.entry.date;
 		const monthKey = getMonthKey(date);
 		let bucket = bucketsByKey.get(monthKey);
@@ -137,7 +143,7 @@ export function monthlySpendByCurrency(
 		}
 
 		const currency = resolveHistoryEntryCurrency(entry, homeCurrency);
-		bucket.byCurrency[currency] = (bucket.byCurrency[currency] ?? 0) + getHistoryEntryCost(entry);
+		bucket.byCurrency[currency] = (bucket.byCurrency[currency] ?? 0) + cost;
 	}
 
 	return [...bucketsByKey.values()].sort((left, right) =>

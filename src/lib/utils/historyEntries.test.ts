@@ -253,6 +253,22 @@ describe('historyEntries', () => {
 		expect(groupedCurrentMonth?.subtotalCost).toBe(currentMonthSummary.totalSpend);
 	});
 
+	it('keeps a non-finite cost out of totalSpend and subtotalCost without hiding the row', () => {
+		const entries = mergeHistoryEntries(
+			[
+				createFuelEntry({ id: 1, totalCost: Number.NaN }),
+				createFuelEntry({ id: 2, totalCost: 50 })
+			],
+			[]
+		);
+		const summary = summarizeHistoryEntries(entries);
+		const [group] = groupHistoryEntriesByMonth(entries);
+		expect(summary.totalSpend).toBe(50);
+		expect(group.subtotalCost).toBe(50);
+		expect(group.subtotalCost).toBe(summary.totalSpend);
+		expect(group.entries).toHaveLength(2);
+	});
+
 	it('returns a zeroed current-month summary when only older visible entries remain', () => {
 		const referenceDate = new Date(2026, 2, 15, 10, 0, 0, 0);
 		const entries = mergeHistoryEntries(
@@ -585,6 +601,17 @@ describe('currency segmentation', () => {
 	it('attributes legacy entries (no currency) to the home currency', () => {
 		const entries = mergeHistoryEntries([createFuelEntry({ totalCost: 78 })], []);
 		expect(summarizeSpendByCurrency(entries, 'Ft')).toEqual({ Ft: 78 });
+	});
+
+	it('skips an entry with a non-finite cost (PREP-1 convention)', () => {
+		const entries = mergeHistoryEntries(
+			[
+				createFuelEntry({ id: 1, totalCost: Number.NaN, currency: '€' }),
+				createFuelEntry({ id: 2, totalCost: 50, currency: '€' })
+			],
+			[]
+		);
+		expect(summarizeSpendByCurrency(entries, '€')).toEqual({ '€': 50 });
 	});
 });
 

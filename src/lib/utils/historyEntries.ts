@@ -1,6 +1,7 @@
 import type { FuelUnit } from '$lib/config';
 import { DEFAULT_CURRENCY } from '$lib/config';
 import type { Expense, FuelLog } from '$lib/db/schema';
+import { isFiniteNumber } from '$lib/utils/calculations';
 
 export type HistoryEntryFilter = 'all' | 'fuel' | 'maintenance';
 export type HistoryFuelVolumeUnit = FuelLog['unit'];
@@ -106,7 +107,10 @@ export function resolveHistoryEntryCurrency(entry: HistoryEntry, homeCurrency: s
 /**
  * Sum spend grouped by currency. Currencies cannot be added together without an exchange
  * rate (and the app makes no network calls), so totals are reported per currency. Legacy
- * entries with no currency are attributed to the home currency.
+ * entries with no currency are attributed to the home currency. Non-finite `cost` rows are
+ * skipped (PREP-1 convention) — a single `NaN`/`Infinity` would otherwise poison the whole
+ * per-currency total, surfacing as `€NaN` and silently dropping the spend Insight that
+ * `spendDelta` derives from this sum.
  */
 export function summarizeSpendByCurrency(
 	entries: HistoryEntry[],
@@ -114,8 +118,12 @@ export function summarizeSpendByCurrency(
 ): Record<string, number> {
 	const byCurrency: Record<string, number> = {};
 	for (const entry of entries) {
+		const cost = getHistoryEntryCost(entry);
+		if (!isFiniteNumber(cost)) {
+			continue;
+		}
 		const currency = resolveHistoryEntryCurrency(entry, homeCurrency);
-		byCurrency[currency] = (byCurrency[currency] ?? 0) + getHistoryEntryCost(entry);
+		byCurrency[currency] = (byCurrency[currency] ?? 0) + cost;
 	}
 	return byCurrency;
 }
@@ -271,18 +279,23 @@ export function groupHistoryEntriesByMonth(
 
 	for (const entry of entries) {
 		const monthKey = getHistoryMonthKey(entry.entry.date);
+		// Keep the row visible but exclude a non-finite cost from the subtotal (PREP-1): the
+		// entry still groups into the month; only `€NaN` is kept out of the displayed total,
+		// staying in lockstep with the `totalSpend` guard below so the two never diverge.
+		const cost = getHistoryEntryCost(entry);
+		const subtotal = isFiniteNumber(cost) ? cost : 0;
 		const lastGroup = monthGroups.at(-1);
 
 		if (lastGroup?.key === monthKey) {
 			lastGroup.entries.push(entry);
-			lastGroup.subtotalCost += getHistoryEntryCost(entry);
+			lastGroup.subtotalCost += subtotal;
 			continue;
 		}
 
 		monthGroups.push({
 			key: monthKey,
 			label: formatHistoryMonthLabel(entry.entry.date, locale),
-			subtotalCost: getHistoryEntryCost(entry),
+			subtotalCost: subtotal,
 			entries: [entry]
 		});
 	}
@@ -295,7 +308,10 @@ export function summarizeHistoryEntries(
 	preferredFuelUnit: FuelUnit = 'L/100km',
 	homeCurrency: string = DEFAULT_CURRENCY
 ): HistorySummary {
-	const totalSpend = entries.reduce((sum, entry) => sum + getHistoryEntryCost(entry), 0);
+	const totalSpend = entries.reduce((sum, entry) => {
+		const cost = getHistoryEntryCost(entry);
+		return sum + (isFiniteNumber(cost) ? cost : 0);
+	}, 0);
 	const totalSpendByCurrency = summarizeSpendByCurrency(entries, homeCurrency);
 	const preferredVolumeUnit = getPreferredFuelVolumeUnit(preferredFuelUnit);
 	const preferredDistanceUnit = preferredVolumeUnit === 'L' ? 'km' : 'mi';
