@@ -9,7 +9,11 @@
 	} from '$lib/utils/importTypes';
 	import { validateImportRow } from '$lib/utils/importValidation';
 	import { buildDryRunSummary } from '$lib/utils/importValidation';
+	import { m } from '$lib/paraglide/messages';
 
+	// NOTE: FIELD_ISSUE_MAP values are NOT user copy to translate — they are matching TOKENS compared by
+	// string equality against issue strings produced by importValidation.ts (out of this batch). The same
+	// validator emits row.issues, so these literals must stay byte-identical to it or field-matching breaks.
 	const FIELD_ISSUE_MAP: Record<string, string[]> = {
 		date: ['Missing date', 'Date could not be read', 'Date is in the future'],
 		odometer: [
@@ -92,7 +96,12 @@
 	});
 
 	const statusCountsText = $derived(
-		`${updatedCounts.validCount} valid, ${updatedCounts.warningCount} warning, ${updatedCounts.errorCount} error, ${updatedCounts.skippedCount} skipped`
+		m.import_review_status_counts({
+			valid: updatedCounts.validCount,
+			warning: updatedCounts.warningCount,
+			error: updatedCounts.errorCount,
+			skipped: updatedCounts.skippedCount
+		})
 	);
 
 	// Auto-skip: if no flagged rows, call onReviewConfirmed immediately
@@ -193,8 +202,9 @@
 	function getIssueLabel(row: ImportRow): string {
 		const issues = getRowIssues(row);
 		if (issues.length === 0) return '';
+		// A single issue is the validator's own message (data from importValidation) — shown verbatim.
 		if (issues.length === 1) return issues[0];
-		return `${issues.length} issues`;
+		return m.import_review_issue_count({ count: issues.length });
 	}
 
 	function getSeverityBadge(row: ImportRow): { text: string; class: string } {
@@ -257,13 +267,19 @@
 		row: ImportRow
 	): { name: string; label: string; inputMode: InputMode }[] {
 		const fields: { name: string; label: string; inputMode: InputMode }[] = [
-			{ name: 'date', label: 'Date', inputMode: 'text' },
-			{ name: 'odometer', label: 'Odometer', inputMode: 'decimal' },
+			{ name: 'date', label: m.import_review_field_date(), inputMode: 'text' },
+			{ name: 'odometer', label: m.import_review_field_odometer(), inputMode: 'decimal' },
 			...(row.data.type !== 'maintenance'
-				? [{ name: 'quantity', label: 'Quantity', inputMode: 'decimal' as InputMode }]
+				? [
+						{
+							name: 'quantity',
+							label: m.import_review_field_quantity(),
+							inputMode: 'decimal' as InputMode
+						}
+					]
 				: []),
-			{ name: 'totalCost', label: 'Cost', inputMode: 'decimal' },
-			{ name: 'notes', label: 'Notes', inputMode: 'text' }
+			{ name: 'totalCost', label: m.import_review_field_cost(), inputMode: 'decimal' },
+			{ name: 'notes', label: m.import_review_field_notes(), inputMode: 'text' }
 		];
 		return fields;
 	}
@@ -527,11 +543,12 @@
 			data-testid="review-summary"
 		>
 			<p class="text-sm text-foreground">
-				{flaggedRows.length} row{flaggedRows.length !== 1 ? 's' : ''} need{flaggedRows.length === 1
-					? 's'
-					: ''} attention
+				{m.import_review_needs_attention({ count: flaggedRows.length })}
 				{#if reviewedCount > 0}
-					&mdash; {reviewedCount} of {flaggedRows.length} reviewed
+					&mdash; {m.import_review_reviewed_progress({
+						reviewed: reviewedCount,
+						total: flaggedRows.length
+					})}
 				{/if}
 			</p>
 			{#if reviewedCount > 0}
@@ -544,7 +561,7 @@
 		<!-- Row completion announcements -->
 		<div aria-live="polite" class="sr-only" data-testid="review-announcements">
 			{#if reviewedCount > 0}
-				{reviewedCount} of {flaggedRows.length} rows reviewed
+				{m.import_review_announce({ reviewed: reviewedCount, total: flaggedRows.length })}
 			{/if}
 		</div>
 
@@ -564,16 +581,16 @@
 					<div class={state.status === 'skipped' ? 'line-through' : ''}>
 						<p class="text-sm text-foreground">
 							<span class={severity.class} aria-hidden="true">{severity.text}</span>
-							<span class="font-medium">Row {row.rowNumber}</span>
+							<span class="font-medium">{m.import_review_row_label({ row: row.rowNumber })}</span>
 							{#if state.status === 'corrected'}
 								<span
 									class="ml-2 inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800 dark:bg-green-900/30 dark:text-green-400"
-									>Corrected</span
+									>{m.import_review_badge_corrected()}</span
 								>
 							{:else if state.status === 'skipped'}
 								<span
 									class="ml-2 inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground"
-									>Skipped</span
+									>{m.import_review_badge_skipped()}</span
 								>
 							{/if}
 						</p>
@@ -592,11 +609,18 @@
 						aria-expanded={isExpanded}
 						aria-controls="review-row-{row.rowNumber}"
 						aria-label={state.status === 'skipped'
-							? `Undo skip for Row ${row.rowNumber}`
-							: `Edit Row ${row.rowNumber}: ${getDataSummary(row)}, ${row.issues.length} ${row.status === 'error' ? 'error' : 'warning'}${row.issues.length !== 1 ? 's' : ''}`}
+							? m.import_review_undo_aria({ row: row.rowNumber })
+							: m.import_review_edit_aria({
+									row: row.rowNumber,
+									summary: getDataSummary(row),
+									issues:
+										row.status === 'error'
+											? m.import_review_error_count({ count: row.issues.length })
+											: m.import_review_warning_count({ count: row.issues.length })
+								})}
 						onclick={() => handleExpand(row.rowNumber)}
 					>
-						{state.status === 'skipped' ? 'Undo' : 'Edit'}
+						{state.status === 'skipped' ? m.import_review_undo() : m.common_edit()}
 					</button>
 				</div>
 
@@ -607,14 +631,14 @@
 							<!-- Un-skip option -->
 							<div class="flex flex-col gap-2">
 								<p class="text-sm text-muted-foreground">
-									This row is currently skipped and will not be imported.
+									{m.import_review_skipped_note()}
 								</p>
 								<button
 									type="button"
 									class="h-12 w-full rounded-md border border-border bg-card text-sm font-semibold text-foreground"
 									onclick={() => handleUnskip(row)}
 								>
-									Include This Row
+									{m.import_review_include_row()}
 								</button>
 							</div>
 						{:else}
@@ -657,7 +681,7 @@
 									{:else}
 										<span class="mt-1 block text-sm text-muted-foreground">
 											{getFieldDisplayValue(row, field.name)}
-											<span class="text-xs">(valid)</span>
+											<span class="text-xs">{m.import_review_valid_suffix()}</span>
 										</span>
 									{/if}
 								</div>
@@ -670,14 +694,14 @@
 									class="h-12 w-full rounded-md bg-accent text-sm font-semibold text-accent-foreground sm:flex-1"
 									onclick={() => handleSaveCorrections(row)}
 								>
-									Save Corrections
+									{m.import_review_save_corrections()}
 								</button>
 								<button
 									type="button"
 									class="h-12 w-full rounded-md border border-border bg-card text-sm font-semibold text-foreground sm:flex-1"
 									onclick={() => handleSkip(row)}
 								>
-									Skip This Row
+									{m.import_review_skip_row()}
 								</button>
 							</div>
 						{/if}
@@ -693,7 +717,7 @@
 				class="text-xs text-muted-foreground underline"
 				onclick={handleSkipAllRemaining}
 			>
-				Skip all remaining flagged rows
+				{m.import_review_skip_all()}
 			</button>
 		{/if}
 
@@ -705,7 +729,7 @@
 			data-testid="assign-vehicles-btn"
 			onclick={handleAssignVehicles}
 		>
-			Assign Vehicles
+			{m.import_review_assign_vehicles()}
 		</button>
 	</div>
 {/if}

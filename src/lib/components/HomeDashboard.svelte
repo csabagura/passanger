@@ -8,6 +8,7 @@
 	import InsightLine from '$lib/components/InsightLine.svelte';
 	import HomeSkeleton from '$lib/components/HomeSkeleton.svelte';
 	import { recency } from '$lib/utils/metrics/recency';
+	import { m } from '$lib/paraglide/messages';
 	import type { FuelLog, Expense } from '$lib/db/schema';
 
 	interface Props {
@@ -53,16 +54,19 @@
 
 	// Summary line — a basic glance sentence (OQ-1: NOT the Story-4.3 plain-language Insight). Reflects
 	// both fuel and expense counts so either Capture type updates it live.
+	// i18n (6.1): the #1 concatenation trap. Each count is its OWN plural message (HU keeps the noun
+	// singular after a numeral), and the full sentence is ONE template per shape — the plural noun
+	// phrases are passed as params so Hungarian word order can differ. No translated fragment is glued.
 	const summaryLine = $derived.by(() => {
 		if (fuelCount === 0 && expenseCount === 0) {
-			return `No entries yet for ${vehicleName} — tap the + to log your first.`;
+			return m.home_summary_empty({ vehicleName });
 		}
-		const fuelPart = `${fuelCount} fill-up${fuelCount === 1 ? '' : 's'}`;
+		const fuelPart = m.home_fillups_count({ count: fuelCount });
 		if (expenseCount === 0) {
-			return `Tracking ${fuelPart} for ${vehicleName}.`;
+			return m.home_tracking_fuel({ fuelPart, vehicleName });
 		}
-		const expensePart = `${expenseCount} expense${expenseCount === 1 ? '' : 's'}`;
-		return `Tracking ${fuelPart} · ${expensePart} for ${vehicleName}.`;
+		const expensePart = m.home_expenses_count({ count: expenseCount });
+		return m.home_tracking_fuel_expense({ fuelPart, expensePart, vehicleName });
 	});
 
 	// Last-fill recency (AC-6) — the newest fuel-log date rendered via the FR-19 recency helper
@@ -75,7 +79,9 @@
 		);
 	});
 
-	const recencyText = $derived(lastFillDate ? `Last fill-up: ${recency(lastFillDate)}` : null);
+	const recencyText = $derived(
+		lastFillDate ? m.home_last_fillup({ recency: recency(lastFillDate) }) : null
+	);
 </script>
 
 {#if loading}

@@ -75,7 +75,7 @@
 <nav
 	class="fixed bottom-0 left-0 right-0 z-40 flex border-t border-border bg-card"
 	style="padding-bottom: env(safe-area-inset-bottom);"
-	aria-label="Main navigation"
+	aria-label={m.shell_nav_main()}
 >
 	{#each tabs as tab, index (tab.href)}
 		{#if index === FAB_SLOT_INDEX}

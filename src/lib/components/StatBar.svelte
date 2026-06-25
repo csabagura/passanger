@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { formatConsumption, formatCurrency } from '$lib/utils/calculations';
+	import { m } from '$lib/paraglide/messages';
 	import type { HistorySummary } from '$lib/utils/historyEntries';
 
 	interface Props {
@@ -40,9 +41,11 @@
 	const showConvertedHomeTotal = $derived(isMultiCurrency && convertedHomeTotal !== null);
 	const formattedConvertedHomeTotal = $derived(
 		convertedHomeTotal
-			? `≈ ${formatCurrency(convertedHomeTotal.total, homeCurrency ?? currency)} · your rates${
+			? `${m.stat_converted_total({
+					amount: formatCurrency(convertedHomeTotal.total, homeCurrency ?? currency)
+				})}${
 					convertedHomeTotal.unconvertedEntries > 0
-						? ` · ${convertedHomeTotal.unconvertedEntries} unconverted`
+						? ` ${m.stat_unconverted_suffix({ count: convertedHomeTotal.unconvertedEntries })}`
 						: ''
 				}`
 			: ''
@@ -79,10 +82,13 @@
 	aria-labelledby="history-stat-bar-title"
 	class="rounded-3xl border border-border bg-card p-4 shadow-sm"
 >
-	<h2 id="history-stat-bar-title" class="sr-only">History totals</h2>
+	<h2 id="history-stat-bar-title" class="sr-only">{m.stat_section_title()}</h2>
 
 	<div
-		aria-label={`${selectedPeriodAriaLabel}: ${formattedSelectedPeriodTotal}`}
+		aria-label={m.stat_period_aria({
+			label: selectedPeriodAriaLabel,
+			total: formattedSelectedPeriodTotal
+		})}
 		role="group"
 		class="space-y-1"
 	>
@@ -101,24 +107,30 @@
 		class="mt-4 grid grid-cols-3 divide-x divide-border overflow-hidden rounded-2xl border border-border bg-muted/30"
 	>
 		<div class="flex flex-col-reverse gap-1 px-3 py-4 text-center">
-			<dt class="text-xs uppercase tracking-[0.16em] text-muted-foreground">Total spend</dt>
+			<dt class="text-xs uppercase tracking-[0.16em] text-muted-foreground">
+				{m.stat_total_spend()}
+			</dt>
 			<dd class="text-lg font-semibold tabular-nums text-foreground">
 				{formattedTotalSpend}
 			</dd>
 		</div>
 
 		<div class="flex flex-col-reverse gap-1 px-3 py-4 text-center">
-			<dt class="text-xs uppercase tracking-[0.16em] text-muted-foreground">Fuel volume</dt>
+			<dt class="text-xs uppercase tracking-[0.16em] text-muted-foreground">
+				{m.stat_fuel_volume()}
+			</dt>
 			<dd class="text-lg font-semibold tabular-nums text-foreground">
 				{formatVolumeWithUnit(summary.totalFuelVolume, summary.fuelVolumeUnit)}
 			</dd>
 		</div>
 
 		<div class="flex flex-col-reverse gap-1 px-3 py-4 text-center">
-			<dt class="text-xs uppercase tracking-[0.16em] text-muted-foreground">Avg consumption</dt>
+			<dt class="text-xs uppercase tracking-[0.16em] text-muted-foreground">
+				{m.stat_avg_consumption()}
+			</dt>
 			<dd class="text-lg font-semibold tabular-nums text-foreground">
 				{#if summary.averageConsumption === null}
-					No data
+					{m.stat_no_data()}
 				{:else}
 					{formatConsumption(summary.averageConsumption, summary.averageConsumptionUnit)}
 				{/if}

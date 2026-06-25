@@ -21,6 +21,7 @@
 	import { mergeHistoryEntries, summarizeSpendByCurrency } from '$lib/utils/historyEntries';
 	import { selectDisplayRateBlend } from '$lib/utils/displayRate';
 	import { MAX_INSIGHTS_UNDERSTAND } from '$lib/config';
+	import { m } from '$lib/paraglide/messages';
 	import type { AppSettings } from '$lib/utils/settings';
 	import type { FuelLog, Expense } from '$lib/db/schema';
 
@@ -138,8 +139,14 @@
 	);
 	const splitChartLabel = $derived(
 		homeSplitTotal > 0
-			? `Spending split in ${homeCurrency}. Fuel: ${formatCurrency(homeSplit.fuel, homeCurrency)} (${Math.round(fuelSplitPercent)}%). Maintenance: ${formatCurrency(homeSplit.maintenance, homeCurrency)} (${Math.round(maintenanceSplitPercent)}%).`
-			: 'Fuel versus maintenance split with no data in your home currency.'
+			? m.understand_split_aria({
+					currency: homeCurrency,
+					fuelAmount: formatCurrency(homeSplit.fuel, homeCurrency),
+					fuelPercent: Math.round(fuelSplitPercent),
+					maintenanceAmount: formatCurrency(homeSplit.maintenance, homeCurrency),
+					maintenancePercent: Math.round(maintenanceSplitPercent)
+				})
+			: m.understand_split_aria_empty()
 	);
 	let splitAsTable = $state(false);
 
@@ -174,12 +181,14 @@
 <div class="px-4 pt-4">
 	<div class="space-y-6">
 		<header class="space-y-1">
-			<h1 class="text-xl font-semibold text-foreground">Understand</h1>
+			<h1 class="text-xl font-semibold text-foreground">{m.understand_title()}</h1>
 			{#if vehicleName}
-				<p class="text-sm text-muted-foreground">Trends and maintenance for {vehicleName}.</p>
+				<p class="text-sm text-muted-foreground">
+					{m.understand_subtitle_vehicle({ name: vehicleName })}
+				</p>
 			{:else}
 				<p class="text-sm text-muted-foreground">
-					Spot trends in your fuel and maintenance spending over time.
+					{m.understand_subtitle_generic()}
 				</p>
 			{/if}
 		</header>
@@ -188,21 +197,21 @@
 			<!-- DB-error takes precedence: a rejected read never emits a `current`, so `loading` would
 			     otherwise stay true forever and trap the surface on the skeleton. -->
 			<div role="alert" class="flex flex-col items-center justify-center gap-4 p-8 text-center">
-				<p class="text-lg font-semibold text-foreground">Could not load your analytics</p>
+				<p class="text-lg font-semibold text-foreground">{m.understand_db_error_title()}</p>
 				<p class="text-sm text-muted-foreground">
-					There was a problem reaching the database. Please restart the app to try again.
+					{m.understand_db_error_body()}
 				</p>
 				<a
 					href={resolve('/export')}
 					class="rounded-xl bg-accent px-5 py-3 text-sm font-semibold text-accent-foreground"
 				>
-					Export My Data
+					{m.understand_export_data()}
 				</a>
 			</div>
 		{:else if loading}
 			<!-- Cold-load skeleton: hand-rolled motion-safe pulse (mirror HomeSkeleton — NO shadcn, protects
 			     NFR-4). aria-hidden shapes + a polite status sibling for screen readers. -->
-			<p class="sr-only" role="status" aria-live="polite">Loading your analytics…</p>
+			<p class="sr-only" role="status" aria-live="polite">{m.understand_loading()}</p>
 			<div aria-hidden="true" class="space-y-4">
 				{#each [0, 1, 2] as block (block)}
 					<div class="rounded-3xl border border-border bg-card p-4">
@@ -214,13 +223,12 @@
 		{:else if !hasData}
 			<div
 				role="region"
-				aria-label="No data yet"
+				aria-label={m.understand_no_data_region()}
 				class="rounded-2xl border border-dashed border-border bg-card px-4 py-10 text-center"
 			>
-				<p class="text-base font-semibold text-foreground">Nothing to chart yet</p>
+				<p class="text-base font-semibold text-foreground">{m.understand_no_data_title()}</p>
 				<p class="mt-1 text-sm text-muted-foreground">
-					Log a few fill-ups and expenses and your spending and consumption trends will show up
-					here.
+					{m.understand_no_data_body()}
 				</p>
 			</div>
 		{:else}
@@ -238,8 +246,10 @@
 				     selectable text (NFR-3); `≈` precedes the value as a readable approximation marker, not an
 				     icon-only signal. Calm, non-alarmist voice (no FX claim — "using your rate"). -->
 				<p class="rounded-2xl border border-border bg-muted/40 px-4 py-3 text-sm text-foreground">
-					≈ {formatCurrency(displayRateBlend.total, homeCurrency)}
-					{displayRateBlend.label}
+					{m.understand_blend_total({
+						amount: formatCurrency(displayRateBlend.total, homeCurrency),
+						label: displayRateBlend.label
+					})}
 				</p>
 			{/if}
 
@@ -247,8 +257,7 @@
 				<p
 					class="rounded-2xl border border-border bg-muted/40 px-4 py-3 text-xs text-muted-foreground"
 				>
-					Charts show amounts in your home currency ({homeCurrency}). Other currencies aren't
-					converted (no exchange rate offline) — their totals are:
+					{m.understand_unconverted_note_lead({ currency: homeCurrency })}
 					<span class="font-medium text-foreground"
 						>{unconvertedCurrencyTotals
 							.map(([currency, amount]) => formatCurrency(amount, currency))
@@ -260,35 +269,35 @@
 			<!-- Monthly spend (bar) -->
 			<InteractiveChart
 				idBase="understand-monthly"
-				title="Monthly spend"
+				title={m.chart_monthly_spend_title()}
 				kind="bar"
 				points={monthlyPoints}
-				subtitle={`Total per month in ${homeCurrency}`}
-				ariaSummary={`Monthly spend in ${homeCurrency}.`}
-				emptyText={`No spending recorded in ${homeCurrency} yet.`}
+				subtitle={m.chart_monthly_spend_subtitle({ currency: homeCurrency })}
+				ariaSummary={m.chart_monthly_spend_aria({ currency: homeCurrency })}
+				emptyText={m.understand_no_spend_in_currency({ currency: homeCurrency })}
 			/>
 
 			<!-- Consumption trend (line) -->
 			<InteractiveChart
 				idBase="understand-consumption"
-				title="Consumption trend"
+				title={m.chart_consumption_title()}
 				kind="line"
 				points={consumptionPoints}
-				subtitle={`${volumeUnit === 'L' ? 'L/100km' : 'MPG'} per fill-up, oldest to newest`}
-				ariaSummary="Fuel consumption per fill-up, oldest to newest."
-				emptyText="No consumption data yet. Add a second fill-up to start the trend."
-				singlePointHint="One fill-up so far. Add more to see a trend."
+				subtitle={m.chart_consumption_subtitle({ unit: volumeUnit === 'L' ? 'L/100km' : 'MPG' })}
+				ariaSummary={m.chart_consumption_aria()}
+				emptyText={m.chart_consumption_empty()}
+				singlePointHint={m.chart_consumption_single_hint()}
 			/>
 
 			<!-- Maintenance cost trend (bar, NET-NEW FR-14) -->
 			<InteractiveChart
 				idBase="understand-maintenance"
-				title="Maintenance cost trend"
+				title={m.chart_maintenance_title()}
 				kind="bar"
 				points={maintenancePoints}
-				subtitle={`Maintenance per month in ${homeCurrency}`}
-				ariaSummary={`Monthly maintenance spend in ${homeCurrency}.`}
-				emptyText={`No maintenance recorded in ${homeCurrency} yet.`}
+				subtitle={m.chart_maintenance_subtitle({ currency: homeCurrency })}
+				ariaSummary={m.chart_maintenance_aria({ currency: homeCurrency })}
+				emptyText={m.understand_no_maintenance_in_currency({ currency: homeCurrency })}
 			/>
 
 			<!-- Fuel vs maintenance split (keep the bespoke stacked bar + accessible legend; the legend is
@@ -302,9 +311,11 @@
 				<div class="flex items-start justify-between gap-3">
 					<div class="space-y-1">
 						<h2 id="understand-split-title" class="text-base font-semibold text-foreground">
-							Fuel vs maintenance
+							{m.understand_split_title()}
 						</h2>
-						<p class="text-xs text-muted-foreground">Share of spend in {homeCurrency}</p>
+						<p class="text-xs text-muted-foreground">
+							{m.understand_split_subtitle({ currency: homeCurrency })}
+						</p>
 					</div>
 					{#if homeSplitTotal > 0}
 						<button
@@ -313,35 +324,41 @@
 							onclick={() => (splitAsTable = !splitAsTable)}
 							class="shrink-0 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card"
 						>
-							{splitAsTable ? 'View as chart' : 'View as table'}
+							{splitAsTable ? m.chart_view_as_chart() : m.chart_view_as_table()}
 						</button>
 					{/if}
 				</div>
 
 				{#if homeSplitTotal <= 0}
 					<p class="py-6 text-center text-sm text-muted-foreground">
-						No spending recorded in {homeCurrency} yet.
+						{m.understand_no_spend_in_currency({ currency: homeCurrency })}
 					</p>
 				{:else if splitAsTable}
 					<table class="w-full border-collapse text-sm">
-						<caption class="sr-only">Fuel vs maintenance. {splitChartLabel}</caption>
+						<caption class="sr-only"
+							>{m.understand_split_caption({ detail: splitChartLabel })}</caption
+						>
 						<thead>
 							<tr class="border-b border-border text-left text-xs text-muted-foreground">
-								<th scope="col" class="py-1.5 pr-3 font-medium">Category</th>
-								<th scope="col" class="py-1.5 pr-3 font-medium">Amount</th>
-								<th scope="col" class="py-1.5 font-medium">Share</th>
+								<th scope="col" class="py-1.5 pr-3 font-medium"
+									>{m.understand_split_col_category()}</th
+								>
+								<th scope="col" class="py-1.5 pr-3 font-medium"
+									>{m.understand_split_col_amount()}</th
+								>
+								<th scope="col" class="py-1.5 font-medium">{m.understand_split_col_share()}</th>
 							</tr>
 						</thead>
 						<tbody>
 							<tr class="border-b border-border/50">
-								<td class="py-1.5 pr-3 text-foreground">Fuel</td>
+								<td class="py-1.5 pr-3 text-foreground">{m.common_fuel()}</td>
 								<td class="py-1.5 pr-3 tabular-nums text-foreground"
 									>{formatCurrency(homeSplit.fuel, homeCurrency)}</td
 								>
 								<td class="py-1.5 tabular-nums text-foreground">{Math.round(fuelSplitPercent)}%</td>
 							</tr>
 							<tr>
-								<td class="py-1.5 pr-3 text-foreground">Maintenance</td>
+								<td class="py-1.5 pr-3 text-foreground">{m.understand_maintenance()}</td>
 								<td class="py-1.5 pr-3 tabular-nums text-foreground"
 									>{formatCurrency(homeSplit.maintenance, homeCurrency)}</td
 								>
@@ -374,7 +391,7 @@
 								<dt class="flex items-center gap-2 text-xs text-muted-foreground">
 									<span class="inline-block h-2.5 w-2.5 rounded-full bg-accent" aria-hidden="true"
 									></span>
-									Fuel ({Math.round(fuelSplitPercent)}%)
+									{m.understand_split_legend_fuel({ percent: Math.round(fuelSplitPercent) })}
 								</dt>
 								<dd class="text-lg font-semibold tabular-nums text-foreground">
 									{formatCurrency(homeSplit.fuel, homeCurrency)}
@@ -386,7 +403,9 @@
 										class="inline-block h-2.5 w-2.5 rounded-full bg-foreground/40"
 										aria-hidden="true"
 									></span>
-									Maintenance ({Math.round(maintenanceSplitPercent)}%)
+									{m.understand_split_legend_maintenance({
+										percent: Math.round(maintenanceSplitPercent)
+									})}
 								</dt>
 								<dd class="text-lg font-semibold tabular-nums text-foreground">
 									{formatCurrency(homeSplit.maintenance, homeCurrency)}

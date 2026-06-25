@@ -6,6 +6,7 @@
 	import type { Vehicle } from '$lib/db/schema';
 	import VehicleForm from './VehicleForm.svelte';
 	import { Button } from '$lib/components/ui/button';
+	import { m } from '$lib/paraglide/messages';
 
 	type ViewState = { mode: 'list' } | { mode: 'create' } | { mode: 'edit'; vehicle: Vehicle };
 	type DeleteState = 'idle' | 'armed' | 'loading';
@@ -35,7 +36,7 @@
 	async function loadVehicles() {
 		const result = await getAllVehicles();
 		if (result.error) {
-			loadError = 'Could not load vehicles. Please try again.';
+			loadError = m.vehiclelist_error_load();
 			return;
 		}
 		vehicles = result.data;
@@ -100,7 +101,7 @@
 
 		const result = await deleteVehicle(deletedId);
 		if (result.error) {
-			deleteError = 'Could not delete vehicle. Please try again.';
+			deleteError = m.vehiclelist_error_delete();
 			deleteState = 'armed';
 			return;
 		}
@@ -155,18 +156,20 @@
 		onCancel={handleCancel}
 	/>
 {:else if loading}
-	<p class="text-sm text-muted-foreground">Loading vehicles…</p>
+	<p class="text-sm text-muted-foreground">{m.vehiclelist_loading()}</p>
 {:else if loadError}
 	<p role="alert" class="text-sm text-destructive">{loadError}</p>
 {:else if vehicles.length === 0}
 	<div class="space-y-3 text-center">
 		<p class="text-sm text-muted-foreground">
-			No vehicles yet. Add your first vehicle to get started.
+			{m.vehiclelist_empty()}
 		</p>
-		<Button bind:ref={addButtonEl} onclick={handleCreateClick}>+ Add vehicle</Button>
+		<Button bind:ref={addButtonEl} onclick={handleCreateClick}
+			>+ {m.vehiclelist_add_vehicle()}</Button
+		>
 	</div>
 {:else}
-	<ul class="space-y-3" aria-label="Vehicle list" bind:this={listContainerEl}>
+	<ul class="space-y-3" aria-label={m.vehiclelist_list_label()} bind:this={listContainerEl}>
 		{#each vehicles as vehicle (vehicle.id)}
 			{@const isActive = activeVehicleId === vehicle.id}
 			{@const isDeleteTarget = deleteTarget?.id === vehicle.id && deletePromptVisible}
@@ -187,7 +190,7 @@
 							{/if}
 							<span class="font-semibold text-foreground">{vehicle.name}</span>
 							{#if isActive}
-								<span class="text-xs text-accent">Active</span>
+								<span class="text-xs text-accent">{m.vehiclelist_active()}</span>
 							{/if}
 						</div>
 						<p class="text-sm text-muted-foreground">
@@ -200,18 +203,18 @@
 							variant="outline"
 							size="icon"
 							onclick={() => handleEditClick(vehicle)}
-							aria-label="Edit {vehicle.name}"
+							aria-label={m.vehiclelist_edit_label({ name: vehicle.name })}
 						>
-							Edit
+							{m.common_edit()}
 						</Button>
 						<Button
 							variant="destructive"
 							size="icon"
 							disabled={deletePromptVisible}
 							onclick={() => handleDeleteRequest(vehicle)}
-							aria-label="Delete {vehicle.name}"
+							aria-label={m.vehiclelist_delete_label({ name: vehicle.name })}
 						>
-							Delete
+							{m.common_delete()}
 						</Button>
 					</div>
 				</div>
@@ -223,8 +226,7 @@
 						class="mt-4 rounded-2xl border border-destructive/20 bg-destructive/10 p-4"
 					>
 						<p id={deleteDialogId} class="text-sm font-semibold text-destructive">
-							Delete {vehicle.name}? Entries linked to this vehicle will remain but won't be
-							associated with any vehicle.
+							{m.vehiclelist_delete_confirm({ name: vehicle.name })}
 						</p>
 
 						{#if deleteError}
@@ -242,14 +244,16 @@
 								disabled={deleteState === 'loading'}
 								onclick={handleDeleteCancel}
 							>
-								Cancel
+								{m.common_cancel()}
 							</Button>
 							<Button
 								variant="destructive"
 								disabled={deleteState === 'loading'}
 								onclick={handleDeleteConfirm}
 							>
-								{deleteState === 'loading' ? 'Deleting…' : 'Confirm delete'}
+								{deleteState === 'loading'
+									? m.vehiclelist_delete_confirm_busy()
+									: m.vehiclelist_delete_confirm_button()}
 							</Button>
 						</div>
 					</div>
@@ -260,12 +264,16 @@
 
 	<div class="mt-4 space-y-2">
 		{#if canAddVehicle}
-			<Button bind:ref={addButtonEl} onclick={handleCreateClick}>+ Add vehicle</Button>
+			<Button bind:ref={addButtonEl} onclick={handleCreateClick}
+				>+ {m.vehiclelist_add_vehicle()}</Button
+			>
 		{:else}
 			<p class="text-sm text-muted-foreground">
-				Maximum {MAX_VEHICLES} vehicles reached. Delete a vehicle to add a new one.
+				{m.vehiclelist_limit_reached({ max: MAX_VEHICLES })}
 			</p>
 		{/if}
-		<p class="text-sm text-muted-foreground">{vehicleCount} of {MAX_VEHICLES} vehicles</p>
+		<p class="text-sm text-muted-foreground">
+			{m.vehiclelist_count({ count: vehicleCount, max: MAX_VEHICLES })}
+		</p>
 	</div>
 {/if}

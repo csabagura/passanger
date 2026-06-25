@@ -245,7 +245,7 @@ describe('HTML shell — CSP compliance guard', () => {
 });
 
 describe('Performance budget — bundle size', () => {
-	it('total JS bundle is under 250KB gzipped (NFR4)', () => {
+	it('total JS bundle is under 255KB gzipped (NFR4)', () => {
 		const chunksDir = join(rootDir, 'build', '_app', 'immutable', 'chunks');
 		const entryDir = join(rootDir, 'build', '_app', 'immutable', 'entry');
 		const nodesDir = join(rootDir, 'build', '_app', 'immutable', 'nodes');
@@ -263,15 +263,22 @@ describe('Performance budget — bundle size', () => {
 		//   225KB → 250KB  (Epic 6 Paraglide JS i18n foundation, ADR-002 / PREP-5.1: the compiled message
 		//                   runtime + EN/HU catalog + Settings language selector enter the bundle (+~1.8KB
 		//                   at the foundation; tree-shaking ships only used messages). Raised to the next
-		//                   convention rung to also absorb Story 6.1's route-by-route string extraction
-		//                   without per-story re-raises. i18n is compile-time/bundled — CSP connect-src
-		//                   'none' is unchanged; Lighthouse FCP/TTI/score stay strict as the perf contract.)
+		//                   convention rung to pre-absorb Story 6.1's route-by-route string extraction.)
+		//   250KB → 255KB  (Story 6.1 i18n string catalog, PREP-4.1 actual-breach raise: the COMPLETE
+		//                   route-by-route EN/HU extraction — ~574 keys × 2 locales across every UX-upgrade
+		//                   surface — landed at 250.4KB, i.e. 419 bytes over the PREP-5.1 250KB provision
+		//                   (the foundation under-estimated the full catalog by a hair). Raised one tight
+		//                   5KB step (NOT a full rung) to absorb the complete catalog with ~4.7KB headroom,
+		//                   keeping guardrail pressure. All keys are USED (none tree-shake); HU words run
+		//                   longer than EN, so both locales add weight. i18n is compile-time/bundled —
+		//                   CSP connect-src 'none' is byte-unchanged; Lighthouse FCP/TTI/score stay the
+		//                   real perf contract, and these messages are spread across lazy-loaded route
+		//                   nodes (negligible initial-payload impact).)
 		// This is TOTAL JS across all (lazy-loaded) routes, NOT the initial payload — actual load
 		// performance is gated separately by the Lighthouse FCP/TTI/score budgets in
-		// .lighthouserc.cjs (the real perf contract). Current footprint ~225KB; 250KB keeps guardrail
-		// pressure with headroom for the Epic-6 i18n string extraction. A tracked follow-up to lazy-load
-		// the <Toaster> (and/or dynamic-import the Capture sheet) would reclaim initial-load weight.
-		const MAX_GZIPPED_JS_BYTES = 250 * 1024; // 250KB gzipped (NFR4) — see re-baseline log above
+		// .lighthouserc.cjs (the real perf contract). Current footprint ~250.4KB. A tracked follow-up to
+		// lazy-load the <Toaster> (and/or dynamic-import the Capture sheet) would reclaim initial-load weight.
+		const MAX_GZIPPED_JS_BYTES = 255 * 1024; // 255KB gzipped (NFR4) — see re-baseline log above
 
 		let totalGzippedBytes = 0;
 		for (const dir of [chunksDir, entryDir, nodesDir]) {

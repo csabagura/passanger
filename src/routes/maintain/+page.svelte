@@ -3,6 +3,7 @@
 	import { getContext } from 'svelte';
 	import Wrench from '@lucide/svelte/icons/wrench';
 	import MaintainDashboard from '$lib/components/MaintainDashboard.svelte';
+	import { m } from '$lib/paraglide/messages';
 	import type { VehiclesContext } from '$lib/utils/vehicleContext';
 
 	// Story 4.5: the Maintain surface (AD-3). A thin SHELL — exactly the Understand `+page.svelte` →
@@ -16,7 +17,7 @@
 </script>
 
 <svelte:head>
-	<title>Maintain | passanger</title>
+	<title>{m.maintain_page_title()}</title>
 </svelte:head>
 
 {#if !vehiclesCtx.loaded}
@@ -32,19 +33,19 @@
 	<div class="px-4 pt-4">
 		<div
 			role="region"
-			aria-label="No vehicle selected"
+			aria-label={m.maintain_no_vehicle_region_label()}
 			class="rounded-2xl border border-dashed border-border bg-card px-4 py-10 text-center"
 		>
 			<Wrench size={40} class="mx-auto text-muted-foreground" aria-hidden="true" />
-			<p class="mt-3 text-base font-semibold text-foreground">No vehicle yet</p>
+			<p class="mt-3 text-base font-semibold text-foreground">{m.maintain_no_vehicle_heading()}</p>
 			<p class="mt-1 text-sm text-muted-foreground">
-				Add a vehicle to start tracking service reminders, and they'll appear here.
+				{m.maintain_no_vehicle_body()}
 			</p>
 			<a
 				href={resolve('/')}
 				class="mt-4 inline-flex min-h-11 items-center justify-center rounded-xl bg-accent px-5 py-3 text-sm font-semibold text-accent-foreground"
 			>
-				Add a vehicle
+				{m.common_add_vehicle()}
 			</a>
 		</div>
 	</div>

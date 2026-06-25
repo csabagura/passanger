@@ -1,5 +1,6 @@
 <script lang="ts">
 	import * as Tabs from '$lib/components/ui/tabs';
+	import { m } from '$lib/paraglide/messages';
 </script>
 
 <!--
@@ -12,6 +13,6 @@
 	triggers render at full height. The triggers are flex-1 so the two segments split the width evenly.
 -->
 <Tabs.List variant="default" class="h-auto w-full">
-	<Tabs.Trigger value="fuel" class="min-h-[44px] flex-1">Fuel</Tabs.Trigger>
-	<Tabs.Trigger value="expense" class="min-h-[44px] flex-1">Expense</Tabs.Trigger>
+	<Tabs.Trigger value="fuel" class="min-h-[44px] flex-1">{m.common_fuel()}</Tabs.Trigger>
+	<Tabs.Trigger value="expense" class="min-h-[44px] flex-1">{m.common_expense()}</Tabs.Trigger>
 </Tabs.List>

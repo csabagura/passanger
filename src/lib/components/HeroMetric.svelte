@@ -20,6 +20,7 @@
 		type PeriodDelta
 	} from '$lib/utils/metrics/periodDelta';
 	import type { FuelLog } from '$lib/db/schema';
+	import { m } from '$lib/paraglide/messages';
 
 	interface Props {
 		// Already-loaded fuel logs for the active vehicle. HomeDashboard owns the liveQuery and only
@@ -96,7 +97,7 @@
 	// Spoken direction clause for the accessible name (ok-state only; empty when no usable trend).
 	const trendSpeech = $derived(
 		trendDirection
-			? `, ${{ up: 'up from last month', down: 'down from last month', flat: 'level with last month' }[trendDirection]}`
+			? `, ${{ up: m.hero_trend_up(), down: m.hero_trend_down(), flat: m.hero_trend_flat() }[trendDirection]}`
 			: ''
 	);
 
@@ -112,8 +113,8 @@
 	}
 
 	const metricLabels: Record<HeroMetricChoice, string> = $derived({
-		cost: `Cost per ${distanceUnit}`,
-		consumption: 'Consumption'
+		cost: m.hero_label_cost({ unit: distanceUnit }),
+		consumption: m.hero_label_consumption()
 	});
 
 	const view = $derived.by<MetricView>(() => {
@@ -126,9 +127,7 @@
 						: formatConsumption(consumptionValue, getVolumeUnitForFuelUnit(fuelUnit)),
 				unitSuffix: null,
 				nextAction:
-					fuelCount === 0
-						? 'Log your first fill-up to see consumption.'
-						: 'Log another fill-up to calculate consumption.'
+					fuelCount === 0 ? m.hero_next_consumption_first() : m.hero_next_consumption_more()
 			};
 		}
 
@@ -139,8 +138,8 @@
 			unitSuffix: costEntry ? `/ ${costEntry.distanceUnit}` : null,
 			nextAction:
 				fuelCount === 0
-					? `Log your first fill-up to see cost per ${distanceUnit}.`
-					: `Log another fill-up to calculate cost per ${distanceUnit}.`
+					? m.hero_next_cost_first({ unit: distanceUnit })
+					: m.hero_next_cost_more({ unit: distanceUnit })
 		};
 	});
 
@@ -156,8 +155,17 @@
 	// Strip a trailing period from valueSpeech before appending the toggle hint: the value state
 	// ("€0.12 / km") has none, but the insufficient-data state ends in a full sentence ("…cost per
 	// km.") — without this the name would read "…cost per km.. Tap to switch…" (double period).
+	// i18n (6.1): composed accessible name as ONE template — heading / value-or-next-action / trend
+	// clause / other-metric label are all passed as params so Hungarian controls word order. The
+	// trailing-period strip on the value state stays (the value form has no period; the next-action
+	// form ends in one) so the template's own ". Tap to switch…" never double-periods.
 	const accessibleName = $derived(
-		`${view.heading}: ${valueSpeech.replace(/\.$/, '')}${trendSpeech}. Tap to switch to ${metricLabels[otherMetric]}.`
+		m.hero_accessible_name({
+			heading: view.heading,
+			value: valueSpeech.replace(/\.$/, ''),
+			trend: trendSpeech,
+			otherLabel: metricLabels[otherMetric]
+		})
 	);
 
 	// A muted "log more to see a trend" hint shows ONLY when a metric value is present but there is no
@@ -174,7 +182,11 @@
 
 	$effect(() => {
 		const metric = activeMetric;
-		const speech = `${view.heading}: ${valueSpeech}${trendSpeech}`;
+		const speech = m.hero_announcement({
+			heading: view.heading,
+			value: valueSpeech,
+			trend: trendSpeech
+		});
 		if (lastAnnouncedMetric === null) {
 			lastAnnouncedMetric = metric; // prime on mount without announcing the default
 			return;
@@ -246,9 +258,7 @@
 			<!-- Calm nudge when a value exists but there's no prior month to trend against (EXPERIENCE.md:79).
 			     aria-hidden — the authoritative button aria-label already conveys the state, so no double
 			     announcement; the chip slot above stays glyph-free in this case (AC5). -->
-			<span aria-hidden="true" class="text-xs text-muted-foreground"
-				>add a couple more fill-ups to see a trend</span
-			>
+			<span aria-hidden="true" class="text-xs text-muted-foreground">{m.hero_trend_hint()}</span>
 		{/if}
 	</button>
 	<!-- Transient change announcement for SRs (empty until the metric actually changes). -->

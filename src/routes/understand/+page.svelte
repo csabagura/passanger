@@ -3,6 +3,7 @@
 	import { getContext } from 'svelte';
 	import BarChart3 from '@lucide/svelte/icons/bar-chart-3';
 	import UnderstandDashboard from '$lib/components/UnderstandDashboard.svelte';
+	import { m } from '$lib/paraglide/messages';
 	import type { VehiclesContext } from '$lib/utils/vehicleContext';
 
 	// Story 4.4: the Understand surface (FR-13/FR-14). A thin SHELL — exactly the Home `+page.svelte` →
@@ -16,7 +17,7 @@
 </script>
 
 <svelte:head>
-	<title>Understand | passanger</title>
+	<title>{m.understand_page_title()}</title>
 </svelte:head>
 
 {#if !vehiclesCtx.loaded}
@@ -32,19 +33,19 @@
 	<div class="px-4 pt-4">
 		<div
 			role="region"
-			aria-label="No vehicle selected"
+			aria-label={m.understand_no_vehicle_region()}
 			class="rounded-2xl border border-dashed border-border bg-card px-4 py-10 text-center"
 		>
 			<BarChart3 size={40} class="mx-auto text-muted-foreground" aria-hidden="true" />
-			<p class="mt-3 text-base font-semibold text-foreground">No vehicle yet</p>
+			<p class="mt-3 text-base font-semibold text-foreground">{m.understand_no_vehicle_title()}</p>
 			<p class="mt-1 text-sm text-muted-foreground">
-				Add a vehicle to start tracking fuel and maintenance, and your trends will appear here.
+				{m.understand_no_vehicle_body()}
 			</p>
 			<a
 				href={resolve('/')}
 				class="mt-4 inline-flex min-h-11 items-center justify-center rounded-xl bg-accent px-5 py-3 text-sm font-semibold text-accent-foreground"
 			>
-				Add a vehicle
+				{m.common_add_vehicle()}
 			</a>
 		</div>
 	</div>

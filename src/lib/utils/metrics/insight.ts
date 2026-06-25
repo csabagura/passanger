@@ -11,6 +11,7 @@ import type { Expense, FuelLog } from '$lib/db/schema';
 import { isFiniteNumber, LITERS_PER_GALLON } from '$lib/utils/calculations';
 import { mergeHistoryEntries } from '$lib/utils/historyEntries';
 import { comparePeriods, consumptionDelta, spendDelta, type PeriodDelta } from './periodDelta';
+import { m } from '$lib/paraglide/messages';
 
 /**
  * Plain-language Insight engine — the last piece of the AD-5 derived-metrics engine (Story 4.3 /
@@ -62,8 +63,6 @@ const METRIC_PRIORITY: Record<InsightMetric, number> = {
 	'fuel-price': 2
 };
 
-const BASELINE_TEXT = 'Running about average this month.';
-
 /**
  * The plain-language copy table — Register B (numeric, OQ-3): honest, derives directly from the
  * engine percent, and trivially testable. `pct` is the rounded magnitude; direction is framed
@@ -74,16 +73,14 @@ function buildText(metric: InsightMetric, direction: 'up' | 'down', percentChang
 	switch (metric) {
 		case 'consumption':
 			return direction === 'up'
-				? `Consumption is up about ${pct}% this month.`
-				: `Consumption is down about ${pct}% this month.`;
+				? m.insight_consumption_up({ pct })
+				: m.insight_consumption_down({ pct });
 		case 'spend':
-			return direction === 'up'
-				? `Spending is up about ${pct}% this month.`
-				: `Spending is down about ${pct}% this month.`;
+			return direction === 'up' ? m.insight_spend_up({ pct }) : m.insight_spend_down({ pct });
 		case 'fuel-price':
 			return direction === 'up'
-				? `Fuel prices are up about ${pct}% lately.`
-				: `Fuel prices are down about ${pct}% lately.`;
+				? m.insight_fuel_price_up({ pct })
+				: m.insight_fuel_price_down({ pct });
 	}
 }
 
@@ -249,7 +246,7 @@ export function getInsights(
 	// Home" when data is present). No comparable baseline anywhere → render nothing (HeroMetric covers
 	// the cold-start / insufficient state, so the insight line must not duplicate it).
 	if (anyComparable) {
-		return [{ id: 'baseline', metric: 'baseline', severity: 'info', text: BASELINE_TEXT }];
+		return [{ id: 'baseline', metric: 'baseline', severity: 'info', text: m.insight_baseline() }];
 	}
 	return [];
 }

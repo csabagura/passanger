@@ -10,6 +10,7 @@
 	import type { CaptureMode, CaptureSheetContext } from '$lib/state/captureSheet.svelte';
 	import type { VehiclesContext } from '$lib/utils/vehicleContext';
 	import type { Expense } from '$lib/db/schema';
+	import { m } from '$lib/paraglide/messages';
 
 	// The global Capture sheet (AD-3): a controlled bottom Sheet driven by the captureSheet context as
 	// the single source of truth. bits-ui Dialog provides focus-trap, scroll-lock, Escape-to-close and
@@ -47,13 +48,13 @@
 			{#snippet child({ props })}
 				<Button variant="ghost" size="icon" class="absolute top-3 right-3" {...props}>
 					<X />
-					<span class="sr-only">Close</span>
+					<span class="sr-only">{m.common_close()}</span>
 				</Button>
 			{/snippet}
 		</Sheet.Close>
 
 		<Sheet.Header>
-			<Sheet.Title>Log an entry</Sheet.Title>
+			<Sheet.Title>{m.capture_title()}</Sheet.Title>
 		</Sheet.Header>
 
 		{#if vehicles.loaded && vehicles.activeVehicleId !== null}
@@ -95,7 +96,7 @@
 		{:else if vehicles.loaded}
 			<!-- No vehicle yet: the FAB is always present, so opening with no car must degrade to a calm
 			     CTA rather than a broken form. The full first-run flow lands in Epic 3. -->
-			<p class="px-4 pb-6 text-sm text-muted-foreground">Add your car to get started.</p>
+			<p class="px-4 pb-6 text-sm text-muted-foreground">{m.capture_no_vehicle_cta()}</p>
 		{/if}
 		<!-- vehicles not loaded yet: render nothing inside the sheet so the no-vehicle CTA can't flash
 		     before the async vehicle read resolves (mirrors /log's `{#if !vehiclesCtx.loaded}` guard). -->

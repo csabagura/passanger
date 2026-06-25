@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { m } from '$lib/paraglide/messages';
 	// Story 3.3 (AC-4): content-shaped cold-load placeholder for Home. Hand-rolled `animate-pulse`
 	// token blocks shaped like the three glance blocks (summary line · base cost stat · Up-Next slot)
 	// — deliberately NOT a shadcn `skeleton` primitive: adding one pulls bits-ui surface and risks the
@@ -12,7 +13,7 @@
 </script>
 
 <div class="px-4 pt-4">
-	<p class="sr-only" role="status" aria-live="polite">Loading your dashboard…</p>
+	<p class="sr-only" role="status" aria-live="polite">{m.home_loading()}</p>
 	<div aria-hidden="true" class="space-y-4">
 		<!-- summary line -->
 		<div class="h-5 w-3/4 rounded-md bg-muted motion-safe:animate-pulse"></div>

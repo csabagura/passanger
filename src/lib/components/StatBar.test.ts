@@ -1,5 +1,6 @@
 import { render, screen, within } from '@testing-library/svelte';
 import { describe, expect, it } from 'vitest';
+import { m } from '$lib/paraglide/messages';
 import StatBar from './StatBar.svelte';
 
 describe('StatBar', () => {
@@ -64,13 +65,13 @@ describe('StatBar', () => {
 
 		expect(screen.getByLabelText('Maintenance costs for all time: EUR 0.00')).toBeTruthy();
 		expect(screen.getByText('All time')).toBeTruthy();
-		expect(screen.getByText('No data')).toBeTruthy();
+		expect(screen.getByText(m.stat_no_data())).toBeTruthy();
 
 		const summaryList = container.querySelector('dl');
 		expect(summaryList).toBeTruthy();
-		expect(within(summaryList as HTMLElement).getByText('Total spend')).toBeTruthy();
-		expect(within(summaryList as HTMLElement).getByText('Fuel volume')).toBeTruthy();
-		expect(within(summaryList as HTMLElement).getByText('Avg consumption')).toBeTruthy();
+		expect(within(summaryList as HTMLElement).getByText(m.stat_total_spend())).toBeTruthy();
+		expect(within(summaryList as HTMLElement).getByText(m.stat_fuel_volume())).toBeTruthy();
+		expect(within(summaryList as HTMLElement).getByText(m.stat_avg_consumption())).toBeTruthy();
 	});
 
 	it('shows the approximate converted home total only when multi-currency with a rate', () => {
@@ -93,7 +94,7 @@ describe('StatBar', () => {
 		});
 
 		// Ft is a zero-decimal suffix currency → "45000 Ft".
-		expect(screen.getByText('≈ 45000 Ft · your rates')).toBeTruthy();
+		expect(screen.getByText(m.stat_converted_total({ amount: '45000 Ft' }))).toBeTruthy();
 	});
 
 	it('does not show the converted line for a single-currency view even if a total is passed', () => {
@@ -159,6 +160,10 @@ describe('StatBar', () => {
 			convertedHomeTotal: { total: 45000, unconvertedEntries: 2 }
 		});
 
-		expect(screen.getByText('≈ 45000 Ft · your rates · 2 unconverted')).toBeTruthy();
+		expect(
+			screen.getByText(
+				`${m.stat_converted_total({ amount: '45000 Ft' })} ${m.stat_unconverted_suffix({ count: 2 })}`
+			)
+		).toBeTruthy();
 	});
 });

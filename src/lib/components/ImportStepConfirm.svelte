@@ -12,6 +12,7 @@
 	} from '$lib/utils/importTypes';
 	import type { AppError } from '$lib/utils/result';
 	import type { VehiclesContext } from '$lib/utils/vehicleContext';
+	import { m } from '$lib/paraglide/messages';
 
 	type AsyncState<T> =
 		| { status: 'idle' }
@@ -121,7 +122,7 @@
 			<div class="flex items-center gap-2">
 				<span class="inline-block h-2.5 w-2.5 rounded-full bg-green-500"></span>
 				<span class="text-sm text-foreground">
-					{importableRows.length} row{importableRows.length !== 1 ? 's' : ''} will be imported
+					{m.import_confirm_will_import({ count: importableRows.length })}
 				</span>
 			</div>
 
@@ -129,7 +130,7 @@
 				<div class="flex items-center gap-2">
 					<span class="inline-block h-2.5 w-2.5 rounded-full bg-muted-foreground"></span>
 					<span class="text-sm text-muted-foreground">
-						{skippedRows.length} row{skippedRows.length !== 1 ? 's' : ''} skipped
+						{m.import_confirm_skipped({ count: skippedRows.length })}
 					</span>
 					<button
 						type="button"
@@ -137,13 +138,18 @@
 						aria-expanded={showSkipped}
 						onclick={() => (showSkipped = !showSkipped)}
 					>
-						{showSkipped ? 'Hide' : 'Show skipped'}
+						{showSkipped ? m.import_confirm_hide() : m.import_confirm_show_skipped()}
 					</button>
 				</div>
 				{#if showSkipped}
 					<ul class="ml-5 space-y-1 text-xs text-muted-foreground">
 						{#each skippedRows as row (row.rowNumber)}
-							<li>Row {row.rowNumber}: {row.issues.join(', ')}</li>
+							<li>
+								{m.import_confirm_skipped_row({
+									row: row.rowNumber,
+									issues: row.issues.join(', ')
+								})}
+							</li>
 						{/each}
 					</ul>
 				{/if}
@@ -153,7 +159,7 @@
 				<div class="flex items-center gap-2">
 					<span class="inline-block h-2.5 w-2.5 rounded-full bg-blue-500"></span>
 					<span class="text-sm text-foreground">
-						{correctedCount} row{correctedCount !== 1 ? 's' : ''} corrected
+						{m.import_confirm_corrected({ count: correctedCount })}
 					</span>
 				</div>
 			{/if}
@@ -162,9 +168,7 @@
 				<div class="flex items-center gap-2">
 					<span class="inline-block h-2.5 w-2.5 rounded-full bg-accent"></span>
 					<span class="text-sm text-foreground">
-						{newVehicleAssignments.length} new vehicle{newVehicleAssignments.length !== 1
-							? 's'
-							: ''} will be created
+						{m.import_confirm_new_vehicles({ count: newVehicleAssignments.length })}
 					</span>
 				</div>
 			{/if}
@@ -172,14 +176,16 @@
 			<div class="border-t border-border pt-2 mt-2 space-y-1">
 				{#each getVehicleBreakdown() as entry (entry.name)}
 					<p class="text-sm text-foreground">
-						{entry.count} rows → {entry.name}{entry.isNew ? ' (new)' : ''}
+						{entry.isNew
+							? m.import_confirm_breakdown_new({ count: entry.count, name: entry.name })
+							: m.import_confirm_breakdown({ count: entry.count, name: entry.name })}
 					</p>
 				{/each}
 			</div>
 
 			{#if summary.dateRange}
 				<p class="text-xs text-muted-foreground">
-					Data spans {formatDateRange()}
+					{m.import_confirm_data_spans({ range: formatDateRange() })}
 				</p>
 			{/if}
 		</div>
@@ -187,7 +193,7 @@
 		<!-- Caution notice -->
 		<div class="rounded-lg border border-amber-500/30 bg-amber-50 p-3 dark:bg-amber-950/20">
 			<p class="text-sm text-foreground">
-				Imported data will appear in your History immediately. This cannot be undone.
+				{m.import_confirm_caution()}
 			</p>
 		</div>
 
@@ -195,7 +201,7 @@
 		{#if commitState.status === 'loading'}
 			<div aria-live="polite" data-testid="import-progress">
 				<p class="text-sm text-foreground mb-2">
-					Importing… {progressCurrent} of {progressTotal} rows
+					{m.import_confirm_progress({ current: progressCurrent, total: progressTotal })}
 				</p>
 				<div
 					class="h-2 w-full rounded-full bg-muted"
@@ -203,7 +209,7 @@
 					aria-valuenow={progressCurrent}
 					aria-valuemin={0}
 					aria-valuemax={progressTotal}
-					aria-label="Import progress"
+					aria-label={m.import_confirm_progress_label()}
 				>
 					<div
 						class="h-2 rounded-full bg-accent transition-all"
@@ -223,16 +229,18 @@
 			data-testid="import-btn"
 			onclick={handleImport}
 		>
-			{commitState.status === 'loading' ? 'Importing…' : `Import ${importableRows.length} Rows`}
+			{commitState.status === 'loading'
+				? m.import_confirm_importing()
+				: m.import_confirm_import_button({ count: importableRows.length })}
 		</button>
 	{:else if commitState.status === 'error'}
 		<!-- Error state -->
 		<div class="rounded-lg border border-destructive bg-destructive/5 p-4" role="alert">
-			<p class="text-sm font-semibold text-destructive">Import failed</p>
+			<p class="text-sm font-semibold text-destructive">{m.import_confirm_failed_title()}</p>
 			<p class="mt-1 text-sm text-muted-foreground">
 				{commitState.error.message}
 			</p>
-			<p class="mt-1 text-xs text-muted-foreground">Your existing data is unchanged.</p>
+			<p class="mt-1 text-xs text-muted-foreground">{m.import_confirm_failed_unchanged()}</p>
 		</div>
 		<button
 			type="button"
@@ -240,7 +248,7 @@
 			data-testid="retry-btn"
 			onclick={handleImport}
 		>
-			Try Again
+			{m.import_confirm_try_again()}
 		</button>
 	{:else if commitState.status === 'success'}
 		<!-- Success state -->
@@ -264,34 +272,28 @@
 						<path d="M20 6 9 17l-5-5" />
 					</svg>
 				</div>
-				<p class="text-lg font-semibold text-foreground">Import complete</p>
+				<p class="text-lg font-semibold text-foreground">{m.import_confirm_complete()}</p>
 			</div>
 
 			<div class="rounded-lg border border-border p-4 space-y-1">
 				{#if commitState.data.fuelCount > 0}
 					<p class="text-sm text-foreground">
-						{commitState.data.fuelCount} fuel entr{commitState.data.fuelCount !== 1 ? 'ies' : 'y'} imported
+						{m.import_confirm_fuel_imported({ count: commitState.data.fuelCount })}
 					</p>
 				{/if}
 				{#if commitState.data.maintenanceCount > 0}
 					<p class="text-sm text-foreground">
-						{commitState.data.maintenanceCount} maintenance entr{commitState.data
-							.maintenanceCount !== 1
-							? 'ies'
-							: 'y'} imported
+						{m.import_confirm_maintenance_imported({ count: commitState.data.maintenanceCount })}
 					</p>
 				{/if}
 				{#if commitState.data.skippedCount > 0}
 					<p class="text-sm text-muted-foreground">
-						{commitState.data.skippedCount} row{commitState.data.skippedCount !== 1 ? 's' : ''} skipped
+						{m.import_confirm_rows_skipped({ count: commitState.data.skippedCount })}
 					</p>
 				{/if}
 				{#if commitState.data.vehiclesCreated.length > 0}
 					<p class="text-sm text-foreground">
-						{commitState.data.vehiclesCreated.length} vehicle{commitState.data.vehiclesCreated
-							.length !== 1
-							? 's'
-							: ''} created
+						{m.import_confirm_vehicles_created({ count: commitState.data.vehiclesCreated.length })}
 					</p>
 				{/if}
 			</div>
@@ -302,21 +304,21 @@
 					class="h-12 w-full rounded-xl bg-accent text-sm font-semibold text-accent-foreground"
 					onclick={handleViewHistory}
 				>
-					View imported history
+					{m.import_confirm_view_history()}
 				</button>
 				<button
 					type="button"
 					class="h-12 w-full rounded-xl border border-border bg-card text-sm font-semibold text-foreground"
 					onclick={handleViewAnalytics}
 				>
-					See trends in Understand
+					{m.import_confirm_view_trends()}
 				</button>
 				<button
 					type="button"
 					class="h-12 w-full rounded-xl border border-border bg-card text-sm font-semibold text-foreground"
 					onclick={onImportReset}
 				>
-					Import another file
+					{m.import_confirm_import_another()}
 				</button>
 			</div>
 		</div>

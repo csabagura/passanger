@@ -23,6 +23,8 @@
 	// swaps the visual for a real semantic <table> — the MANDATED screen-reader-navigable representation
 	// (the old single aria-label string was insufficient per the a11y floor).
 
+	import { m } from '$lib/paraglide/messages';
+
 	interface Props {
 		title: string;
 		points: ChartDatum[];
@@ -140,7 +142,7 @@
 				onclick={() => (asTable = !asTable)}
 				class="shrink-0 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card"
 			>
-				{asTable ? 'View as chart' : 'View as table'}
+				{asTable ? m.chart_view_as_chart() : m.chart_view_as_table()}
 			</button>
 		{/if}
 	</div>
@@ -150,13 +152,13 @@
 	{:else if asTable}
 		<!-- Mandated FR-17 representation: a real semantic table, navigable + announced without geometry. -->
 		<table class="w-full border-collapse text-sm">
-			<caption class="sr-only">{title}. {ariaSummary}</caption>
+			<caption class="sr-only">{m.chart_caption({ title, summary: ariaSummary })}</caption>
 			<thead>
 				<tr class="border-b border-border text-left text-xs text-muted-foreground">
-					<th scope="col" class="py-1.5 pr-3 font-medium">Period</th>
-					<th scope="col" class="py-1.5 pr-3 font-medium">Value</th>
+					<th scope="col" class="py-1.5 pr-3 font-medium">{m.chart_col_period()}</th>
+					<th scope="col" class="py-1.5 pr-3 font-medium">{m.chart_col_value()}</th>
 					{#if points.some((point) => point.entryHref)}
-						<th scope="col" class="py-1.5 font-medium">Entry</th>
+						<th scope="col" class="py-1.5 font-medium">{m.chart_col_entry()}</th>
 					{/if}
 				</tr>
 			</thead>
@@ -173,7 +175,7 @@
 										href={point.entryHref}
 										class="text-accent underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
 									>
-										View entry
+										{m.chart_view_entry()}
 									</a>
 									<!-- eslint-enable svelte/no-navigation-without-resolve -->
 								{/if}
@@ -197,7 +199,7 @@
 					href={points[0].entryHref}
 					class="mt-2 inline-block text-sm text-accent underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card"
 				>
-					View entry
+					{m.chart_view_entry()}
 				</a>
 				<!-- eslint-enable svelte/no-navigation-without-resolve -->
 			{/if}
@@ -260,7 +262,7 @@
 						<button
 							type="button"
 							onclick={() => select(index)}
-							aria-label={`${point.label}: ${point.valueText}`}
+							aria-label={m.chart_point_aria({ label: point.label, value: point.valueText })}
 							aria-pressed={selectedIndex === index}
 							style={`left:${slotLeft}%;width:${slotWidth}%;top:${pct(CHART_TOP, CHART_HEIGHT)}%;height:${pct(CHART_HEIGHT - CHART_TOP - CHART_BOTTOM, CHART_HEIGHT)}%`}
 							class="absolute rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-card"
@@ -270,7 +272,7 @@
 						<button
 							type="button"
 							onclick={() => select(index)}
-							aria-label={`${point.label}: ${point.valueText}`}
+							aria-label={m.chart_point_aria({ label: point.label, value: point.valueText })}
 							aria-pressed={selectedIndex === index}
 							style={`left:${pct(lp.x, CHART_WIDTH)}%;top:${pct(lp.y, CHART_HEIGHT)}%`}
 							class="absolute -translate-x-1/2 -translate-y-1/2 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card"
@@ -280,7 +282,9 @@
 									? 'bg-foreground'
 									: 'bg-accent'}"
 							></span>
-							<span class="sr-only">{point.label}: {point.valueText}</span>
+							<span class="sr-only"
+								>{m.chart_point_aria({ label: point.label, value: point.valueText })}</span
+							>
 						</button>
 					{/if}
 				{/each}
@@ -300,13 +304,13 @@
 							href={selected.entryHref}
 							class="text-accent underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
 						>
-							View entry
+							{m.chart_view_entry()}
 						</a>
 						<!-- eslint-enable svelte/no-navigation-without-resolve -->
 					{/if}
 				</p>
 			{:else}
-				<p class="text-muted-foreground">Select a point to see its exact value.</p>
+				<p class="text-muted-foreground">{m.chart_select_point_hint()}</p>
 			{/if}
 		</div>
 	{/if}

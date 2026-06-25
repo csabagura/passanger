@@ -7,6 +7,7 @@
 	import Plus from '@lucide/svelte/icons/plus';
 	import { MAX_VEHICLES } from '$lib/config';
 	import type { VehiclesContext } from '$lib/utils/vehicleContext';
+	import { m } from '$lib/paraglide/messages';
 
 	type PointerGestureLock = 'pending' | 'horizontal' | 'vertical';
 
@@ -33,11 +34,11 @@
 	let dismissGesture = $state<DismissGestureState | null>(null);
 	let dragOffsetY = $state(0);
 
-	const pillLabel = $derived(vehiclesCtx.activeVehicle?.name ?? 'No vehicle');
+	const pillLabel = $derived(vehiclesCtx.activeVehicle?.name ?? m.vehicleswitcher_no_vehicle());
 	const pillAriaLabel = $derived(
-		vehiclesCtx.activeVehicle
-			? `Switch vehicle: ${vehiclesCtx.activeVehicle.name}`
-			: 'Switch vehicle: No vehicle'
+		m.vehicleswitcher_pill_aria({
+			name: vehiclesCtx.activeVehicle?.name ?? m.vehicleswitcher_no_vehicle()
+		})
 	);
 	const atLimit = $derived(vehiclesCtx.vehicles.length >= MAX_VEHICLES);
 	const sheetStyle = $derived(
@@ -278,7 +279,7 @@
 				tabindex="-1"
 				class="px-4 pb-2 pt-3 text-sm font-semibold text-foreground outline-none"
 			>
-				Choose vehicle
+				{m.vehicleswitcher_choose_vehicle()}
 			</h3>
 
 			<ul role="listbox" aria-labelledby="desktop-vehicle-switcher-title" class="px-2 pb-2">
@@ -313,7 +314,9 @@
 					{#if atLimit}
 						<div class="flex min-h-[44px] items-center gap-3 px-3 py-2.5 opacity-50">
 							<Plus size={16} class="shrink-0 text-muted-foreground" aria-hidden="true" />
-							<span class="text-sm text-muted-foreground">Maximum {MAX_VEHICLES} vehicles</span>
+							<span class="text-sm text-muted-foreground"
+								>{m.vehicleswitcher_max_vehicles({ count: MAX_VEHICLES })}</span
+							>
 						</div>
 					{:else}
 						<button
@@ -322,7 +325,7 @@
 							class="flex w-full min-h-[44px] items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors hover:bg-muted/50"
 						>
 							<Plus size={16} class="shrink-0 text-accent" aria-hidden="true" />
-							<span class="text-sm font-medium text-accent">Add vehicle</span>
+							<span class="text-sm font-medium text-accent">{m.vehicleswitcher_add_vehicle()}</span>
 						</button>
 					{/if}
 				</li>
@@ -336,7 +339,7 @@
 	<div class="fixed inset-0 z-50 flex items-end justify-center">
 		<button
 			type="button"
-			aria-label="Close vehicle switcher"
+			aria-label={m.vehicleswitcher_close()}
 			class="absolute inset-0 bg-black/45"
 			onclick={closeSheet}
 		></button>
@@ -370,10 +373,10 @@
 					tabindex="-1"
 					class="text-lg font-semibold text-foreground outline-none"
 				>
-					Choose vehicle
+					{m.vehicleswitcher_choose_vehicle()}
 				</h2>
 
-				<ul class="mt-4 space-y-2" role="listbox" aria-label="Vehicle list">
+				<ul class="mt-4 space-y-2" role="listbox" aria-label={m.vehicleswitcher_vehicle_list()}>
 					{#each vehiclesCtx.vehicles as vehicle (vehicle.id)}
 						<li>
 							<button
@@ -407,7 +410,9 @@
 					{#if atLimit}
 						<div class="flex min-h-[44px] items-center gap-3 px-1 opacity-50">
 							<Plus size={16} class="shrink-0 text-muted-foreground" aria-hidden="true" />
-							<span class="text-sm text-muted-foreground">Maximum {MAX_VEHICLES} vehicles</span>
+							<span class="text-sm text-muted-foreground"
+								>{m.vehicleswitcher_max_vehicles({ count: MAX_VEHICLES })}</span
+							>
 						</div>
 					{:else}
 						<button
@@ -416,7 +421,7 @@
 							class="flex w-full min-h-[44px] items-center gap-3 rounded-xl px-1 py-2 text-left transition-colors hover:bg-muted/50"
 						>
 							<Plus size={16} class="shrink-0 text-accent" aria-hidden="true" />
-							<span class="text-sm font-medium text-accent">Add vehicle</span>
+							<span class="text-sm font-medium text-accent">{m.vehicleswitcher_add_vehicle()}</span>
 						</button>
 					{/if}
 				</div>

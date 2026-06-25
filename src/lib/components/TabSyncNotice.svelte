@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { m } from '$lib/paraglide/messages';
+
 	interface Props {
 		// Subtle, auto-dismissing cue for an ordinary remote change (null = hidden). The layout owns
 		// the dismiss timer so repeated messages reset it.
@@ -24,13 +26,13 @@
 			class="mx-auto mt-2 flex w-full max-w-[480px] items-start justify-between gap-3 rounded-xl border border-primary bg-card px-4 py-3 text-sm shadow-lg"
 		>
 			<p class="leading-snug text-foreground">
-				This tab's data was replaced by a restore in another tab. Reload to see the current data.
+				{m.tabsync_restore_replaced()}
 			</p>
 			<button
 				class="shrink-0 rounded-lg bg-primary px-3 py-1 text-xs font-semibold text-primary-foreground hover:opacity-90"
 				onclick={onReload}
 			>
-				Reload
+				{m.common_reload()}
 			</button>
 		</div>
 	</div>
@@ -43,7 +45,7 @@
 		<p
 			class="mt-2 rounded-full border border-border bg-muted px-3 py-1 text-xs font-medium text-muted-foreground shadow-sm"
 		>
-			Updated in another tab
+			{m.tabsync_updated_in_another_tab()}
 		</p>
 	</div>
 {/if}

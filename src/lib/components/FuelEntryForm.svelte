@@ -45,6 +45,7 @@
 	} from '$lib/utils/numberInput';
 	import type { AppError } from '$lib/utils/result';
 	import type { AppSettings } from '$lib/utils/settings';
+	import { m } from '$lib/paraglide/messages';
 
 	type FormMode = 'create' | 'edit';
 	type FuelEntrySaveResult = FuelLog | FuelLog[];
@@ -160,8 +161,7 @@
 	let lastLogDistanceUnit: 'km' | 'mi' | undefined = $state();
 	let timelineLogs = $state<FuelLog[]>([]);
 
-	const LAST_LOG_LOAD_ERROR_MESSAGE =
-		'Could not load previous fuel history. Try again before saving.';
+	const LAST_LOG_LOAD_ERROR_MESSAGE = m.fuel_error_load_history();
 	const { group: localeGroupSeparator, decimal: localeDecimalSeparator } =
 		getLocaleNumberSeparators();
 
@@ -320,10 +320,10 @@
 		}
 		const anomaly = classifyOdometer(parsed, comparablePreviousForSuggestion, typicalDelta);
 		if (anomaly === 'below-previous') {
-			return 'This is at or below your last reading — you can still save, but efficiency won’t be calculated for this fill.';
+			return m.fuel_warning_below_previous();
 		}
 		if (anomaly === 'implausibly-high') {
-			return 'That’s a much bigger jump than usual — double-check the reading, or save it as-is.';
+			return m.fuel_warning_implausible_high();
 		}
 		return '';
 	});
@@ -460,19 +460,27 @@
 	// formatted cost — never the old "✓ Logged — … | … | …" glyph/pipe form. When consumption can't
 	// be computed (first fill / unit mismatch / odometer ≤ previous), show an honest, non-alarmist
 	// state and still show the cost — never a bare "0".
-	function showSuccessResult(log: FuelLog, parsedCost: number, verb: string): void {
+	function showSuccessResult(log: FuelLog, parsedCost: number, verb: 'Saved' | 'Updated'): void {
 		const cost = formatCurrency(parsedCost, log.currency ?? settingsCtx.settings.currency);
 		// Treat 0 / negative / non-finite consumption alike as "cannot compute" (an edited or corrupt
 		// stored value can be < 0 or NaN) so we never fall through to a bare "0.0 … this tank".
+		// i18n (6.1): one complete message template per verb — never glue a translated verb fragment
+		// onto the sentence (HU word order differs). `cost`/`consumption` are formatted values, params.
 		if (log.calculatedConsumption <= 0 || !Number.isFinite(log.calculatedConsumption)) {
-			successText = `${verb}. — log one more to see your consumption · ${cost}`;
+			successText =
+				verb === 'Saved'
+					? m.fuel_saved_no_consumption({ cost })
+					: m.fuel_updated_no_consumption({ cost });
 		} else {
 			const consumption = formatConsumptionForDisplay(
 				log.calculatedConsumption,
 				log.unit,
 				settingsCtx.settings.fuelUnit
 			);
-			successText = `${verb}. — ${consumption} this tank · ${cost}`;
+			successText =
+				verb === 'Saved'
+					? m.fuel_saved_with_consumption({ consumption, cost })
+					: m.fuel_updated_with_consumption({ consumption, cost });
 		}
 
 		// Remember the chosen currency for the next new entry (travel convenience) and refresh
@@ -497,18 +505,18 @@
 		const hasOdometerGroupingSeparator = odometerLooksGrouped(odometerTrimmed, parsedOdometer);
 		if (parsedOdometer === null || hasOdometerGroupingSeparator) {
 			odometerError = hasOdometerGroupingSeparator
-				? 'Enter odometer without commas (e.g. 87400)'
-				: 'Enter a valid odometer reading (e.g. 87400)';
+				? m.fuel_error_odometer_commas()
+				: m.form_error_odometer_invalid();
 		}
 
 		const parsedQuantity = parsePositiveNumeric(quantity);
 		if (parsedQuantity === null) {
-			quantityError = 'Enter the fuel quantity (e.g. 42)';
+			quantityError = m.fuel_error_quantity();
 		}
 
 		const parsedCost = parseNonNegativeNumeric(cost);
 		if (parsedCost === null) {
-			costError = 'Enter the total cost (e.g. 78.00)';
+			costError = m.fuel_error_cost();
 		}
 
 		if (odometerError) {
@@ -552,7 +560,7 @@
 
 		if (odometerLooksGrouped(odometerTrimmed, parsedOdometer)) {
 			saveState = { status: 'idle' };
-			odometerError = 'Enter odometer without commas (e.g. 87400)';
+			odometerError = m.fuel_error_odometer_commas();
 			focusField('odometer');
 			return;
 		}
@@ -568,7 +576,7 @@
 			parsedOdometer <= comparablePreviousOdometer
 		) {
 			saveState = { status: 'idle' };
-			odometerError = 'Enter an odometer reading higher than the last logged value';
+			odometerError = m.fuel_error_odometer_too_low();
 			focusField('odometer');
 			return;
 		}
@@ -584,7 +592,7 @@
 				parsedOdometer >= successor.odometer
 			) {
 				saveState = { status: 'idle' };
-				odometerError = 'Enter an odometer reading lower than the next logged value';
+				odometerError = m.fuel_error_odometer_too_high();
 				focusField('odometer');
 				return;
 			}
@@ -609,9 +617,7 @@
 				// AC-4: surface the failure on the toast channel and RETAIN the form values (no draft
 				// clear, no field reset) so the user can fix and retry. saveErrorMessage maps quota to
 				// the specific actionable message and never leaks raw exception text.
-				toast?.error(
-					saveErrorMessage(result.error, 'Could not update fuel entry. Please try again.')
-				);
+				toast?.error(saveErrorMessage(result.error, m.fuel_error_update_failed()));
 				saveState = { status: 'idle' };
 				return;
 			}
@@ -669,7 +675,7 @@
 			// AC-4: error → toast, and the draft is RETAINED (clearFuelDraft is only called on success
 			// below). Routing through saveErrorMessage closes the deferred "fuel ADD path shows raw
 			// exception text" item — quota gets its specific message, everything else a friendly one.
-			toast?.error(saveErrorMessage(result.error, 'Could not save fuel entry. Please try again.'));
+			toast?.error(saveErrorMessage(result.error, m.fuel_error_save_failed()));
 			saveState = { status: 'idle' };
 			return;
 		}
@@ -712,13 +718,13 @@
 		<!-- Story 2.3 (AC-4): calm, non-blocking stale-restore notice. Polite live region, NO
 		     role="alert"; neutral text-muted-foreground (informational, not the amber warning). -->
 		<p aria-live="polite" class="text-sm text-muted-foreground">
-			We kept your earlier draft — double-check the odometer.
+			{m.fuel_stale_draft_notice()}
 		</p>
 	{/if}
 	<div>
 		<Field
 			id="odometer"
-			label="Odometer ({currentDistanceUnit})"
+			label={m.fuel_field_odometer({ unit: currentDistanceUnit })}
 			type="text"
 			inputmode="decimal"
 			bind:value={odometer}
@@ -728,8 +734,10 @@
 		/>
 		{#if previousOdometer !== undefined && previousOdometer > 0}
 			<p class="mt-2 text-xs text-muted-foreground">
-				Last: {previousOdometer.toLocaleString()}
-				{` ${lastLogDistanceUnit || currentDistanceUnit}`}
+				{m.fuel_previous_odometer({
+					value: previousOdometer.toLocaleString(),
+					unit: lastLogDistanceUnit || currentDistanceUnit
+				})}
 			</p>
 		{/if}
 		{#if !odometerError && odometerWarning}
@@ -744,7 +752,7 @@
 
 	<Field
 		id="quantity"
-		label="Quantity ({currentFuelUnit})"
+		label={m.fuel_field_quantity({ unit: currentFuelUnit })}
 		type="text"
 		inputmode="decimal"
 		bind:value={quantity}
@@ -757,7 +765,7 @@
 			<div class="flex-1">
 				<Field
 					id="cost"
-					label="Total Cost"
+					label={m.fuel_field_cost()}
 					type="text"
 					inputmode="decimal"
 					bind:value={cost}
@@ -768,7 +776,7 @@
 			<select
 				bind:value={currency}
 				onchange={clearSubmissionFeedback}
-				aria-label="Currency"
+				aria-label={m.form_currency_aria()}
 				class="mt-7 h-13 shrink-0 rounded-md border border-border bg-background px-2 text-base focus:outline-none focus:ring-2 focus:ring-ring"
 			>
 				{#each currencyOptions as option (option)}
@@ -812,7 +820,7 @@
 				onclick={dismissSuccess}
 				class="mt-3 flex h-[44px] w-full items-center justify-center rounded-lg bg-success/15 px-4 font-medium text-success hover:bg-success/25 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
 			>
-				Done
+				{m.form_done()}
 			</button>
 		{/if}
 	</div>
@@ -837,9 +845,9 @@
 				class="mt-3 rounded-md border border-destructive/30 px-3 py-2 text-sm font-medium text-destructive hover:bg-destructive/10 disabled:cursor-not-allowed disabled:opacity-70"
 			>
 				{#if isRetryingLastLogLoad}
-					Retrying...
+					{m.fuel_retrying()}
 				{:else}
-					Retry loading history
+					{m.fuel_retry_load_history()}
 				{/if}
 			</button>
 		</div>
@@ -855,7 +863,7 @@
 				}}
 				class="h-[56px] flex-1 rounded-lg border border-border px-4 py-2 font-medium text-foreground"
 			>
-				Cancel
+				{m.common_cancel()}
 			</button>
 		{/if}
 
@@ -866,11 +874,11 @@
 			class="h-[56px] flex-1 rounded-lg bg-accent px-4 py-2 font-medium text-accent-foreground hover:bg-accent/90 disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
 		>
 			{#if saveState.status === 'loading'}
-				Saving...
+				{m.form_saving()}
 			{:else if isEditMode}
-				Save changes
+				{m.form_save_changes()}
 			{:else}
-				Save
+				{m.common_save()}
 			{/if}
 		</button>
 	</div>

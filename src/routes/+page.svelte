@@ -5,6 +5,7 @@
 	import HomeDashboard from '$lib/components/HomeDashboard.svelte';
 	import type { Vehicle } from '$lib/db/schema';
 	import type { VehiclesContext } from '$lib/utils/vehicleContext';
+	import { m } from '$lib/paraglide/messages';
 
 	// Story 3.3: Home is the default surface (`/`). It is a SHELL — the no-vehicle first-run (relocated
 	// from the retired /log) plus the glanceable dashboard. Capture happens in the global sheet via the
@@ -33,7 +34,7 @@
 </script>
 
 <svelte:head>
-	<title>Home | passanger</title>
+	<title>{m.home_page_title()}</title>
 </svelte:head>
 
 {#if !vehiclesCtx.loaded}
@@ -50,18 +51,18 @@
 {:else}
 	<div
 		role="region"
-		aria-label="Vehicle setup"
+		aria-label={m.home_vehicle_setup_aria()}
 		class="flex flex-col items-center gap-4 p-8 text-center"
 	>
 		<Car size={48} class="text-muted-foreground" aria-hidden="true" />
-		<h1 class="text-xl font-semibold text-foreground">No vehicle yet</h1>
-		<p class="text-sm text-muted-foreground">Your entries will be tied to this vehicle</p>
+		<h1 class="text-xl font-semibold text-foreground">{m.home_no_vehicle_title()}</h1>
+		<p class="text-sm text-muted-foreground">{m.home_no_vehicle_body()}</p>
 		<button
 			bind:this={addVehicleButton}
 			onclick={() => (showVehicleForm = true)}
 			class="rounded-xl bg-accent px-5 py-3 text-sm font-semibold text-accent-foreground"
 		>
-			Add your vehicle to get started
+			{m.home_add_vehicle_cta()}
 		</button>
 	</div>
 {/if}

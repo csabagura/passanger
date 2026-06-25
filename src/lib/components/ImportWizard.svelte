@@ -21,8 +21,16 @@
 		saveImportProgress,
 		clearImportProgress
 	} from '$lib/state/importProgress';
+	import { m } from '$lib/paraglide/messages';
 
-	const STEP_LABELS = ['Source', 'Upload', 'Preview', 'Review', 'Vehicles', 'Confirm'] as const;
+	const STEP_LABELS = [
+		m.import_step_source(),
+		m.import_step_upload(),
+		m.import_step_preview(),
+		m.import_step_review(),
+		m.import_step_vehicles(),
+		m.import_step_confirm()
+	] as const;
 
 	// Story 5.4 (FR-16): hydrate any persisted in-progress import so a tab-close / reload resumes at
 	// the saved step instead of restarting at Step 1. `loadImportProgress` returns null for an absent,
@@ -197,7 +205,7 @@
 
 <div class="space-y-6">
 	<!-- Progress indicator -->
-	<nav aria-label="Import wizard progress">
+	<nav aria-label={m.import_wizard_progress_label()}>
 		<ol class="flex gap-1">
 			{#each STEP_LABELS as label, i (label)}
 				{@const stepNumber = i + 1}
@@ -226,7 +234,10 @@
 
 	<!-- Step heading -->
 	<h2 class="text-lg font-semibold text-foreground">
-		Step {wizardState.step} of 6: {STEP_LABELS[wizardState.step - 1]}
+		{m.import_wizard_step_heading({
+			step: wizardState.step,
+			label: STEP_LABELS[wizardState.step - 1]
+		})}
 	</h2>
 
 	<!-- Step content -->
@@ -278,13 +289,16 @@
 			data-testid="unsupported-format"
 		>
 			<div>
-				<p class="text-base font-semibold text-foreground">We couldn't recognize this format</p>
+				<p class="text-base font-semibold text-foreground">
+					{m.import_unsupported_title()}
+				</p>
+				<!-- Brand names (Fuelly, aCar / Fuelio, Drivvo) are interpolated as params so they are
+				     never translated; only the surrounding prose is. -->
 				<p class="mt-1 text-sm text-muted-foreground">
-					This file doesn't match one of the exports we can read yet. Imports work with files from
-					<strong>Fuelly</strong>, <strong>aCar / Fuelio</strong>, and <strong>Drivvo</strong>.
+					{m.import_unsupported_body({ fuelly: 'Fuelly', acar: 'aCar / Fuelio', drivvo: 'Drivvo' })}
 				</p>
 				<p class="mt-2 text-sm text-muted-foreground">
-					Try exporting again from one of those apps, then upload that file.
+					{m.import_unsupported_retry()}
 				</p>
 			</div>
 			<button
@@ -292,7 +306,7 @@
 				class="inline-flex min-h-11 items-center justify-center rounded-xl bg-accent px-5 py-3 text-sm font-semibold text-accent-foreground"
 				onclick={() => (wizardState.step = 1)}
 			>
-				Choose a different format
+				{m.import_unsupported_choose_different()}
 			</button>
 		</div>
 	{/if}
@@ -306,14 +320,14 @@
 				class="inline-flex min-h-11 items-center justify-center rounded-xl border border-border bg-card px-5 py-3 text-sm font-semibold text-foreground disabled:cursor-not-allowed disabled:opacity-70"
 				onclick={handleBack}
 			>
-				Back
+				{m.import_wizard_back()}
 			</button>
 			<button
 				type="button"
 				class="inline-flex min-h-11 items-center justify-center rounded-xl border border-border bg-card px-5 py-3 text-sm font-semibold text-foreground"
 				onclick={handleCancel}
 			>
-				Cancel
+				{m.common_cancel()}
 			</button>
 		</div>
 	{/if}
@@ -325,13 +339,13 @@
 		class="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
 		role="dialog"
 		aria-modal="true"
-		aria-label="Confirm cancel import"
+		aria-label={m.import_cancel_dialog_label()}
 		onkeydown={trapFocus}
 	>
 		<div bind:this={dialogRef} class="mx-4 w-full max-w-sm rounded-2xl bg-card p-6 shadow-lg">
-			<h3 class="text-base font-semibold text-foreground">Cancel import?</h3>
+			<h3 class="text-base font-semibold text-foreground">{m.import_cancel_dialog_heading()}</h3>
 			<p class="mt-2 text-sm text-muted-foreground">
-				Your uploaded file and progress will be lost.
+				{m.import_cancel_dialog_body()}
 			</p>
 			<div class="mt-4 flex gap-3">
 				<button
@@ -339,14 +353,14 @@
 					class="min-h-11 flex-1 rounded-xl border border-border bg-card px-4 py-2 text-sm font-semibold text-foreground"
 					onclick={dismissCancel}
 				>
-					Keep working
+					{m.import_cancel_dialog_keep()}
 				</button>
 				<button
 					type="button"
 					class="min-h-11 flex-1 rounded-xl bg-destructive px-4 py-2 text-sm font-semibold text-destructive-foreground"
 					onclick={confirmCancel}
 				>
-					Cancel import
+					{m.import_cancel_dialog_confirm()}
 				</button>
 			</div>
 		</div>

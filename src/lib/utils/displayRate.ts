@@ -4,6 +4,7 @@ import {
 	resolveHistoryEntryCurrency,
 	type HistoryEntry
 } from '$lib/utils/historyEntries';
+import { m } from '$lib/paraglide/messages';
 
 export interface DisplayRateBlend {
 	/** Approximate single home-currency total (Σ home entries at rate 1 + Σ foreign × rate). */
@@ -73,22 +74,25 @@ function buildBlendLabel(
 ): string {
 	// Two or more rated foreign currencies → no single inline pair fits, mirror History's "your rates".
 	if (ratedForeignCurrencies.length >= 2) {
-		return 'using your rates';
+		return m.display_rate_label_multi();
 	}
 
 	const currency = ratedForeignCurrencies[0];
 	// Non-null per the ratedEntries > 0 gate, but guard defensively rather than assert.
 	const rate = rates?.[currency];
 	if (!isFiniteNumber(rate) || rate <= 0) {
-		return 'using your rates';
+		return m.display_rate_label_multi();
 	}
 
 	// For a weak foreign currency (home €, rate ≈ 0.0025), "1 Ft = €0.00" is useless; flip to the
 	// legible inverse "1 € = 400 Ft".
 	if (roundsToZero(rate, homeCurrency)) {
-		return `using your rate (1 ${homeCurrency} = ${formatCurrency(1 / rate, currency)})`;
+		return m.display_rate_label_single({
+			from: homeCurrency,
+			to: formatCurrency(1 / rate, currency)
+		});
 	}
-	return `using your rate (1 ${currency} = ${formatCurrency(rate, homeCurrency)})`;
+	return m.display_rate_label_single({ from: currency, to: formatCurrency(rate, homeCurrency) });
 }
 
 /**

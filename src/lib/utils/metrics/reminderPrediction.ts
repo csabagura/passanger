@@ -11,6 +11,7 @@ import type { FuelLog, ServiceReminder } from '$lib/db/schema';
 import { convertDistanceUnit, isFiniteNumber } from '$lib/utils/calculations';
 import { computeReminderStatus } from '$lib/utils/serviceReminder';
 import { cadence } from '$lib/utils/metrics/cadence';
+import { m } from '$lib/paraglide/messages';
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
@@ -21,8 +22,7 @@ const MS_PER_DAY = 24 * 60 * 60 * 1000;
 export const MAX_PREDICTION_DAYS = 365;
 
 /** Calm, honest note shown in place of a date when the cadence is insufficient (AC4, DEC-13). */
-export const REMINDER_PREDICTION_INSUFFICIENT_NOTE =
-	'Not enough recent driving to estimate a date yet.';
+export const REMINDER_PREDICTION_INSUFFICIENT_NOTE = m.reminder_prediction_insufficient();
 
 export type ReminderPredictionOmitReason =
 	| 'no-distance-interval' // time-only reminder — nothing to predict from distance
@@ -122,7 +122,7 @@ export function formatPredictedDue(daysUntilDue: number): string {
 		daysUntilDue >= 14
 			? rtf.format(Math.round(daysUntilDue / 7), 'week')
 			: rtf.format(daysUntilDue, 'day');
-	return `≈ due ${phrase}`;
+	return m.reminder_prediction_due({ phrase });
 }
 
 export interface PredictedDateView {
@@ -148,7 +148,7 @@ export function predictedDateView(
 		return { kind: 'date', text: formatPredictedDue(prediction.daysUntilDue) };
 	}
 	if (prediction.reason === 'cadence-insufficient') {
-		return { kind: 'note', text: REMINDER_PREDICTION_INSUFFICIENT_NOTE };
+		return { kind: 'note', text: m.reminder_prediction_insufficient() };
 	}
 	return { kind: 'none', text: '' };
 }

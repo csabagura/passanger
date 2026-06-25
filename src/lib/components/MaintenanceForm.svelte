@@ -25,6 +25,7 @@
 	import { isGroupedOdometerValue, parseNonNegativeNumeric } from '$lib/utils/numberInput';
 	import type { AppSettings } from '$lib/utils/settings';
 	import type { ToastApi } from '$lib/state/toast';
+	import { m } from '$lib/paraglide/messages';
 
 	type FormMode = 'create' | 'edit';
 
@@ -53,7 +54,16 @@
 		| { status: 'loading' }
 		| { status: 'success'; data: Expense };
 
-	const TYPE_SUGGESTIONS = ['Tyres', 'Oil Change', 'Service', 'Insurance', 'Other'];
+	// i18n (6.1): UI affordance labels that prefill the free-text Type field (OQ3 default — a HU user
+	// therefore stores Hungarian type names, which is their data). The 'maintenance' entity/enum is
+	// unaffected; only these suggestion labels are translated.
+	const TYPE_SUGGESTIONS = [
+		m.maintenance_type_tyres(),
+		m.maintenance_type_oil_change(),
+		m.maintenance_type_service(),
+		m.maintenance_type_insurance(),
+		m.maintenance_type_other()
+	];
 
 	let {
 		vehicleId,
@@ -235,26 +245,26 @@
 
 		const parsedDate = parseDateInputValue(dateValue);
 		if (parsedDate === null) {
-			dateError = 'Choose a valid date';
+			dateError = m.maintenance_error_date();
 		}
 
 		if (!typeValue.trim()) {
-			typeError = 'Enter a maintenance type';
+			typeError = m.maintenance_error_type();
 		}
 
 		const parsedOdometer =
 			odometerValue.trim() === '' ? undefined : parseNonNegativeNumeric(odometerValue);
 		if (odometerValue.trim() !== '') {
 			if (parsedOdometer === null) {
-				odometerError = 'Enter a valid odometer reading (e.g. 87400)';
+				odometerError = m.form_error_odometer_invalid();
 			} else if (isGroupedOdometerValue(odometerValue, parsedOdometer ?? null)) {
-				odometerError = 'Enter odometer without grouping separators (e.g. 87400)';
+				odometerError = m.maintenance_error_odometer_grouping();
 			}
 		}
 
 		const parsedCost = parseNonNegativeNumeric(costValue);
 		if (parsedCost === null) {
-			costError = 'Enter the cost (e.g. 78.00)';
+			costError = m.maintenance_error_cost();
 		}
 
 		if (dateError) {
@@ -305,9 +315,7 @@
 			toast?.error(
 				saveErrorMessage(
 					result.error,
-					isEditMode
-						? 'Could not update maintenance entry. Please try again.'
-						: 'Could not save maintenance entry. Please try again.'
+					isEditMode ? m.maintenance_error_update_failed() : m.maintenance_error_save_failed()
 				)
 			);
 			saveState = { status: 'idle' };
@@ -330,9 +338,17 @@
 
 		saveState = { status: 'success', data: result.data };
 		const resultCurrency = result.data.currency ?? settingsCtx.settings.currency;
+		// i18n (6.1): one complete message template per verb — `type` is the user's free text, `cost`
+		// is formatCurrency output, `date` is the localized date-seam output; all passed as params so
+		// Hungarian word order can differ. Never glue a translated verb onto the sentence.
+		const summaryParams = {
+			type: result.data.type,
+			cost: formatCurrency(result.data.cost, resultCurrency),
+			date: formatLocalCalendarDate(result.data.date)
+		};
 		successMessage = isEditMode
-			? `Updated ${result.data.type} for ${formatCurrency(result.data.cost, resultCurrency)} on ${formatLocalCalendarDate(result.data.date)}.`
-			: `Saved ${result.data.type} for ${formatCurrency(result.data.cost, resultCurrency)} on ${formatLocalCalendarDate(result.data.date)}.`;
+			? m.maintenance_updated_summary(summaryParams)
+			: m.maintenance_saved_summary(summaryParams);
 		showSuccessMessage = true;
 
 		if (!isEditMode && !hasCreatedFirstSave) {
@@ -364,12 +380,12 @@
 		<!-- Story 2.3 (AC-4): calm, non-blocking stale-restore notice. Polite live region, NO
 		     role="alert"; neutral text-muted-foreground (informational, not the amber warning). -->
 		<p aria-live="polite" class="text-sm text-muted-foreground">
-			We kept your earlier draft — double-check the odometer and date.
+			{m.maintenance_stale_draft_notice()}
 		</p>
 	{/if}
 	<Field
 		id="maintenance-date"
-		label="Date"
+		label={m.maintenance_field_date()}
 		type="date"
 		bind:value={dateValue}
 		error={dateError}
@@ -379,10 +395,10 @@
 	<div>
 		<Field
 			id="maintenance-type"
-			label="Type"
+			label={m.maintenance_field_type()}
 			type="text"
 			list="maintenance-type-suggestions"
-			placeholder="e.g. Oil Change"
+			placeholder={m.maintenance_placeholder_type()}
 			bind:value={typeValue}
 			error={typeError}
 			oninput={clearAsyncFeedback}
@@ -397,17 +413,17 @@
 	<div>
 		<Field
 			id="maintenance-odometer"
-			label="Odometer (optional)"
+			label={m.maintenance_field_odometer()}
 			type="text"
 			inputmode="decimal"
-			placeholder="e.g. 87400"
+			placeholder={m.maintenance_placeholder_odometer()}
 			bind:value={odometerValue}
 			error={odometerError}
 			aria-describedby={odometerHelpId}
 			oninput={clearAsyncFeedback}
 		/>
 		<p id={odometerHelpId} class="mt-2 text-sm text-muted-foreground">
-			Maintenance entries keep the odometer value exactly as entered. Settings do not relabel it.
+			{m.maintenance_odometer_help()}
 		</p>
 	</div>
 
@@ -416,10 +432,10 @@
 			<div class="flex-1">
 				<Field
 					id="maintenance-cost"
-					label="Cost"
+					label={m.maintenance_field_cost()}
 					type="text"
 					inputmode="decimal"
-					placeholder="e.g. 78.00"
+					placeholder={m.maintenance_placeholder_cost()}
 					bind:value={costValue}
 					error={costError}
 					oninput={clearAsyncFeedback}
@@ -427,7 +443,7 @@
 			</div>
 			<select
 				bind:value={currency}
-				aria-label="Currency"
+				aria-label={m.form_currency_aria()}
 				class="mt-7 h-13 shrink-0 rounded-md border border-border bg-background px-2 text-base text-foreground outline-none focus:ring-2 focus:ring-ring"
 			>
 				{#each currencyOptions as option (option)}
@@ -440,13 +456,13 @@
 
 	<div class="flex flex-col gap-2">
 		<Label for="maintenance-notes" class="text-label text-muted-foreground uppercase">
-			Notes (optional)
+			{m.form_notes_optional()}
 		</Label>
 		<textarea
 			bind:value={notesValue}
 			id="maintenance-notes"
 			rows="4"
-			placeholder="Add any details worth remembering"
+			placeholder={m.maintenance_placeholder_notes()}
 			oninput={clearAsyncFeedback}
 			class="w-full rounded-md border border-border bg-card px-3 py-2 text-base text-foreground outline-none focus:ring-2 focus:ring-ring"
 		></textarea>
@@ -476,7 +492,7 @@
 				onclick={dismissSuccess}
 				class="mt-3 flex h-[44px] w-full items-center justify-center rounded-lg bg-success/15 px-4 text-sm font-semibold text-success hover:bg-success/25 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
 			>
-				Done
+				{m.form_done()}
 			</button>
 		{/if}
 	</div>
@@ -491,7 +507,7 @@
 				}}
 				class="h-[56px] flex-1 rounded-xl border border-border px-4 py-2 text-sm font-semibold text-foreground"
 			>
-				Cancel
+				{m.common_cancel()}
 			</button>
 		{/if}
 
@@ -502,11 +518,11 @@
 			class="h-[56px] flex-1 rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-accent-foreground disabled:cursor-not-allowed disabled:opacity-70"
 		>
 			{#if saveState.status === 'loading'}
-				Saving…
+				{m.form_saving()}
 			{:else if isEditMode}
-				Save changes
+				{m.form_save_changes()}
 			{:else}
-				Save
+				{m.common_save()}
 			{/if}
 		</button>
 	</div>

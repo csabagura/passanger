@@ -14,6 +14,7 @@
 	import { formatLocalCalendarDate } from '$lib/utils/date';
 	import { mergeHistoryEntries, type HistoryEntry } from '$lib/utils/historyEntries';
 	import { readStoredVehicleId, safeRemoveItem, safeSetItem } from '$lib/utils/vehicleStorage';
+	import { m } from '$lib/paraglide/messages';
 
 	let currentVehicle = $state<Vehicle | null>(null);
 	let allVehicles = $state<Vehicle[]>([]);
@@ -32,9 +33,11 @@
 	const exportButtonDisabled = $derived(exporting || loading || !currentVehicle || !hasEntries);
 	const entrySummary = $derived.by(() => {
 		const count = historyEntries.length;
-		const label = count === 1 ? 'entry' : 'entries';
-		const scope = exportScope === 'all-vehicles' ? 'All vehicles' : (currentVehicle?.name ?? '');
-		return scope ? `${count} ${label} ready (${scope})` : `${count} ${label} ready`;
+		const scope =
+			exportScope === 'all-vehicles' ? m.export_scope_all_vehicles() : (currentVehicle?.name ?? '');
+		return scope
+			? m.export_entry_summary_scoped({ count, scope })
+			: m.export_entry_summary({ count });
 	});
 	const dateRangeSummary = $derived.by(() => {
 		if (historyEntries.length === 0) {
@@ -135,7 +138,7 @@
 
 			await loadEntriesForScope();
 		} catch {
-			errorMessage = 'Could not prepare your export. Please try again.';
+			errorMessage = m.export_error_prepare();
 			historyEntries = [];
 		} finally {
 			loading = false;
@@ -153,7 +156,7 @@
 		try {
 			await loadEntriesForScope();
 		} catch {
-			errorMessage = 'Could not prepare your export. Please try again.';
+			errorMessage = m.export_error_prepare();
 			historyEntries = [];
 		} finally {
 			loading = false;
@@ -211,7 +214,7 @@
 				downloadCSV(content, filename);
 			}
 		} catch {
-			errorMessage = 'Could not export your data. Please try again.';
+			errorMessage = m.export_error_export();
 		} finally {
 			exporting = false;
 		}
@@ -228,7 +231,7 @@
 </script>
 
 <svelte:head>
-	<title>Export | passanger</title>
+	<title>{m.export_page_title()} | passanger</title>
 </svelte:head>
 
 <div class="space-y-6 px-4 pt-4">
@@ -243,7 +246,7 @@
 			</p>
 		{:else}
 			<p class="text-sm text-muted-foreground">
-				Download a CSV backup of your saved fuel and maintenance history.
+				{m.export_intro()}
 			</p>
 		{/if}
 	</header>
@@ -256,8 +259,12 @@
 
 	{#if showScopeSelector}
 		<fieldset class="space-y-3">
-			<legend class="text-sm font-medium text-foreground">Export scope</legend>
-			<div class="flex rounded-2xl bg-muted/50 p-1" role="radiogroup" aria-label="Export scope">
+			<legend class="text-sm font-medium text-foreground">{m.export_scope_legend()}</legend>
+			<div
+				class="flex rounded-2xl bg-muted/50 p-1"
+				role="radiogroup"
+				aria-label={m.export_scope_legend()}
+			>
 				<label class="flex-1">
 					<input
 						bind:group={exportScope}
@@ -270,7 +277,7 @@
 					<span
 						class="flex min-h-11 items-center justify-center rounded-xl border border-transparent px-4 text-sm font-medium text-muted-foreground transition-colors peer-checked:bg-accent peer-checked:text-accent-foreground peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-accent"
 					>
-						Current vehicle
+						{m.export_scope_current_vehicle()}
 					</span>
 				</label>
 				<label class="flex-1">
@@ -285,7 +292,7 @@
 					<span
 						class="flex min-h-11 items-center justify-center rounded-xl border border-transparent px-4 text-sm font-medium text-muted-foreground transition-colors peer-checked:bg-accent peer-checked:text-accent-foreground peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-accent"
 					>
-						All vehicles
+						{m.export_scope_all_vehicles()}
 					</span>
 				</label>
 			</div>
@@ -300,10 +307,12 @@
 			<div class="space-y-1">
 				{#if hasEntries}
 					<p class="text-lg font-semibold text-foreground">{entrySummary}</p>
-					<p class="text-sm text-muted-foreground">Date range: {dateRangeSummary}</p>
+					<p class="text-sm text-muted-foreground">
+						{m.export_date_range({ range: dateRangeSummary })}
+					</p>
 				{:else}
-					<p class="text-lg font-semibold text-foreground">Export CSV</p>
-					<p class="text-sm text-muted-foreground">Checking your saved history on this device.</p>
+					<p class="text-lg font-semibold text-foreground">{m.export_csv_button()}</p>
+					<p class="text-sm text-muted-foreground">{m.export_checking_history()}</p>
 				{/if}
 			</div>
 
@@ -314,41 +323,41 @@
 				aria-busy={exporting ? 'true' : undefined}
 				class="inline-flex min-h-11 items-center justify-center rounded-xl bg-accent px-5 py-3 text-sm font-semibold text-accent-foreground disabled:cursor-not-allowed disabled:opacity-70"
 			>
-				{exporting ? 'Exporting...' : 'Export CSV'}
+				{exporting ? m.export_csv_button_busy() : m.export_csv_button()}
 			</button>
 		</section>
 	{:else if !loading && !errorMessage}
 		<section
 			id={exportSectionId}
-			aria-label="Export empty state"
+			aria-label={m.export_empty_state_label()}
 			class="rounded-2xl border border-dashed border-border bg-card px-4 py-8 text-center"
 		>
 			<p class="text-base font-semibold text-foreground">
-				Nothing to export yet - log your first fill-up!
+				{m.export_empty_title()}
 			</p>
 			<p class="mt-2 text-sm text-muted-foreground">
-				Your saved entries will be ready here as soon as you log them.
+				{m.export_empty_body()}
 			</p>
 			<a
 				href={resolve('/log')}
 				class="mt-4 inline-flex min-h-11 items-center justify-center rounded-xl bg-accent px-5 py-3 text-sm font-semibold text-accent-foreground no-underline"
 			>
-				Go to Log
+				{m.export_empty_cta()}
 			</a>
 		</section>
 	{/if}
 
 	<!-- Import entry point — always visible regardless of export state -->
 	<section class="rounded-2xl border border-dashed border-border bg-card px-4 py-6 text-center">
-		<p class="text-base font-semibold text-foreground">Switching from another app?</p>
+		<p class="text-base font-semibold text-foreground">{m.export_import_cta_title()}</p>
 		<p class="mt-1 text-sm text-muted-foreground">
-			Bring your history from Fuelly, aCar, Drivvo, or any CSV export.
+			{m.export_import_cta_body()}
 		</p>
 		<a
 			href={resolve('/import')}
 			class="mt-4 inline-flex min-h-11 items-center justify-center rounded-xl border border-border bg-card px-5 py-3 text-sm font-semibold text-foreground no-underline"
 		>
-			Import data from another app
+			{m.export_import_cta_link()}
 		</a>
 	</section>
 </div>
