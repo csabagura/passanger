@@ -108,6 +108,17 @@ describe('monthlySpendByCurrency', () => {
 		);
 		expect(monthlySpendByCurrency(entries, '€')[0].byCurrency).toEqual({ '€': 198 });
 	});
+
+	it('skips an entry with a non-finite cost (PREP-1 convention)', () => {
+		const entries = mergeHistoryEntries(
+			[
+				createFuelEntry({ id: 1, totalCost: Number.NaN, currency: '€' }),
+				createFuelEntry({ id: 2, totalCost: 50, currency: '€' })
+			],
+			[]
+		);
+		expect(monthlySpendByCurrency(entries, '€')[0].byCurrency).toEqual({ '€': 50 });
+	});
 });
 
 describe('consumptionTrend', () => {
