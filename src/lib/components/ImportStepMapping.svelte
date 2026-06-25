@@ -300,14 +300,22 @@
 	{@const previewRows = rows.slice(0, 3)}
 	{@const hasMixedTypes =
 		rows.some((r) => r.data.type === 'maintenance') && rows.some((r) => r.data.type === 'fuel')}
-	{@const fuelCount = rows.filter((r) => r.data.type === 'fuel').length}
-	{@const expenseCount = rows.filter((r) => r.data.type === 'maintenance').length}
-	{@const totalSpend = rows.reduce(
+	<!-- Count/split/total reflect ONLY committable rows (valid|warning) so the value-first preview
+	     promises exactly what commitImportRows writes — error rows are excluded at commit, so they
+	     must not inflate the headline or total spend (mirrors the home-currency fidelity above). -->
+	{@const committable = rows.filter((r) => r.status === 'valid' || r.status === 'warning')}
+	{@const fuelCount = committable.filter((r) => r.data.type === 'fuel').length}
+	{@const expenseCount = committable.filter((r) => r.data.type === 'maintenance').length}
+	{@const totalSpend = committable.reduce(
 		(sum, r) => sum + (Number.isFinite(r.data.totalCost) ? (r.data.totalCost as number) : 0),
 		0
 	)}
+	{@const splitText =
+		(fuelCount > 0 ? `${fuelCount} fuel-up${fuelCount !== 1 ? 's' : ''}` : '') +
+		(fuelCount > 0 && expenseCount > 0 ? ', ' : '') +
+		(expenseCount > 0 ? `${expenseCount} expense${expenseCount !== 1 ? 's' : ''}` : '')}
 	{@const dateRangeText = formatImportDateRange(summary.dateRange)}
-	{@const headline = `${summary.totalRows} ${summary.totalRows === 1 ? 'entry' : 'entries'}${
+	{@const headline = `${committable.length} ${committable.length === 1 ? 'entry' : 'entries'}${
 		dateRangeText ? ` spanning ${dateRangeText}` : ''
 	}`}
 
@@ -318,12 +326,9 @@
 			data-testid="import-preview"
 		>
 			<h3 class="text-base font-semibold text-foreground">{headline}</h3>
-			<p class="mt-2 text-sm text-muted-foreground">
-				{fuelCount} fuel-up{fuelCount !== 1 ? 's' : ''}{#if expenseCount > 0}, {expenseCount} expense{expenseCount !==
-					1
-						? 's'
-						: ''}{/if}
-			</p>
+			{#if splitText}
+				<p class="mt-2 text-sm text-muted-foreground">{splitText}</p>
+			{/if}
 			<p class="mt-1 text-sm text-foreground">
 				Total spend <span class="font-semibold">{formatCurrency(totalSpend, homeCurrency)}</span>
 			</p>
