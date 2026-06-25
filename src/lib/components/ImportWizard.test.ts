@@ -169,6 +169,10 @@ vi.mock('$lib/utils/importParseDrivvo', () => ({
 }));
 
 import ImportWizard from './ImportWizard.svelte';
+import { IMPORT_PROGRESS_STORAGE_KEY } from '$lib/config';
+import { saveImportProgress } from '$lib/state/importProgress';
+import { createInitialWizardState } from '$lib/utils/importTypes';
+import type { ImportRow, ImportWizardState, ReviewRowState } from '$lib/utils/importTypes';
 
 const testVehicle = { id: 1, name: 'My Car', make: 'Honda', model: 'Civic', year: 2020 };
 
@@ -228,6 +232,9 @@ async function advanceToStep3WithFile() {
 describe('ImportWizard', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+		// Story 5.4: the wizard now hydrates from / writes through to localStorage, so each test must
+		// start from a clean slate — otherwise a prior test's persisted progress resumes mid-wizard.
+		localStorage.clear();
 		mockDetectCSVFormat.mockReturnValue({ data: 'fuelly', error: null });
 	});
 
@@ -743,6 +750,187 @@ describe('ImportWizard', () => {
 			await waitFor(() => {
 				expect(screen.getByText('Step 3 of 6: Preview')).toBeTruthy();
 			});
+		});
+	});
+
+	// ---------------------------------------------------------------------------
+	// Story 5.4 — resumable import (FR-16)
+	// ---------------------------------------------------------------------------
+	describe('Resume from persisted progress (5.4)', () => {
+		const validRow: ImportRow = {
+			rowNumber: 1,
+			status: 'valid',
+			data: {
+				date: new Date(2024, 0, 1),
+				odometer: 10000,
+				quantity: 40,
+				unit: 'L',
+				distanceUnit: 'km',
+				totalCost: 60,
+				notes: '',
+				type: 'fuel',
+				sourceVehicleName: 'TestCar'
+			},
+			issues: []
+		};
+		// A flagged (error) row keeps Step 4 visible (no auto-skip to Step 5).
+		const flaggedRow: ImportRow = {
+			rowNumber: 1,
+			status: 'error',
+			data: { ...validRow.data, odometer: undefined },
+			issues: ['Missing odometer reading']
+		};
+		const summary = {
+			totalRows: 1,
+			validCount: 1,
+			warningCount: 0,
+			errorCount: 0,
+			detectedVehicleNames: ['TestCar'],
+			dateRange: { start: new Date(2024, 0, 1), end: new Date(2024, 0, 15) }
+		};
+
+		/** Seed a persisted payload (fresh, non-stale) before rendering, mirroring real save. */
+		function seedProgress(
+			partial: Partial<ImportWizardState>,
+			satellites: {
+				step4AutoSkipped: boolean;
+				reviewEntries: [number, ReviewRowState][] | null;
+			} = { step4AutoSkipped: false, reviewEntries: null }
+		) {
+			saveImportProgress({ ...createInitialWizardState(), ...partial }, satellites);
+		}
+
+		it('resumes on Step 4 (Review) with restored rows instead of Step 1', async () => {
+			seedProgress({
+				step: 4,
+				selectedSource: 'fuelly',
+				confirmedFormat: 'fuelly',
+				rawCSV: 'fuelup_date,odometer\n2024-01-01,',
+				rowCount: 1,
+				parsedRows: [flaggedRow],
+				dryRunSummary: { ...summary, validCount: 0, errorCount: 1 }
+			});
+
+			renderWizard();
+
+			expect(screen.getByText('Step 4 of 6: Review')).toBeTruthy();
+			await waitFor(() => {
+				expect(screen.getByTestId('review-card-1')).toBeTruthy();
+			});
+		});
+
+		it('resumes on Step 5 (Vehicles); Back honors the restored step4AutoSkipped → Step 3', async () => {
+			seedProgress(
+				{
+					step: 5,
+					selectedSource: 'fuelly',
+					confirmedFormat: 'fuelly',
+					rawCSV: 'fuelup_date,odometer\n2024-01-01,10000',
+					rowCount: 1,
+					parsedRows: [validRow],
+					dryRunSummary: summary
+				},
+				{ step4AutoSkipped: true, reviewEntries: null }
+			);
+
+			renderWizard();
+
+			expect(screen.getByText('Step 5 of 6: Vehicles')).toBeTruthy();
+
+			// Back must skip Step 4 (auto-skipped) and land on Step 3 — proves the satellite restored.
+			await fireEvent.click(screen.getByRole('button', { name: /back/i }));
+			await waitFor(() => {
+				expect(screen.getByText('Step 3 of 6: Preview')).toBeTruthy();
+			});
+		});
+
+		it('writes progress through to localStorage as the wizard advances', async () => {
+			await advanceToStep3WithFile();
+
+			const raw = localStorage.getItem(IMPORT_PROGRESS_STORAGE_KEY);
+			expect(raw).not.toBeNull();
+			const payload = JSON.parse(raw as string);
+			expect(payload.state.step).toBe(3);
+			expect(payload.state.rawCSV).not.toBeNull();
+			// The non-serializable File handle is never persisted.
+			expect('file' in payload.state).toBe(false);
+		});
+
+		it('clears persisted progress after a successful commit', async () => {
+			await advanceToStep3WithFile();
+
+			await waitFor(() => {
+				expect(screen.getByText("Here's how we'll map your data")).toBeTruthy();
+			});
+			await fireEvent.click(screen.getByRole('button', { name: /continue/i }));
+
+			await waitFor(() => {
+				expect(screen.getByText('Step 5 of 6: Vehicles')).toBeTruthy();
+			});
+			await fireEvent.click(screen.getByTestId('review-import-btn'));
+
+			await waitFor(() => {
+				expect(screen.getByText('Step 6 of 6: Confirm')).toBeTruthy();
+			});
+			// Progress was persisted up to here.
+			expect(localStorage.getItem(IMPORT_PROGRESS_STORAGE_KEY)).not.toBeNull();
+
+			await fireEvent.click(screen.getByTestId('import-btn'));
+
+			// commitImportRows resolves (mocked) → handleImportComplete clears the key, and the
+			// write-through $effect must NOT resurrect it (post-commit guard).
+			await waitFor(() => {
+				expect(localStorage.getItem(IMPORT_PROGRESS_STORAGE_KEY)).toBeNull();
+			});
+		});
+
+		it('Cancel from a resumed (file-null) state still opens the dialog and clears on confirm', async () => {
+			seedProgress({
+				step: 5,
+				selectedSource: 'fuelly',
+				confirmedFormat: 'fuelly',
+				rawCSV: 'fuelup_date,odometer\n2024-01-01,10000',
+				rowCount: 1,
+				parsedRows: [validRow],
+				dryRunSummary: summary
+			});
+
+			renderWizard();
+			expect(screen.getByText('Step 5 of 6: Vehicles')).toBeTruthy();
+
+			// file is null after resume, but the Cancel gate keys off progress → dialog must open.
+			await fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+			expect(screen.getByRole('dialog', { name: /confirm cancel/i })).toBeTruthy();
+
+			await fireEvent.click(screen.getByRole('button', { name: /cancel import/i }));
+			expect(mockGoto).toHaveBeenCalledWith('/export');
+			expect(localStorage.getItem(IMPORT_PROGRESS_STORAGE_KEY)).toBeNull();
+		});
+
+		it('mounts on Step 1 when the persisted payload is corrupt', () => {
+			localStorage.setItem(IMPORT_PROGRESS_STORAGE_KEY, '{not valid json');
+			renderWizard();
+			expect(screen.getByText('Step 1 of 6: Source')).toBeTruthy();
+		});
+
+		it('mounts on Step 1 (and clears) when the persisted payload is stale', () => {
+			seedProgress({
+				step: 4,
+				selectedSource: 'fuelly',
+				confirmedFormat: 'fuelly',
+				rawCSV: 'fuelup_date,odometer\n2024-01-01,10000',
+				rowCount: 1,
+				parsedRows: [validRow],
+				dryRunSummary: summary
+			});
+			// Backdate past the staleness horizon.
+			const payload = JSON.parse(localStorage.getItem(IMPORT_PROGRESS_STORAGE_KEY) as string);
+			payload.updatedAt = Date.now() - 8 * 86_400_000;
+			localStorage.setItem(IMPORT_PROGRESS_STORAGE_KEY, JSON.stringify(payload));
+
+			renderWizard();
+			expect(screen.getByText('Step 1 of 6: Source')).toBeTruthy();
+			expect(localStorage.getItem(IMPORT_PROGRESS_STORAGE_KEY)).toBeNull();
 		});
 	});
 });
