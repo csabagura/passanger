@@ -1,3 +1,5 @@
+import { getLocale } from '$lib/paraglide/runtime';
+
 function padDatePart(value: number): string {
 	return String(value).padStart(2, '0');
 }
@@ -41,7 +43,7 @@ export function formatLocalCalendarDate(
 	date: Date,
 	locale: Intl.LocalesArgument = undefined
 ): string {
-	return new Intl.DateTimeFormat(locale, {
+	return new Intl.DateTimeFormat(locale ?? getLocale(), {
 		year: 'numeric',
 		month: 'short',
 		day: 'numeric'

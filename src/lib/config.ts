@@ -10,6 +10,13 @@ export type PresetCurrency = (typeof PRESET_CURRENCIES)[number];
 export const DEFAULT_UNIT: FuelUnit = 'L/100km';
 export const DEFAULT_CURRENCY: string = '€';
 
+// i18n (Epic 6 / ADR-002): supported UI locales. Mirrors project.inlang/settings.json (baseLocale +
+// locales) and the Paraglide runtime. No magic strings — the Settings language selector and locale
+// validation read these. EN is the base/fallback locale.
+export const SUPPORTED_LOCALES = ['en', 'hu'] as const;
+export type SupportedLocale = (typeof SUPPORTED_LOCALES)[number];
+export const DEFAULT_LOCALE: SupportedLocale = 'en';
+
 // Home Hero Metric (Story 3.4 / FR-9 base, DEC-2): which figure the tap-to-toggle Hero Metric
 // shows. Remembered as the optional `heroMetric` field on AppSettings (localStorage, AD-8).
 // Default 'cost' — "money is the emotional hook"; absent/invalid falls back to it.

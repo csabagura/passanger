@@ -19,3 +19,11 @@ test-results/
 
 # Miscellaneous
 /static/
+
+# Paraglide generated output (compiled messages + runtime)
+src/lib/paraglide/
+
+# Inlang project metadata (generated; only settings.json is hand-authored)
+project.inlang/.meta.json
+project.inlang/README.md
+project.inlang/cache/

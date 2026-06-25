@@ -1,0 +1,11 @@
+{
+	"$schema": "https://inlang.com/schema/inlang-message-format",
+	"nav_home": "Kezdőlap",
+	"nav_understand": "Áttekintés",
+	"nav_history": "Előzmények",
+	"nav_maintain": "Karbantartás",
+	"settings_title": "Beállítások",
+	"settings_language_label": "Nyelv",
+	"settings_language_english": "English",
+	"settings_language_hungarian": "Magyar"
+}

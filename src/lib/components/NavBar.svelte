@@ -5,6 +5,7 @@
 	import BarChart3 from '@lucide/svelte/icons/bar-chart-3';
 	import ClipboardList from '@lucide/svelte/icons/clipboard-list';
 	import Wrench from '@lucide/svelte/icons/wrench';
+	import { m } from '$lib/paraglide/messages';
 
 	// DEC-1 bottom nav: Home · Understand · [FAB] · History · Maintain (UX-DR5). The centre slot is
 	// the floating <Fab> (mounted by the layout, visually centred over the bar) — it is NOT a nav link,
@@ -14,10 +15,10 @@
 	// /analytics precursor redirects there). Maintain points at the shipped /maintain surface (Story 4.5
 	// / PREP-3's last flip — reminders moved out of Settings, DEC-16). No nav item may 404.
 	const tabs = [
-		{ href: '/', label: 'Home', icon: House },
-		{ href: '/understand', label: 'Understand', icon: BarChart3 },
-		{ href: '/history', label: 'History', icon: ClipboardList },
-		{ href: '/maintain', label: 'Maintain', icon: Wrench }
+		{ href: '/', label: m.nav_home(), icon: House },
+		{ href: '/understand', label: m.nav_understand(), icon: BarChart3 },
+		{ href: '/history', label: m.nav_history(), icon: ClipboardList },
+		{ href: '/maintain', label: m.nav_maintain(), icon: Wrench }
 	] as const;
 
 	// Index in `tabs` BEFORE which the centre FAB spacer is inserted (between Understand and History),

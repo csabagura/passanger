@@ -1,0 +1,11 @@
+{
+	"$schema": "https://inlang.com/schema/inlang-message-format",
+	"nav_home": "Home",
+	"nav_understand": "Understand",
+	"nav_history": "History",
+	"nav_maintain": "Maintain",
+	"settings_title": "Settings",
+	"settings_language_label": "Language",
+	"settings_language_english": "English",
+	"settings_language_hungarian": "Magyar"
+}
