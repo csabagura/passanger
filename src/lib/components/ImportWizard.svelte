@@ -17,7 +17,7 @@
 		ReviewRowState
 	} from '$lib/utils/importTypes';
 
-	const STEP_LABELS = ['Source', 'Upload', 'Mapping', 'Review', 'Vehicles', 'Confirm'] as const;
+	const STEP_LABELS = ['Source', 'Upload', 'Preview', 'Review', 'Vehicles', 'Confirm'] as const;
 
 	let wizardState = $state(createInitialWizardState());
 	let showCancelConfirm = $state(false);
@@ -231,12 +231,29 @@
 			onImportReset={handleImportReset}
 		/>
 	{:else}
-		<!-- Step 3 generic format placeholder -->
-		<div class="rounded-2xl border border-dashed border-border bg-card px-4 py-8 text-center">
-			<p class="text-base font-semibold text-foreground">Coming soon</p>
-			<p class="mt-1 text-sm text-muted-foreground">
-				This step will be available in a future update.
-			</p>
+		<!-- Honest fallback: the uploaded file's format wasn't recognized. We don't build a generic
+		     parser (parsers are frozen) — we name the supported sources and offer a fresh start. -->
+		<div
+			class="space-y-4 rounded-2xl border border-border bg-card px-5 py-6"
+			data-testid="unsupported-format"
+		>
+			<div>
+				<p class="text-base font-semibold text-foreground">We couldn't recognize this format</p>
+				<p class="mt-1 text-sm text-muted-foreground">
+					This file doesn't match one of the exports we can read yet. Imports work with files from
+					<strong>Fuelly</strong>, <strong>aCar / Fuelio</strong>, and <strong>Drivvo</strong>.
+				</p>
+				<p class="mt-2 text-sm text-muted-foreground">
+					Try exporting again from one of those apps, then upload that file.
+				</p>
+			</div>
+			<button
+				type="button"
+				class="inline-flex min-h-11 items-center justify-center rounded-xl bg-accent px-5 py-3 text-sm font-semibold text-accent-foreground"
+				onclick={() => (wizardState.step = 1)}
+			>
+				Choose a different format
+			</button>
 		</div>
 	{/if}
 

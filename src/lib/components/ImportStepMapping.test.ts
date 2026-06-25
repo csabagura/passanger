@@ -199,6 +199,172 @@ describe('ImportStepMapping', () => {
 		cleanup();
 	});
 
+	// --- Value-first preview (Story 5.3) ---
+
+	it('leads with a value-first headline: entry count + date span', async () => {
+		render(ImportStepMapping, {
+			props: {
+				rawCSV: 'csv-content',
+				confirmedFormat: 'fuelly',
+				onMappingConfirmed: vi.fn()
+			}
+		});
+
+		await waitFor(() => {
+			expect(screen.getByTestId('import-preview')).toBeTruthy();
+		});
+
+		const preview = screen.getByTestId('import-preview');
+		const text = (preview.textContent ?? '').replace(/\s+/g, ' ').trim();
+		expect(text).toContain('3 entries spanning Jun 2021 – Jun 2021');
+	});
+
+	it('shows the fuel/expense split and total spend in the home currency', async () => {
+		render(ImportStepMapping, {
+			props: {
+				rawCSV: 'csv-content',
+				confirmedFormat: 'fuelly',
+				onMappingConfirmed: vi.fn()
+			}
+		});
+
+		await waitFor(() => {
+			expect(screen.getByTestId('import-preview')).toBeTruthy();
+		});
+
+		const text = (screen.getByTestId('import-preview').textContent ?? '')
+			.replace(/\s+/g, ' ')
+			.trim();
+		// 3 fuel rows, no expenses; total = 72.88 + 66.53 + 0 = 139.41 (default home currency €).
+		expect(text).toContain('3 fuel-ups');
+		expect(text).toContain('Total spend');
+		expect(text).toContain('139.41');
+		expect(text).toContain('Amounts shown in €');
+	});
+
+	it('degrades the headline to a count only when the date range is null', async () => {
+		mockParseFuellyCSV.mockResolvedValue({
+			data: {
+				...mockFuellyParseResult,
+				summary: { ...mockSummary, dateRange: null }
+			},
+			error: null
+		});
+
+		render(ImportStepMapping, {
+			props: {
+				rawCSV: 'csv-content',
+				confirmedFormat: 'fuelly',
+				onMappingConfirmed: vi.fn()
+			}
+		});
+
+		await waitFor(() => {
+			expect(screen.getByTestId('import-preview')).toBeTruthy();
+		});
+
+		const text = (screen.getByTestId('import-preview').textContent ?? '')
+			.replace(/\s+/g, ' ')
+			.trim();
+		expect(text).toContain('3 entries');
+		expect(text).not.toContain('spanning');
+	});
+
+	it('counts only committable (valid|warning) rows — excludes error rows that will not import', async () => {
+		// AC1 fidelity (5.3 review): commitImportRows writes only valid|warning rows, so the
+		// value-first preview must promise only what will actually import. An error row carrying a
+		// finite cost + type (a fuel row missing its odometer) must NOT inflate the count or spend.
+		const rowsWithError: ImportRow[] = [
+			mockRows[0], // valid fuel, totalCost 72.88
+			mockRows[1], // valid fuel, totalCost 66.53
+			{
+				rowNumber: 3,
+				status: 'error',
+				data: {
+					date: new Date(2021, 5, 25),
+					quantity: 40,
+					unit: 'L',
+					distanceUnit: 'km',
+					totalCost: 999.99,
+					notes: '',
+					type: 'fuel',
+					sourceVehicleName: 'Renegade'
+				},
+				issues: ['Missing odometer reading']
+			}
+		];
+		mockParseFuellyCSV.mockResolvedValue({
+			data: {
+				...mockFuellyParseResult,
+				rows: rowsWithError,
+				summary: { ...mockSummary, totalRows: 3, validCount: 2, warningCount: 0, errorCount: 1 }
+			},
+			error: null
+		});
+
+		render(ImportStepMapping, {
+			props: {
+				rawCSV: 'csv-content',
+				confirmedFormat: 'fuelly',
+				onMappingConfirmed: vi.fn()
+			}
+		});
+
+		await waitFor(() => {
+			expect(screen.getByTestId('import-preview')).toBeTruthy();
+		});
+
+		const text = (screen.getByTestId('import-preview').textContent ?? '')
+			.replace(/\s+/g, ' ')
+			.trim();
+		// Only the 2 committable rows are promised — the €999.99 error row is excluded from both the
+		// headline count and the total spend (72.88 + 66.53 = 139.41).
+		expect(text).toContain('2 entries');
+		expect(text).toContain('2 fuel-ups');
+		expect(text).toContain('139.41');
+		expect(text).not.toContain('999.99');
+	});
+
+	it('collapses the mapping into a default-closed disclosure for a clean Fuelly parse', async () => {
+		render(ImportStepMapping, {
+			props: {
+				rawCSV: 'csv-content',
+				confirmedFormat: 'fuelly',
+				onMappingConfirmed: vi.fn()
+			}
+		});
+
+		await waitFor(() => {
+			expect(screen.getByText('How we mapped this')).toBeTruthy();
+		});
+
+		const details = screen.getByText('How we mapped this').closest('details');
+		expect(details).toBeTruthy();
+		expect((details as HTMLDetailsElement).open).toBe(false);
+	});
+
+	it('auto-opens the mapping disclosure for Drivvo (units supplied, detection incomplete)', async () => {
+		render(ImportStepMapping, {
+			props: {
+				rawCSV: 'drivvo-csv',
+				confirmedFormat: 'drivvo',
+				onMappingConfirmed: vi.fn()
+			}
+		});
+
+		const selects = screen.getAllByRole('combobox');
+		await fireEvent.change(selects[0], { target: { value: 'L' } });
+		await fireEvent.change(selects[1], { target: { value: 'km' } });
+		await fireEvent.click(screen.getByRole('button', { name: /parse data/i }));
+
+		await waitFor(() => {
+			expect(screen.getByText('How we mapped this')).toBeTruthy();
+		});
+
+		const details = screen.getByText('How we mapped this').closest('details');
+		expect((details as HTMLDetailsElement).open).toBe(true);
+	});
+
 	// --- Fuelly tests (existing, adapted) ---
 
 	it('renders column mapping table after successful parse', async () => {

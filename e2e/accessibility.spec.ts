@@ -13,7 +13,10 @@ const routes = [
 	{ name: 'Maintain', path: '/maintain' },
 	{ name: 'History', path: '/history' },
 	{ name: 'Export', path: '/export' },
-	{ name: 'Settings', path: '/settings' }
+	{ name: 'Settings', path: '/settings' },
+	// Story 5.3: /import is a changed surface (preview-first reshape) and must be axe-scanned.
+	// This covers Step 1 (Source) for free; the post-upload Preview is scanned in import-journey.spec.ts.
+	{ name: 'Import', path: '/import' }
 ];
 
 for (const route of routes) {

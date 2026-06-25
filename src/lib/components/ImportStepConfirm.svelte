@@ -3,6 +3,7 @@
 	import { resolve } from '$app/paths';
 	import { goto } from '$app/navigation';
 	import { commitImportRows } from '$lib/utils/importCommit';
+	import { formatImportDateRange } from '$lib/utils/importSummary';
 	import type {
 		ImportRow,
 		ImportDryRunSummary,
@@ -58,9 +59,7 @@
 	}
 
 	function formatDateRange(): string {
-		if (!summary.dateRange) return '';
-		const fmt = (d: Date) => d.toLocaleDateString(undefined, { month: 'short', year: 'numeric' });
-		return `${fmt(summary.dateRange.start)} – ${fmt(summary.dateRange.end)}`;
+		return formatImportDateRange(summary.dateRange);
 	}
 
 	let progressPercent = $derived(
