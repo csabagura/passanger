@@ -511,8 +511,26 @@
 			}
 		}
 	],
-	"import_confirm_new_vehicles": "{count} new vehicles will be created",
-	"import_confirm_breakdown": "{count} rows → {name}",
+	"import_confirm_new_vehicles": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} new vehicle will be created",
+				"countPlural=other": "{count} new vehicles will be created"
+			}
+		}
+	],
+	"import_confirm_breakdown": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural", "input name"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} row → {name}",
+				"countPlural=other": "{count} rows → {name}"
+			}
+		}
+	],
 	"import_confirm_breakdown_new": "{count} rows → {name} (new)",
 	"import_confirm_data_spans": "Data spans {range}",
 	"import_confirm_caution": "Imported data will appear in your History immediately. This cannot be undone.",
@@ -547,7 +565,16 @@
 	"import_review_skip_row": "Skip This Row",
 	"import_review_skip_all": "Skip all remaining flagged rows",
 	"import_review_assign_vehicles": "Assign Vehicles",
-	"import_review_needs_attention": "{count} rows need attention",
+	"import_review_needs_attention": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} row needs attention",
+				"countPlural=other": "{count} rows need attention"
+			}
+		}
+	],
 	"import_review_reviewed_progress": "{reviewed} of {total} reviewed",
 	"import_review_announce": "{reviewed} of {total} rows reviewed",
 	"import_vehicles_row_count": [

@@ -511,8 +511,26 @@
 			}
 		}
 	],
-	"import_confirm_new_vehicles": "{count} új jármű lesz létrehozva",
-	"import_confirm_breakdown": "{count} sor → {name}",
+	"import_confirm_new_vehicles": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} új jármű lesz létrehozva",
+				"countPlural=other": "{count} új jármű lesz létrehozva"
+			}
+		}
+	],
+	"import_confirm_breakdown": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural", "input name"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} sor → {name}",
+				"countPlural=other": "{count} sor → {name}"
+			}
+		}
+	],
 	"import_confirm_breakdown_new": "{count} sor → {name} (új)",
 	"import_confirm_data_spans": "Az adatok időtartama: {range}",
 	"import_confirm_caution": "Az importált adatok azonnal megjelennek az Előzményekben. Ez nem vonható vissza.",
@@ -547,7 +565,16 @@
 	"import_review_skip_row": "Sor kihagyása",
 	"import_review_skip_all": "Az összes hátralévő megjelölt sor kihagyása",
 	"import_review_assign_vehicles": "Járművek hozzárendelése",
-	"import_review_needs_attention": "{count} sor figyelmet igényel",
+	"import_review_needs_attention": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} sor figyelmet igényel",
+				"countPlural=other": "{count} sor figyelmet igényel"
+			}
+		}
+	],
 	"import_review_reviewed_progress": "{reviewed} / {total} áttekintve",
 	"import_review_announce": "{reviewed} / {total} sor áttekintve",
 	"import_vehicles_row_count": [
