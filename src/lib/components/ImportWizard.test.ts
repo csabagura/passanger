@@ -221,7 +221,7 @@ async function advanceToStep3WithFile() {
 
 	// Verify we're at step 3
 	await waitFor(() => {
-		expect(screen.getByText('Step 3 of 6: Mapping')).toBeTruthy();
+		expect(screen.getByText('Step 3 of 6: Preview')).toBeTruthy();
 	});
 }
 
@@ -241,7 +241,7 @@ describe('ImportWizard', () => {
 		expect(screen.getByText('Step 1 of 6: Source')).toBeTruthy();
 		expect(screen.getByText('Source')).toBeTruthy();
 		expect(screen.getByText('Upload')).toBeTruthy();
-		expect(screen.getByText('Mapping')).toBeTruthy();
+		expect(screen.getByText('Preview')).toBeTruthy();
 		expect(screen.getByText('Review')).toBeTruthy();
 		expect(screen.getByText('Vehicles')).toBeTruthy();
 		expect(screen.getByText('Confirm')).toBeTruthy();
@@ -358,7 +358,7 @@ describe('ImportWizard', () => {
 			await fireEvent.click(screen.getByRole('button', { name: /continue/i }));
 
 			await waitFor(() => {
-				expect(screen.getByText('Step 3 of 6: Mapping')).toBeTruthy();
+				expect(screen.getByText('Step 3 of 6: Preview')).toBeTruthy();
 			});
 
 			// Should render ImportStepMapping (not "Coming soon")
@@ -390,11 +390,74 @@ describe('ImportWizard', () => {
 			await fireEvent.click(screen.getByRole('button', { name: /continue/i }));
 
 			await waitFor(() => {
-				expect(screen.getByText('Step 3 of 6: Mapping')).toBeTruthy();
+				expect(screen.getByText('Step 3 of 6: Preview')).toBeTruthy();
 			});
 
 			// Should render ImportStepMapping with Drivvo unit selection (not "Coming soon")
 			expect(screen.getByText(/what units does your data use/i)).toBeTruthy();
+		});
+	});
+
+	describe('Step 3: generic / unsupported format fallback', () => {
+		it('shows an honest unsupported-format fallback (not "Coming soon") for a generic file', async () => {
+			// Generic source + generic detection → confirmedFormat resolves to 'generic'.
+			mockDetectCSVFormat.mockReturnValue({ data: 'generic', error: null });
+			renderWizard();
+
+			// Step 1: Select the Generic CSV source.
+			await fireEvent.click(screen.getByRole('button', { name: /import from generic csv/i }));
+
+			// Step 2: Upload a file whose format is unrecognized.
+			const csv = 'foo,bar,baz\n1,2,3\n4,5,6';
+			const file = new File([csv], 'unknown.csv', { type: 'text/csv' });
+			const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+			await fireEvent.change(input, { target: { files: [file] } });
+
+			await waitFor(() => {
+				const continueBtn = screen.getByRole('button', { name: /continue/i });
+				expect(continueBtn.hasAttribute('disabled')).toBe(false);
+			});
+
+			await fireEvent.click(screen.getByRole('button', { name: /continue/i }));
+
+			await waitFor(() => {
+				expect(screen.getByText('Step 3 of 6: Preview')).toBeTruthy();
+			});
+
+			// Honest fallback copy — names the supported sources, no "Coming soon".
+			expect(screen.getByTestId('unsupported-format')).toBeTruthy();
+			expect(screen.getByText(/couldn't recognize this format/i)).toBeTruthy();
+			expect(screen.getByText(/fuelly/i)).toBeTruthy();
+			expect(screen.getByText(/drivvo/i)).toBeTruthy();
+			expect(screen.queryByText(/coming soon/i)).toBeNull();
+		});
+
+		it('"Choose a different format" returns to Step 1', async () => {
+			mockDetectCSVFormat.mockReturnValue({ data: 'generic', error: null });
+			renderWizard();
+
+			await fireEvent.click(screen.getByRole('button', { name: /import from generic csv/i }));
+			const csv = 'foo,bar,baz\n1,2,3';
+			const file = new File([csv], 'unknown.csv', { type: 'text/csv' });
+			const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+			await fireEvent.change(input, { target: { files: [file] } });
+
+			await waitFor(() => {
+				expect(screen.getByRole('button', { name: /continue/i }).hasAttribute('disabled')).toBe(
+					false
+				);
+			});
+			await fireEvent.click(screen.getByRole('button', { name: /continue/i }));
+
+			await waitFor(() => {
+				expect(screen.getByText('Step 3 of 6: Preview')).toBeTruthy();
+			});
+
+			await fireEvent.click(screen.getByRole('button', { name: /choose a different format/i }));
+
+			await waitFor(() => {
+				expect(screen.getByText('Step 1 of 6: Source')).toBeTruthy();
+			});
 		});
 	});
 
@@ -488,7 +551,7 @@ describe('ImportWizard', () => {
 
 			// Should go to Step 3, not Step 4
 			await waitFor(() => {
-				expect(screen.getByText('Step 3 of 6: Mapping')).toBeTruthy();
+				expect(screen.getByText('Step 3 of 6: Preview')).toBeTruthy();
 			});
 		});
 
@@ -568,7 +631,7 @@ describe('ImportWizard', () => {
 
 			// Step 3: Mapping
 			await waitFor(() => {
-				expect(screen.getByText('Step 3 of 6: Mapping')).toBeTruthy();
+				expect(screen.getByText('Step 3 of 6: Preview')).toBeTruthy();
 			});
 
 			await waitFor(() => {
@@ -678,7 +741,7 @@ describe('ImportWizard', () => {
 			await fireEvent.click(screen.getByRole('button', { name: /back/i }));
 
 			await waitFor(() => {
-				expect(screen.getByText('Step 3 of 6: Mapping')).toBeTruthy();
+				expect(screen.getByText('Step 3 of 6: Preview')).toBeTruthy();
 			});
 		});
 	});

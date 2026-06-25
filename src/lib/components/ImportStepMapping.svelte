@@ -8,6 +8,15 @@
 	} from '$lib/utils/importTypes';
 	import type { AppError, Result } from '$lib/utils/result';
 	import { ok, err } from '$lib/utils/result';
+	import { formatImportDateRange } from '$lib/utils/importSummary';
+	import { formatCurrency } from '$lib/utils/calculations';
+	import { getSettings } from '$lib/utils/settings';
+	import { DEFAULT_CURRENCY } from '$lib/config';
+
+	// Home currency, resolved EXACTLY as commitImportRows does (importCommit.ts:26) so the
+	// preview can never claim a different currency than the commit writes. Imported rows carry
+	// no currency metadata, so they adopt this on commit (per-row currency import is deferred).
+	const homeCurrency = getSettings().currency || DEFAULT_CURRENCY;
 
 	type ParseState =
 		| { status: 'idle' }
@@ -27,6 +36,18 @@
 	let fuelUnitOverride = $state<'L' | 'gal' | null>(null);
 	let distanceUnitOverride = $state<'km' | 'mi' | null>(null);
 	let showIgnored = $state(false);
+
+	// "How we mapped this" disclosure. Default-collapsed (AC2) — the mapping/units are an optional
+	// verify/override fallback now, not a mandatory wall. It auto-opens only when detection was
+	// incomplete (the file carried no units → detectedUnits is null, i.e. Drivvo), nudging the user
+	// to confirm the units they had to supply. The effect runs once on the parse→success transition
+	// (parseState is its only dep), so manual toggles afterwards are preserved.
+	let mappingDisclosureOpen = $state(false);
+	$effect(() => {
+		if (parseState.status === 'success') {
+			mappingDisclosureOpen = parseState.data.detectedUnits === null;
+		}
+	});
 
 	// Drivvo unit selection state (required before parsing)
 	let drivvoFuelUnit = $state<'L' | 'gal' | ''>('');
@@ -279,115 +300,157 @@
 	{@const previewRows = rows.slice(0, 3)}
 	{@const hasMixedTypes =
 		rows.some((r) => r.data.type === 'maintenance') && rows.some((r) => r.data.type === 'fuel')}
+	{@const fuelCount = rows.filter((r) => r.data.type === 'fuel').length}
+	{@const expenseCount = rows.filter((r) => r.data.type === 'maintenance').length}
+	{@const totalSpend = rows.reduce(
+		(sum, r) => sum + (Number.isFinite(r.data.totalCost) ? (r.data.totalCost as number) : 0),
+		0
+	)}
+	{@const dateRangeText = formatImportDateRange(summary.dateRange)}
+	{@const headline = `${summary.totalRows} ${summary.totalRows === 1 ? 'entry' : 'entries'}${
+		dateRangeText ? ` spanning ${dateRangeText}` : ''
+	}`}
 
 	<div class="space-y-4">
-		<!-- Column mapping table -->
-		<div class="rounded-2xl border border-border bg-card p-5 shadow-sm">
-			<h3 class="mb-3 text-sm font-semibold text-foreground">Here's how we'll map your data</h3>
-			<div class="space-y-2">
-				{#each mapped as entry (entry.sourceColumn)}
-					<div class="flex items-center justify-between rounded-lg bg-muted/40 px-3 py-2">
-						<span class="text-sm text-muted-foreground">{entry.sourceColumn}</span>
-						<span class="mx-2 text-xs text-muted-foreground">→</span>
-						<span class="text-sm font-medium text-foreground">{entry.targetField}</span>
-						{#if entry.status === 'calculated'}
-							<span
-								class="ml-2 inline-flex items-center rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-800 dark:bg-blue-900/30 dark:text-blue-400"
-								>calc</span
-							>
-						{:else}
-							<span
-								class="ml-2 inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800 dark:bg-green-900/30 dark:text-green-400"
-								aria-label="mapped"
-							>
-								&#10003;
-							</span>
-						{/if}
-					</div>
-				{/each}
-			</div>
+		<!-- Value-first preview — the primary content of the Preview step (AC1) -->
+		<div
+			class="rounded-2xl border border-border bg-card p-5 shadow-sm"
+			data-testid="import-preview"
+		>
+			<h3 class="text-base font-semibold text-foreground">{headline}</h3>
+			<p class="mt-2 text-sm text-muted-foreground">
+				{fuelCount} fuel-up{fuelCount !== 1 ? 's' : ''}{#if expenseCount > 0}, {expenseCount} expense{expenseCount !==
+					1
+						? 's'
+						: ''}{/if}
+			</p>
+			<p class="mt-1 text-sm text-foreground">
+				Total spend <span class="font-semibold">{formatCurrency(totalSpend, homeCurrency)}</span>
+			</p>
+			<p class="mt-1 text-xs text-muted-foreground">Amounts shown in {homeCurrency}</p>
+		</div>
 
-			{#if ignored.length > 0}
-				<button
-					type="button"
-					class="mt-3 text-xs text-muted-foreground underline"
-					onclick={() => (showIgnored = !showIgnored)}
-				>
-					{showIgnored ? 'Hide' : 'Show'}
-					{ignored.length} ignored columns
-				</button>
-
-				{#if showIgnored}
-					<div class="mt-2 space-y-1">
-						{#each ignored as entry (entry.sourceColumn)}
-							<div class="flex items-center justify-between rounded-lg bg-muted/20 px-3 py-1.5">
-								<span class="text-xs text-muted-foreground">{entry.sourceColumn}</span>
-								<span class="text-xs text-muted-foreground">—</span>
+		<!-- Mapping + units demoted to an optional, default-collapsed disclosure (AC2). -->
+		<details
+			bind:open={mappingDisclosureOpen}
+			class="rounded-2xl border border-border bg-card shadow-sm"
+		>
+			<summary
+				class="cursor-pointer list-none px-5 py-4 text-sm font-semibold text-foreground [&::-webkit-details-marker]:hidden"
+			>
+				How we mapped this
+			</summary>
+			<div class="space-y-4 px-5 pb-5">
+				<!-- Column mapping table -->
+				<div>
+					<p class="mb-3 text-sm text-muted-foreground">Here's how we'll map your data</p>
+					<div class="space-y-2">
+						{#each mapped as entry (entry.sourceColumn)}
+							<div class="flex items-center justify-between rounded-lg bg-muted/40 px-3 py-2">
+								<span class="text-sm text-muted-foreground">{entry.sourceColumn}</span>
+								<span class="mx-2 text-xs text-muted-foreground">→</span>
+								<span class="text-sm font-medium text-foreground">{entry.targetField}</span>
+								{#if entry.status === 'calculated'}
+									<span
+										class="ml-2 inline-flex items-center rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-800 dark:bg-blue-900/30 dark:text-blue-400"
+										>calc</span
+									>
+								{:else}
+									<span
+										class="ml-2 inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800 dark:bg-green-900/30 dark:text-green-400"
+										aria-label="mapped"
+									>
+										&#10003;
+									</span>
+								{/if}
 							</div>
 						{/each}
 					</div>
-				{/if}
-			{/if}
-		</div>
 
-		<!-- Unit confirmation -->
-		<div class="rounded-2xl border border-border bg-card p-5 shadow-sm">
-			{#if isDrivvo}
-				<p class="text-sm text-foreground">
-					Units: <strong>{drivvoFuelUnit === 'L' ? 'litres' : 'gallons'}</strong>
-					and <strong>{drivvoDistanceUnit}</strong> (selected above)
-				</p>
-			{:else if confirmedFormat === 'acar' && detectedUnits}
-				<p class="text-sm text-foreground">
-					Your file declares <strong>{detectedUnits.fuel === 'L' ? 'litres' : 'gallons'}</strong>
-					and <strong>{detectedUnits.distance === 'km' ? 'km' : 'miles'}</strong>. Correct?
-				</p>
-			{:else if detectedUnits}
-				<p class="text-sm text-foreground">
-					Your file uses <strong>{detectedUnits.fuel === 'L' ? 'litres' : 'gallons'}</strong>
-					and <strong>{detectedUnits.distance === 'km' ? 'km' : 'miles'}</strong>. Correct?
-				</p>
-			{/if}
-			{#if !isDrivvo && detectedUnits}
-				<div class="mt-3 flex gap-4">
-					<label class="flex flex-col gap-1">
-						<span class="text-xs text-muted-foreground">Fuel unit</span>
-						<select
-							class="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
-							value={effectiveUnits?.fuel ?? detectedUnits.fuel}
-							onchange={(e) => {
-								fuelUnitOverride = (e.target as HTMLSelectElement).value as 'L' | 'gal';
-							}}
+					{#if ignored.length > 0}
+						<button
+							type="button"
+							class="mt-3 text-xs text-muted-foreground underline"
+							onclick={() => (showIgnored = !showIgnored)}
 						>
-							<option value="L">L</option>
-							<option value="gal">gal</option>
-						</select>
-					</label>
-					<label class="flex flex-col gap-1">
-						<span class="text-xs text-muted-foreground">Distance</span>
-						<select
-							class="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
-							value={effectiveUnits?.distance ?? detectedUnits.distance}
-							onchange={(e) => {
-								distanceUnitOverride = (e.target as HTMLSelectElement).value as 'km' | 'mi';
-							}}
-						>
-							<option value="km">km</option>
-							<option value="mi">mi</option>
-						</select>
-					</label>
+							{showIgnored ? 'Hide' : 'Show'}
+							{ignored.length} ignored columns
+						</button>
+
+						{#if showIgnored}
+							<div class="mt-2 space-y-1">
+								{#each ignored as entry (entry.sourceColumn)}
+									<div class="flex items-center justify-between rounded-lg bg-muted/20 px-3 py-1.5">
+										<span class="text-xs text-muted-foreground">{entry.sourceColumn}</span>
+										<span class="text-xs text-muted-foreground">—</span>
+									</div>
+								{/each}
+							</div>
+						{/if}
+					{/if}
 				</div>
-			{/if}
-		</div>
 
-		<!-- Price note — Fuelly only (aCar/Drivvo use total cost directly) -->
-		{#if confirmedFormat === 'fuelly'}
-			<div class="rounded-2xl border border-blue-500/20 bg-blue-500/10 p-4">
-				<p class="text-sm text-blue-700 dark:text-blue-400">
-					Total cost calculated as price &times; quantity
-				</p>
+				<!-- Unit confirmation / override (the units-fallback) -->
+				<div class="border-t border-border pt-4">
+					{#if isDrivvo}
+						<p class="text-sm text-foreground">
+							Units: <strong>{drivvoFuelUnit === 'L' ? 'litres' : 'gallons'}</strong>
+							and <strong>{drivvoDistanceUnit}</strong> (selected above)
+						</p>
+					{:else if confirmedFormat === 'acar' && detectedUnits}
+						<p class="text-sm text-foreground">
+							Your file declares <strong>{detectedUnits.fuel === 'L' ? 'litres' : 'gallons'}</strong
+							>
+							and <strong>{detectedUnits.distance === 'km' ? 'km' : 'miles'}</strong>. Correct?
+						</p>
+					{:else if detectedUnits}
+						<p class="text-sm text-foreground">
+							Your file uses <strong>{detectedUnits.fuel === 'L' ? 'litres' : 'gallons'}</strong>
+							and <strong>{detectedUnits.distance === 'km' ? 'km' : 'miles'}</strong>. Correct?
+						</p>
+					{/if}
+					{#if !isDrivvo && detectedUnits}
+						<div class="mt-3 flex gap-4">
+							<label class="flex flex-col gap-1">
+								<span class="text-xs text-muted-foreground">Fuel unit</span>
+								<select
+									class="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
+									value={effectiveUnits?.fuel ?? detectedUnits.fuel}
+									onchange={(e) => {
+										fuelUnitOverride = (e.target as HTMLSelectElement).value as 'L' | 'gal';
+									}}
+								>
+									<option value="L">L</option>
+									<option value="gal">gal</option>
+								</select>
+							</label>
+							<label class="flex flex-col gap-1">
+								<span class="text-xs text-muted-foreground">Distance</span>
+								<select
+									class="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
+									value={effectiveUnits?.distance ?? detectedUnits.distance}
+									onchange={(e) => {
+										distanceUnitOverride = (e.target as HTMLSelectElement).value as 'km' | 'mi';
+									}}
+								>
+									<option value="km">km</option>
+									<option value="mi">mi</option>
+								</select>
+							</label>
+						</div>
+					{/if}
+				</div>
+
+				<!-- Price note — Fuelly only (aCar/Drivvo use total cost directly) -->
+				{#if confirmedFormat === 'fuelly'}
+					<div class="rounded-2xl border border-blue-500/20 bg-blue-500/10 p-4">
+						<p class="text-sm text-blue-700 dark:text-blue-400">
+							Total cost calculated as price &times; quantity
+						</p>
+					</div>
+				{/if}
 			</div>
-		{/if}
+		</details>
 
 		<!-- Data preview cards -->
 		<div class="space-y-2">

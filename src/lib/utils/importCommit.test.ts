@@ -4,7 +4,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { db } from '$lib/db/db';
 import { commitImportRows } from '$lib/utils/importCommit';
 import type { ImportRow, VehicleAssignment } from '$lib/utils/importTypes';
-import { MAX_VEHICLES } from '$lib/config';
+import { MAX_VEHICLES, DEFAULT_CURRENCY } from '$lib/config';
 
 function makeFuelRow(
 	rowNumber: number,
@@ -132,6 +132,30 @@ describe('commitImportRows', () => {
 		expect(expenses[0].vehicleId).toBe(vehicleId);
 		expect(expenses[0].type).toBe('Oil Change');
 		expect(expenses[0].cost).toBe(100);
+	});
+
+	it('stamps imported fuel AND expense rows with the home currency (defaults to DEFAULT_CURRENCY)', async () => {
+		// Story 5.3 AC4: imported rows carry a currency defaulting to home currency. In the node test
+		// env there is no localStorage, so getSettings() yields DEFAULT_CURRENCY — assert it propagates
+		// to BOTH tables, locking the importCommit.ts:26/137/154 behavior the Preview now surfaces.
+		const vehicleId = await db.vehicles.add({
+			name: 'TestCar',
+			make: 'Honda',
+			model: 'Civic'
+		} as any);
+
+		const rows = [makeFuelRow(1), makeMaintenanceRow(2)];
+		const assignments = [makeExistingAssignment('TestCar', vehicleId as number, 2)];
+
+		const result = await commitImportRows(rows, assignments);
+		expect(result.error).toBeNull();
+
+		const logs = await db.fuelLogs.toArray();
+		const expenses = await db.expenses.toArray();
+		expect(logs).toHaveLength(1);
+		expect(expenses).toHaveLength(1);
+		expect(logs[0].currency).toBe(DEFAULT_CURRENCY);
+		expect(expenses[0].currency).toBe(DEFAULT_CURRENCY);
 	});
 
 	it('creates new vehicles before committing rows', async () => {
