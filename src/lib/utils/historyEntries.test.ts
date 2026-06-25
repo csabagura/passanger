@@ -705,6 +705,24 @@ describe('convertHistorySpendToHome', () => {
 		expect(result.ratedEntries).toBe(0);
 	});
 
+	it('skips a non-finite cost row so it cannot poison the blended total (PREP-1 fold)', () => {
+		// A NaN/Infinity cost is corrupt — counted as neither converted nor unconverted, and never
+		// added to total (it must not surface a €NaN blend). Mirrors summarizeSpendByCurrency.
+		const entries = mergeHistoryEntries(
+			[
+				createFuelEntry({ id: 1, currency: '€', totalCost: Number.NaN }),
+				createFuelEntry({ id: 2, currency: '€', totalCost: 100 })
+			],
+			[createMaintenanceEntry({ id: 3, currency: 'Ft', cost: Number.POSITIVE_INFINITY })]
+		);
+		const result = convertHistorySpendToHome(entries, 'Ft', { '€': 400 });
+		// Only the valid € entry contributes: 100 × 400. The NaN € and Infinity Ft rows are skipped.
+		expect(result.total).toBe(100 * 400);
+		expect(result.convertibleEntries).toBe(1);
+		expect(result.unconvertedEntries).toBe(0);
+		expect(result.ratedEntries).toBe(1);
+	});
+
 	it('returns a zeroed result for an empty entry list', () => {
 		const result = convertHistorySpendToHome([], 'Ft', { '€': 400 });
 		expect(result).toEqual({

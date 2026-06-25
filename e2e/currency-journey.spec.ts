@@ -1,4 +1,7 @@
 import { test, expect, type Page } from '@playwright/test';
+import AxeBuilder from '@axe-core/playwright';
+
+const WCAG_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'];
 
 // Fresh context per test → empty IndexedDB → first-run state on Home (/). Story 3.3: capture happens
 // in the global Capture sheet opened by the FAB.
@@ -90,4 +93,48 @@ test('multi-currency: forint formatting and segmented totals', async ({ page }) 
 	// Both entries are still individually listed with their own currency formatting.
 	await expect(entriesList(page).getByText('20000 Ft', { exact: true })).toBeVisible();
 	await expect(entriesList(page).getByText('€50.00', { exact: true })).toBeVisible();
+});
+
+test('Display rate: Understand shows one blended total only after a rate is set', async ({
+	page
+}) => {
+	await createVehicle(page, 'Border Hopper');
+
+	// Spend across two currencies: 20000 Ft + €50 (home currency defaults to €).
+	await addFuelLog(page, { odometer: '50000', quantity: '40', cost: '20000', currency: 'Ft' });
+	await page
+		.getByRole('navigation', { name: 'Main navigation' })
+		.getByRole('link', { name: 'Home' })
+		.click();
+	await page.waitForLoadState('networkidle');
+	await addFuelLog(page, { odometer: '50400', quantity: '38', cost: '50', currency: '€' });
+
+	// Before any Display Rate is set, Understand shows the honest per-currency note and NO blend.
+	await page.goto('/understand');
+	await page.waitForLoadState('networkidle');
+	await expect(page.getByText(/Other currencies aren't/i)).toBeVisible();
+	await expect(page.getByText(/using your rate/i)).toHaveCount(0);
+
+	// Set a Display Rate for Ft in Settings (1 Ft = €0.0025).
+	await page.goto('/settings');
+	await page.waitForLoadState('networkidle');
+	await page.getByLabel('1 Ft =').fill('0.0025');
+	await page.getByRole('button', { name: 'Save settings' }).click();
+	// The save persists to localStorage; the next full navigation re-reads it into the settings context.
+
+	// Back on Understand the single blended total appears, labeled with the user's own rate (the weak
+	// forint forward-rate rounds to €0.00, so the label flips to the legible inverse "1 € = 400 Ft").
+	await page.goto('/understand');
+	await page.waitForLoadState('networkidle');
+	// €50 + 20000 Ft × 0.0025 = €100.00.
+	await expect(page.getByText('≈ €100.00 using your rate (1 € = 400 Ft)')).toBeVisible();
+	// Every foreign currency is now rated → the unconverted note has nothing left to list.
+	await expect(page.getByText(/Other currencies aren't/i)).toHaveCount(0);
+
+	// The blended total is real text on an accessible surface (NFR-3).
+	const results = await new AxeBuilder({ page }).withTags(WCAG_TAGS).analyze();
+	const serious = results.violations.filter(
+		(v) => v.impact === 'critical' || v.impact === 'serious'
+	);
+	expect(serious).toEqual([]);
 });

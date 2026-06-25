@@ -101,13 +101,20 @@
 
 	// Build the persisted rate map from the drafts: parse each draft and keep only finite > 0
 	// values. Blank/0/negative/NaN drafts are omitted entirely (treated as "no rate").
+	// NOTE (Story 5.2): a freshly-typed rate arrives here as a `number` — the per-row Field is a
+	// `<input type="number">`, so Svelte coerces `bind:value` back to a number despite the
+	// `Record<string, string>` draft type (saved rates seed as strings via `String(rate)`, typed ones
+	// do not). Normalise with `String(draft)` before trimming/parsing; calling `.trim()` on the number
+	// threw `TypeError: n.trim is not a function`, which aborted the save so no Display Rate ever
+	// persisted (latent since the rate UI shipped — uncovered by tests until this story's e2e).
 	function buildExchangeRates(): Record<string, number> {
 		const rates: Record<string, number> = {};
 		for (const [currency, draft] of Object.entries(exchangeRateDrafts)) {
-			if (currency === settingsCurrency || draft.trim().length === 0) {
+			const draftText = String(draft).trim();
+			if (currency === settingsCurrency || draftText.length === 0) {
 				continue;
 			}
-			const parsed = Number(draft);
+			const parsed = Number(draftText);
 			if (Number.isFinite(parsed) && parsed > 0) {
 				rates[currency] = parsed;
 			}
@@ -434,7 +441,7 @@
 			</div>
 
 			<fieldset class="space-y-3">
-				<legend class="text-sm font-medium text-foreground">Exchange rates</legend>
+				<legend class="text-sm font-medium text-foreground">Display rate</legend>
 				<p id="settings-exchange-rates-help" class="text-sm text-muted-foreground">
 					Optional. Enter how much each currency is worth in {settingsCurrency.trim() ||
 						settingsCurrency} to see an approximate combined total. Leave blank to skip.
