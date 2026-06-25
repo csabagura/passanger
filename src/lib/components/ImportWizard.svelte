@@ -16,13 +16,26 @@
 		VehicleAssignment,
 		ReviewRowState
 	} from '$lib/utils/importTypes';
+	import {
+		loadImportProgress,
+		saveImportProgress,
+		clearImportProgress
+	} from '$lib/state/importProgress';
 
 	const STEP_LABELS = ['Source', 'Upload', 'Preview', 'Review', 'Vehicles', 'Confirm'] as const;
 
-	let wizardState = $state(createInitialWizardState());
+	// Story 5.4 (FR-16): hydrate any persisted in-progress import so a tab-close / reload resumes at
+	// the saved step instead of restarting at Step 1. `loadImportProgress` returns null for an absent,
+	// corrupt, stale, or post-commit payload → a clean Step-1 start. `file` is always null on resume
+	// (AC3); the step components read `rawCSV`/`parsedRows`, not `file`.
+	const restored = loadImportProgress();
+
+	let wizardState = $state(restored?.state ?? createInitialWizardState());
 	let showCancelConfirm = $state(false);
 
-	const hasFile = $derived(wizardState.file !== null);
+	// After a resume `wizardState.file` is null, so the Cancel gate keys off MEANINGFUL PROGRESS
+	// instead of a live File handle — a resumed import still warns before discarding (AC3).
+	const hasProgress = $derived(wizardState.step > 1 || wizardState.rawCSV !== null);
 	const isFirstStep = $derived(wizardState.step === 1);
 
 	function handleSourceSelected(source: ImportSource) {
@@ -62,21 +75,46 @@
 
 	function handleImportComplete(result: ImportCommitResult) {
 		wizardState.commitResult = result;
+		// Clear persisted progress AFTER the atomic commit resolved (this runs in the parent, outside
+		// the Dexie transaction) so a committed import never resurrects on reload (5.4 AC4/AC5).
+		clearImportProgress();
 	}
 
 	function handleImportReset() {
 		wizardState = createInitialWizardState();
 		step4AutoSkipped = false;
 		cachedReviewEntries = null;
+		// Starting a fresh import after success — drop the persisted progress too (5.4 AC5).
+		clearImportProgress();
 	}
 
 	const isPostCommit = $derived(wizardState.commitResult !== null);
 
-	// Track whether step 4 was auto-skipped (all rows valid)
-	let step4AutoSkipped = $state(false);
+	// Track whether step 4 was auto-skipped (all rows valid). Seeded from the resumed payload (5.4)
+	// so a resume at Step 5 + Back returns to the correct step (3 when auto-skipped, else 4).
+	let step4AutoSkipped = $state(restored?.step4AutoSkipped ?? false);
 
-	// Cache review state for preservation across back-navigation (AC 9)
-	let cachedReviewEntries = $state<[number, ReviewRowState][] | null>(null);
+	// Cache review state for preservation across back-navigation (AC 9). Seeded from the resumed
+	// payload (5.4) so a resumed Review/Vehicles step keeps the user's corrections.
+	let cachedReviewEntries = $state<[number, ReviewRowState][] | null>(
+		restored?.reviewEntries ?? null
+	);
+
+	// Story 5.4: write the in-progress state through to localStorage on each meaningful change so a
+	// tab-close / reload resumes here. Single $effect (can't forget a handler). Snapshots the $state
+	// proxy first ($state.snapshot — proxies aren't structured-clone-safe). Best-effort: the persist
+	// swallows quota errors. Does NOTHING worth-saving at a pristine Step 1, and skips once committed
+	// (terminal — already cleared in handleImportComplete; avoids re-writing a post-commit payload
+	// after the clear, since this $effect flushes after that handler). Writes localStorage only — no
+	// goto/replaceState/pushState here (would risk the hydration-flush crash class; this is safe).
+	$effect(() => {
+		if (wizardState.commitResult !== null) return;
+		if (wizardState.step === 1 && wizardState.rawCSV === null) return;
+		saveImportProgress($state.snapshot(wizardState), {
+			step4AutoSkipped,
+			reviewEntries: cachedReviewEntries
+		});
+	});
 
 	function handleBack() {
 		if (wizardState.step === 6 && isPostCommit) {
@@ -93,7 +131,7 @@
 	}
 
 	function handleCancel() {
-		if (hasFile) {
+		if (hasProgress) {
 			openCancelDialog();
 		} else {
 			void goto(resolve('/export'));
@@ -102,6 +140,8 @@
 
 	function confirmCancel() {
 		closeCancelDialog();
+		// Discard the persisted progress on an explicit cancel (5.4 AC5).
+		clearImportProgress();
 		void goto(resolve('/export'));
 	}
 

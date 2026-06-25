@@ -122,6 +122,11 @@ export const ODOMETER_IMPLAUSIBLE_MIN_DELTA = 2000;
 export const DRAFT_FUEL_STORAGE_KEY = 'passanger_draft_fuel'; // localStorage key for the fuel draft
 export const DRAFT_EXPENSE_STORAGE_KEY = 'passanger_draft_expense'; // localStorage key for the expense draft
 export const DRAFT_CURRENCY_STORAGE_KEY = 'passanger_capture_currency'; // localStorage key for durable currency memory
+// Resumable import (Story 5.4 / FR-16, AD-8): the in-progress CSV-import wizard state is written
+// through to localStorage so a tab-close/reload/PWA-restart resumes at the persisted step instead
+// of restarting at Step 1. Lightweight localStorage state — NOT a Dexie table (AD-8). Stores
+// `{ version, updatedAt, state, step4AutoSkipped, reviewEntries }`. `passanger_<area>_<name>` convention.
+export const IMPORT_PROGRESS_STORAGE_KEY = 'passanger_import_progress'; // localStorage key for in-progress import wizard state
 // A restored draft older than this re-validates its odometer (and, for expense, its date)
 // rather than silently resurfacing a stale reading. 7 days: long enough that a normal
 // interrupted-then-resumed entry restores verbatim, short enough that a genuinely abandoned
