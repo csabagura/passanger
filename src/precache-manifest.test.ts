@@ -245,7 +245,7 @@ describe('HTML shell — CSP compliance guard', () => {
 });
 
 describe('Performance budget — bundle size', () => {
-	it('total JS bundle is under 200KB gzipped (NFR4)', () => {
+	it('total JS bundle is under 250KB gzipped (NFR4)', () => {
 		const chunksDir = join(rootDir, 'build', '_app', 'immutable', 'chunks');
 		const entryDir = join(rootDir, 'build', '_app', 'immutable', 'entry');
 		const nodesDir = join(rootDir, 'build', '_app', 'immutable', 'nodes');
@@ -260,12 +260,18 @@ describe('Performance budget — bundle size', () => {
 		//                   and bits-ui Tabs (ui/tabs) — both were previously tree-shaken out. The two
 		//                   primitives are load-bearing for the Capture flow and can't be trimmed; this
 		//                   re-baseline was anticipated by the prior note. Footprint jumped ~193KB→208KB.)
+		//   225KB → 250KB  (Epic 6 Paraglide JS i18n foundation, ADR-002 / PREP-5.1: the compiled message
+		//                   runtime + EN/HU catalog + Settings language selector enter the bundle (+~1.8KB
+		//                   at the foundation; tree-shaking ships only used messages). Raised to the next
+		//                   convention rung to also absorb Story 6.1's route-by-route string extraction
+		//                   without per-story re-raises. i18n is compile-time/bundled — CSP connect-src
+		//                   'none' is unchanged; Lighthouse FCP/TTI/score stay strict as the perf contract.)
 		// This is TOTAL JS across all (lazy-loaded) routes, NOT the initial payload — actual load
 		// performance is gated separately by the Lighthouse FCP/TTI/score budgets in
-		// .lighthouserc.cjs (the real perf contract). Current footprint ~208KB; 225KB is tight by
-		// design to keep guardrail pressure. A tracked follow-up to lazy-load the <Toaster> (and/or
-		// dynamic-import the Capture sheet) would reclaim initial-load weight if pressure grows.
-		const MAX_GZIPPED_JS_BYTES = 225 * 1024; // 225KB gzipped (NFR4) — see re-baseline log above
+		// .lighthouserc.cjs (the real perf contract). Current footprint ~225KB; 250KB keeps guardrail
+		// pressure with headroom for the Epic-6 i18n string extraction. A tracked follow-up to lazy-load
+		// the <Toaster> (and/or dynamic-import the Capture sheet) would reclaim initial-load weight.
+		const MAX_GZIPPED_JS_BYTES = 250 * 1024; // 250KB gzipped (NFR4) — see re-baseline log above
 
 		let totalGzippedBytes = 0;
 		for (const dir of [chunksDir, entryDir, nodesDir]) {

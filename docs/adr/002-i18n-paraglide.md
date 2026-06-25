@@ -1,6 +1,6 @@
 # ADR 002: Internationalization via Paraglide JS (compiler-based, CSP-safe)
 
-- **Status:** Proposed (candidate — pending implementation Quick Dev)
+- **Status:** Accepted (foundation implemented 2026-06-25 via `bmad-quick-dev` — Paraglide JS 2.x wired with the `localStorage` strategy, EN/HU PoC catalog, a Settings language selector, and the `getLocale()` formatter seam; CSP `connect-src 'none'` unchanged. Story 6.1 owns the full route-by-route string extraction.)
 - **Date:** 2026-06-15
 - **Research:** `_bmad-output/planning-artifacts/research/technical-i18n-strategy-research-2026-06-15.md`
 

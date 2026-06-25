@@ -1,5 +1,6 @@
 import type { FuelUnit } from '$lib/config';
 import { DEFAULT_CURRENCY } from '$lib/config';
+import { getLocale } from '$lib/paraglide/runtime';
 import type { Expense, FuelLog } from '$lib/db/schema';
 import {
 	convertConsumptionUnit,
@@ -66,11 +67,15 @@ function getMonthKey(date: Date): string {
 }
 
 function formatMonthLabel(date: Date, locale: Intl.LocalesArgument = undefined): string {
-	return new Intl.DateTimeFormat(locale, { month: 'long', year: 'numeric' }).format(date);
+	return new Intl.DateTimeFormat(locale ?? getLocale(), { month: 'long', year: 'numeric' }).format(
+		date
+	);
 }
 
 function formatDayLabel(date: Date, locale: Intl.LocalesArgument = undefined): string {
-	return new Intl.DateTimeFormat(locale, { day: 'numeric', month: 'short' }).format(date);
+	return new Intl.DateTimeFormat(locale ?? getLocale(), { day: 'numeric', month: 'short' }).format(
+		date
+	);
 }
 
 /**

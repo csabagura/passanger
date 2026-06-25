@@ -1,6 +1,7 @@
 import { sveltekit } from '@sveltejs/kit/vite';
 import { SvelteKitPWA } from '@vite-pwa/sveltekit';
 import tailwindcss from '@tailwindcss/vite';
+import { paraglideVitePlugin } from '@inlang/paraglide-js';
 import { defineConfig } from 'vitest/config';
 import { readFileSync, existsSync } from 'fs';
 import { fileURLToPath } from 'url';
@@ -40,6 +41,16 @@ const manifestRevision = createHash('sha256')
 
 export default defineConfig({
 	plugins: [
+		// Paraglide must precede sveltekit() so the compiled $lib/paraglide output and the
+		// $lib alias resolve during SvelteKit's build. Compile-time only (bundled ESM, no
+		// runtime fetch) — does NOT touch the CSP connect-src 'none' contract. Strategy is
+		// localStorage-first (offline, SPA-safe); the `url` strategy is deliberately NOT used
+		// (adapter-static SPA 404s, paraglide-js#503). See docs/adr/002-i18n-paraglide.md.
+		paraglideVitePlugin({
+			project: './project.inlang',
+			outdir: './src/lib/paraglide',
+			strategy: ['localStorage', 'preferredLanguage', 'baseLocale']
+		}),
 		tailwindcss(),
 		sveltekit(),
 		SvelteKitPWA({

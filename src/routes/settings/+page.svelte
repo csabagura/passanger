@@ -1,6 +1,11 @@
 <script lang="ts">
 	import { getContext } from 'svelte';
-	import { PRESET_CURRENCIES, SUPPORTED_UNITS, IMPORT_FILE_SIZE_MAX_BYTES } from '$lib/config';
+	import {
+		PRESET_CURRENCIES,
+		SUPPORTED_UNITS,
+		IMPORT_FILE_SIZE_MAX_BYTES,
+		SUPPORTED_LOCALES
+	} from '$lib/config';
 	import { saveSettings, type AppSettings, type ThemePreference } from '$lib/utils/settings';
 	import { notifySettingsChanged, notifyTabsRestored } from '$lib/utils/tabSync';
 	import { readStoredVehicleId } from '$lib/utils/vehicleStorage';
@@ -14,11 +19,23 @@
 	import VehicleListManager from '$lib/components/VehicleListManager.svelte';
 	import { Button } from '$lib/components/ui/button';
 	import { Field } from '$lib/components/ui/field';
+	import { m } from '$lib/paraglide/messages';
+	import { getLocale, setLocale, isLocale } from '$lib/paraglide/runtime';
 
 	let activeVehicleId = $state<number | null>(readStoredVehicleId());
 
 	function handleActiveVehicleChange(id: number | null) {
 		activeVehicleId = id;
+	}
+
+	function handleLanguageChange(event: Event): void {
+		const next = (event.currentTarget as HTMLSelectElement).value;
+		// Reload-on-switch (Paraglide setLocale default): persists the choice to localStorage and
+		// reloads so every m.*() re-evaluates under the new locale. A rare Settings action; the PWA
+		// rehydrates from IndexedDB on reload. isLocale guards so only supported locales are accepted.
+		if (isLocale(next)) {
+			setLocale(next);
+		}
 	}
 
 	const THEME_OPTIONS: { value: ThemePreference; label: string; description: string }[] = [
@@ -249,7 +266,7 @@
 </script>
 
 <svelte:head>
-	<title>Settings | passanger</title>
+	<title>{m.settings_title()} | passanger</title>
 </svelte:head>
 
 <div class="space-y-6 px-4 pt-4">
@@ -308,6 +325,29 @@
 				</button>
 			{/each}
 		</div>
+	</section>
+
+	<section
+		aria-labelledby="settings-language-heading"
+		class="space-y-5 rounded-2xl border border-border bg-card p-5 shadow-sm"
+	>
+		<div class="space-y-1">
+			<h2 id="settings-language-heading" class="text-lg font-semibold text-foreground">
+				{m.settings_language_label()}
+			</h2>
+		</div>
+		<select
+			aria-labelledby="settings-language-heading"
+			value={getLocale()}
+			onchange={handleLanguageChange}
+			class="min-h-11 w-full rounded-md border border-border bg-card px-3 py-2 text-base text-foreground"
+		>
+			{#each SUPPORTED_LOCALES as loc (loc)}
+				<option value={loc}>
+					{loc === 'hu' ? m.settings_language_hungarian() : m.settings_language_english()}
+				</option>
+			{/each}
+		</select>
 	</section>
 
 	<section
