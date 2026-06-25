@@ -51,11 +51,19 @@ function createMaintenanceEntry(overrides: Partial<Expense> = {}): Expense {
 	};
 }
 
-function renderDashboard(props: Record<string, unknown> = {}) {
+function renderDashboard(
+	props: Record<string, unknown> = {},
+	settingsOverrides: Record<string, unknown> = {}
+) {
 	const context = new Map<string, unknown>();
 	context.set('settings', {
 		get settings() {
-			return { fuelUnit: 'L/100km' as const, currency: '€', theme: 'system' as const };
+			return {
+				fuelUnit: 'L/100km' as const,
+				currency: '€',
+				theme: 'system' as const,
+				...settingsOverrides
+			};
 		}
 	});
 	return render(UnderstandDashboard, {
@@ -143,6 +151,62 @@ describe('UnderstandDashboard', () => {
 			expect(screen.getByText(/Other currencies aren't converted/i)).toBeTruthy();
 		});
 		expect(screen.getByText(/20000 Ft/)).toBeTruthy();
+	});
+
+	it('shows the blended Display-Rate total and drops the not-converted note when every foreign currency is rated', async () => {
+		mockGetAllFuelLogs.mockResolvedValue(
+			ok([
+				createFuelEntry({ id: 1, date: new Date(2026, 2, 10), totalCost: 78, currency: '€' }),
+				createFuelEntry({ id: 2, date: new Date(2026, 2, 12), totalCost: 20000, currency: 'Ft' })
+			])
+		);
+		mockGetAllExpenses.mockResolvedValue(ok([]));
+		// 1 Ft ≈ €0.0025 → forward rounds to €0.00, so the label flips to the legible inverse "1 € = 400 Ft".
+		renderDashboard({}, { exchangeRates: { Ft: 0.0025 } });
+
+		await waitFor(() => {
+			// €78 + 20000 Ft × 0.0025 = €128.00.
+			expect(screen.getByText('≈ €128.00 using your rate (1 € = 400 Ft)')).toBeTruthy();
+		});
+		// Every foreign currency is now rated → no leftover "not converted" note.
+		expect(screen.queryByText(/Other currencies aren't converted/i)).toBeNull();
+	});
+
+	it('shows the blended total and keeps an honest note for foreign currencies that still lack a rate', async () => {
+		mockGetAllFuelLogs.mockResolvedValue(
+			ok([
+				createFuelEntry({ id: 1, date: new Date(2026, 2, 10), totalCost: 78, currency: '€' }),
+				createFuelEntry({ id: 2, date: new Date(2026, 2, 12), totalCost: 20000, currency: 'Ft' }),
+				createFuelEntry({ id: 3, date: new Date(2026, 2, 14), totalCost: 50, currency: '$' })
+			])
+		);
+		mockGetAllExpenses.mockResolvedValue(ok([]));
+		renderDashboard({}, { exchangeRates: { Ft: 0.0025 } });
+
+		await waitFor(() => {
+			expect(screen.getByText('≈ €128.00 using your rate (1 € = 400 Ft)')).toBeTruthy();
+		});
+		// $ has no rate → still listed in the honest note; Ft is converted so it is no longer listed.
+		expect(screen.getByText(/Other currencies aren't converted/i)).toBeTruthy();
+		expect(screen.getByText(/\$50\.00/)).toBeTruthy();
+		expect(screen.queryByText(/20000 Ft/)).toBeNull();
+	});
+
+	it('renders no blended total when no Display Rate is set (no rate → no number)', async () => {
+		mockGetAllFuelLogs.mockResolvedValue(
+			ok([
+				createFuelEntry({ id: 1, date: new Date(2026, 2, 10), totalCost: 78, currency: '€' }),
+				createFuelEntry({ id: 2, date: new Date(2026, 2, 12), totalCost: 20000, currency: 'Ft' })
+			])
+		);
+		mockGetAllExpenses.mockResolvedValue(ok([]));
+		renderDashboard();
+
+		await waitFor(() => {
+			expect(screen.getByText(/Other currencies aren't converted/i)).toBeTruthy();
+		});
+		expect(screen.queryByText(/using your rate/i)).toBeNull();
+		expect(screen.queryByText(/^≈/)).toBeNull();
 	});
 
 	it('renders the plain-language insight line when a notable change warrants it', async () => {

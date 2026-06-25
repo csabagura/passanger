@@ -15,9 +15,11 @@
 	import {
 		formatConsumption,
 		formatCurrency,
-		getVolumeUnitForFuelUnit
+		getVolumeUnitForFuelUnit,
+		isFiniteNumber
 	} from '$lib/utils/calculations';
 	import { mergeHistoryEntries, summarizeSpendByCurrency } from '$lib/utils/historyEntries';
+	import { selectDisplayRateBlend } from '$lib/utils/displayRate';
 	import { MAX_INSIGHTS_UNDERSTAND } from '$lib/config';
 	import type { AppSettings } from '$lib/utils/settings';
 	import type { FuelLog, Expense } from '$lib/db/schema';
@@ -65,6 +67,9 @@
 	const homeCurrency = $derived(settingsCtx.settings.currency);
 	const fuelUnit = $derived(settingsCtx.settings.fuelUnit);
 	const volumeUnit = $derived(getVolumeUnitForFuelUnit(fuelUnit));
+	// User-entered Display Rates (Story 5.2 / FR-15, DEC-4) — already present on the settings context,
+	// reactive via notifySettingsChanged, no liveQuery/dataRevision plumbing needed.
+	const exchangeRates = $derived(settingsCtx.settings.exchangeRates);
 
 	const entries = $derived(mergeHistoryEntries(fuelLogs, expenses));
 	const hasData = $derived(entries.length > 0);
@@ -146,7 +151,24 @@
 			.filter(([currency]) => currency !== homeCurrency)
 			.sort(([, left], [, right]) => right - left)
 	);
-	const hasOtherCurrencies = $derived(otherCurrencyTotals.length > 0);
+	// --- Optional blended home total (Story 5.2 / FR-15) — reuses the shipped convertHistorySpendToHome
+	// engine over the same `entries`, gated on a usable Display Rate (null when nothing converts, exactly
+	// like History's `ratedEntries > 0` gate). No rate → null → no number, keeping the no-rate view
+	// byte-identical. ---
+	const displayRateBlend = $derived(selectDisplayRateBlend(entries, homeCurrency, exchangeRates));
+
+	// When a blend shows, the honest "not converted" note narrows to the foreign currencies that still
+	// lack a usable rate (partial coverage stays honest); when no blend shows it lists every foreign
+	// currency exactly as before (byte-identical no-rate rendering — AC3).
+	const unconvertedCurrencyTotals = $derived(
+		displayRateBlend
+			? otherCurrencyTotals.filter(([currency]) => {
+					const rate = exchangeRates?.[currency];
+					return !(isFiniteNumber(rate) && rate > 0);
+				})
+			: otherCurrencyTotals
+	);
+	const hasUnconvertedCurrencies = $derived(unconvertedCurrencyTotals.length > 0);
 </script>
 
 <div class="px-4 pt-4">
@@ -211,14 +233,24 @@
 				</div>
 			{/if}
 
-			{#if hasOtherCurrencies}
+			{#if displayRateBlend}
+				<!-- Blended home-currency total from the user's own Display Rate (FR-15, DEC-4). Real,
+				     selectable text (NFR-3); `≈` precedes the value as a readable approximation marker, not an
+				     icon-only signal. Calm, non-alarmist voice (no FX claim — "using your rate"). -->
+				<p class="rounded-2xl border border-border bg-muted/40 px-4 py-3 text-sm text-foreground">
+					≈ {formatCurrency(displayRateBlend.total, homeCurrency)}
+					{displayRateBlend.label}
+				</p>
+			{/if}
+
+			{#if hasUnconvertedCurrencies}
 				<p
 					class="rounded-2xl border border-border bg-muted/40 px-4 py-3 text-xs text-muted-foreground"
 				>
 					Charts show amounts in your home currency ({homeCurrency}). Other currencies aren't
 					converted (no exchange rate offline) — their totals are:
 					<span class="font-medium text-foreground"
-						>{otherCurrencyTotals
+						>{unconvertedCurrencyTotals
 							.map(([currency, amount]) => formatCurrency(amount, currency))
 							.join(' · ')}</span
 					>.

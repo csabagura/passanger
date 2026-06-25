@@ -158,6 +158,14 @@ export function convertHistorySpendToHome(
 		const currency = resolveHistoryEntryCurrency(entry, homeCurrency);
 		const cost = getHistoryEntryCost(entry);
 
+		// Skip corrupt rows (NaN/Infinity) before they reach `total`, mirroring the PREP-4.2 fold in
+		// summarizeSpendByCurrency/monthlySpendByCurrency — `NaN <= 0 → false` slips the legacy guard and
+		// would otherwise surface a dead `€NaN` blended total. A skipped row is neither converted nor
+		// unconverted (it is corrupt, not foreign-without-rate), so it counts toward no tally.
+		if (!isFiniteNumber(cost)) {
+			continue;
+		}
+
 		if (currency === homeCurrency) {
 			total += cost;
 			convertibleEntries++;

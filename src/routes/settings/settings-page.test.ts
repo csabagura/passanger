@@ -88,6 +88,24 @@ describe('Settings page', () => {
 		expect(screen.getByRole('radio', { name: 'L/100km' })).toBeTruthy();
 		expect(screen.getByRole('radio', { name: 'MPG' })).toBeTruthy();
 		expect(screen.getByLabelText('Currency prefix')).toBeTruthy();
+		// Story 5.2: the rate fieldset uses the canonical glossary term "Display rate".
+		expect(screen.getByText('Display rate')).toBeTruthy();
+	});
+
+	it('persists a typed Display rate (number-input coercion does not break the save)', async () => {
+		// Regression for the pre-existing crash: the `<input type="number">` binds back a number, so
+		// buildExchangeRates' `draft.trim()` threw `TypeError: n.trim is not a function` and the save
+		// aborted — no rate ever persisted. Filling and saving must now persist exchangeRates.
+		renderPage();
+
+		await fireEvent.input(screen.getByLabelText('1 Ft ='), { target: { value: '0.0025' } });
+		await fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
+
+		const raw = localStorageMock.getItem(SETTINGS_STORAGE_KEY);
+		expect(raw).not.toBeNull();
+		const saved = JSON.parse(raw as string);
+		expect(saved.exchangeRates).toEqual({ Ft: 0.0025 });
+		expect(screen.getByRole('status').textContent).toContain('Settings saved.');
 	});
 
 	it('saves fuel unit and currency correctly', async () => {
