@@ -523,3 +523,38 @@ test('NavBar tabs are reachable via keyboard', async ({ page }) => {
 	const href = await page.evaluate(() => (document.activeElement as HTMLAnchorElement)?.pathname);
 	expect(href).toBe('/understand');
 });
+
+// Story 7.1 (review P8) — the fill-quality toggles on the Capture form. axe cannot see the 44px
+// target floor or keyboard operability (the false-green trap), so both are asserted EXPLICITLY on
+// the real capture path: boundingBox for the hit target, focus + Space for operability.
+test('Fill-quality toggles meet the 44px floor and are keyboard-operable (Story 7.1 AC2)', async ({
+	page
+}) => {
+	// The Capture sheet mounts FuelEntryForm only once a vehicle exists (vehicles.activeVehicleId
+	// guard) — a bare deep-link on an empty DB shows the sheet chrome without the form.
+	await seedVehicleAndFill(page);
+	await page.getByRole('button', { name: /Log a fill-up or expense/i }).click();
+	const sheet = page.getByRole('dialog');
+	await expect(sheet.getByText('Log an entry')).toBeVisible();
+
+	for (const name of ['Partial fill-up', 'I missed a previous fill-up']) {
+		const checkbox = sheet.getByRole('checkbox', { name });
+		await expect(checkbox).toBeVisible();
+
+		// ≥44px hit target: the wrapping label row (min-h-11) IS the target, not the 20px box.
+		const label = checkbox.locator('xpath=ancestor::label');
+		const box = await label.boundingBox();
+		expect(box, `${name} label box`).not.toBeNull();
+		expect(box!.height, `${name} target height`).toBeGreaterThanOrEqual(44);
+
+		// Keyboard-operable: focus + Space toggles on and off. (The visible ring on native controls
+		// is the app.css :focus-visible baseline, already e2e-asserted by Story 6.2's ring tests —
+		// re-checking it after a programmatic .focus() would be heuristic-dependent in headless
+		// Chromium, the exact flake class from the 6.2 skip-link incident.)
+		await checkbox.focus();
+		await page.keyboard.press('Space');
+		await expect(checkbox).toBeChecked();
+		await page.keyboard.press('Space');
+		await expect(checkbox).not.toBeChecked();
+	}
+});

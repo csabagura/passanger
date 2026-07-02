@@ -69,7 +69,12 @@ function isValidFuelLog(row: unknown): boolean {
 		(row.unit === 'L' || row.unit === 'gal') &&
 		(row.distanceUnit === 'km' || row.distanceUnit === 'mi') &&
 		typeof row.totalCost === 'number' &&
-		typeof row.calculatedConsumption === 'number'
+		typeof row.calculatedConsumption === 'number' &&
+		// Story 7.1 (v5, review P6) — the fill-quality flags are optional (absent on pre-v5 backups)
+		// but must be BOOLEAN when present: readers coerce `?? false`, so a hand-edited truthy string
+		// like "yes" would silently flag the fill as partial/missed (ADR-005 §5 gate pattern).
+		(row.isPartialFill === undefined || typeof row.isPartialFill === 'boolean') &&
+		(row.precededByMissedFill === undefined || typeof row.precededByMissedFill === 'boolean')
 	);
 }
 
@@ -128,8 +133,24 @@ export function parseBackup(text: string): Result<{ data: BackupData; settings: 
 		return err('VALIDATION_ERROR', 'This file is not a passanger backup.');
 	}
 
-	if (parsed.schemaVersion !== DB_VERSION) {
-		return err('VALIDATION_ERROR', 'This backup is from a different app version.');
+	// Accept any backup at or below the running schema version; reject only backups from a NEWER app
+	// (fields we don't understand). Older backups are forward-compatible because every schema bump so
+	// far has been additive with safe defaults — e.g. a v4 backup restores into v5 with the new
+	// fuelLog fields (`isPartialFill` / `precededByMissedFill`) simply absent, which readers coerce to
+	// `false` (Story 7.1 / ADR-005). Restored rows bypass the Dexie `.upgrade()` path, so this
+	// read-side coercion — not a backfill — is what keeps them valid. Was an exact `!==` match pre-v5.
+	// The floor is 4: the backup feature shipped when DB_VERSION was already 4, so no legitimate file
+	// carries a lower stamp — and an integer check keeps NaN/fractional garbage out (`NaN > n` is
+	// false, so a plain upper-bound comparison alone would ACCEPT a corrupt version field; review P4).
+	const MIN_BACKUP_SCHEMA_VERSION = 4;
+	if (
+		!Number.isInteger(parsed.schemaVersion) ||
+		(parsed.schemaVersion as number) < MIN_BACKUP_SCHEMA_VERSION
+	) {
+		return err('VALIDATION_ERROR', 'This file is not a passanger backup.');
+	}
+	if ((parsed.schemaVersion as number) > DB_VERSION) {
+		return err('VALIDATION_ERROR', 'This backup is from a newer app version.');
 	}
 
 	const data = parsed.data;

@@ -82,13 +82,11 @@ function buildACarColumnMapping(fields: string[]): ColumnMappingEntry[] {
 	];
 
 	const ignoredNames = [
-		'full',
 		'l/100km (optional)',
 		'mpg (optional)',
 		'latitude (optional)',
 		'longitude (optional)',
 		'city (optional)',
-		'missed',
 		'tanknumber',
 		'fueltype',
 		'volumeprice',
@@ -98,8 +96,23 @@ function buildACarColumnMapping(fields: string[]): ColumnMappingEntry[] {
 		'tankcalc'
 	];
 
-	const ignored: ColumnMappingEntry[] = [];
 	const lowerFields = fields.map((f) => f.toLowerCase().trim());
+
+	// Story 7.1 (review P1) — aCar/Fuelio expose fill-quality equivalents: `Full` (1 = full tank,
+	// 0 = partial — the boolean INVERSE of isPartialFill) and `Missed` (1 = a fill-up went unlogged
+	// before this one). Surface them as mapped when present instead of "(ignored)".
+	const conditionalMapped: ColumnMappingEntry[] = [];
+	for (const [colName, targetField] of [
+		['full', 'Partial fill-up'],
+		['missed', 'Missed previous fill-up']
+	] as const) {
+		if (lowerFields.includes(colName)) {
+			const original = fields[lowerFields.indexOf(colName)];
+			conditionalMapped.push({ sourceColumn: original, targetField, status: 'mapped' });
+		}
+	}
+
+	const ignored: ColumnMappingEntry[] = [];
 	for (const name of ignoredNames) {
 		if (lowerFields.includes(name.toLowerCase())) {
 			const original = fields[lowerFields.indexOf(name.toLowerCase())];
@@ -111,7 +124,22 @@ function buildACarColumnMapping(fields: string[]): ColumnMappingEntry[] {
 		}
 	}
 
-	return [...mapped, ...ignored];
+	return [...mapped, ...conditionalMapped, ...ignored];
+}
+
+// Story 7.1 (review P1) — aCar/Fuelio write boolean columns as '0'/'1'. Same truthy tokens as the
+// Fuelly parser; anything else (incl. empty/absent) reads as unset.
+function isACarFlagSet(value: string): boolean {
+	const token = value.trim().toLowerCase();
+	return token === '1' || token === 'true' || token === 'yes';
+}
+
+// The `Full` column is the boolean INVERSE of isPartialFill — but only when the column is present
+// AND carries an explicit falsy value. An absent/empty column must NOT flag a partial (default
+// full, matching every other parser's no-equivalent default).
+function isACarPartial(fullValue: string): boolean {
+	const token = fullValue.trim().toLowerCase();
+	return token === '0' || token === 'false' || token === 'no';
 }
 
 /**
@@ -212,6 +240,9 @@ export async function parseACarCSV(rawCSV: string): Promise<Result<ImportParseRe
 			const quantityStr = getColumn(row, fuelColName);
 			const priceStr = getColumn(row, 'Price (optional)');
 			const notes = getColumn(row, 'Notes (optional)');
+			// Story 7.1 (review P1) — `Full` ('0' → partial) and `Missed` ('1' → missed predecessor).
+			const isPartialFill = isACarPartial(getColumn(row, 'Full'));
+			const precededByMissedFill = isACarFlagSet(getColumn(row, 'Missed'));
 
 			const date = parseACarDate(dateStr);
 			const odometer = parseFloat(odometerStr);
@@ -227,7 +258,9 @@ export async function parseACarCSV(rawCSV: string): Promise<Result<ImportParseRe
 				totalCost,
 				notes: notes.replace(/^"|"$/g, '') || '',
 				type: 'fuel',
-				sourceVehicleName: vehicleName || undefined
+				sourceVehicleName: vehicleName || undefined,
+				isPartialFill,
+				precededByMissedFill
 			};
 
 			mappedEntries.push({ data: entry, rowNumber: i + 1 });

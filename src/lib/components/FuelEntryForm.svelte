@@ -22,7 +22,6 @@
 		suggestNextOdometer
 	} from '$lib/utils/odometerSuggestion';
 	import {
-		calculateConsumption,
 		formatConsumptionForDisplay,
 		formatCurrency,
 		getDistanceUnitForFuelUnit,
@@ -32,6 +31,7 @@
 		buildFuelLogUpdatePlan,
 		getFuelLogPredecessor,
 		getFuelLogSuccessor,
+		recalculateFuelLogConsumptions,
 		sortFuelLogsForTimeline
 	} from '$lib/utils/fuelLogTimeline';
 	import { consumptionTrend } from '$lib/utils/analytics';
@@ -120,6 +120,20 @@
 		const presets = PRESET_CURRENCIES as readonly string[];
 		return presets.includes(currency) ? [...presets] : [currency, ...presets];
 	});
+
+	// Story 7.1 (Data Quality): fill-quality flags, both default off. Edit seeds from the log; create
+	// restores from the durable draft ('true'/absent). The timeline engine reads these to defer a
+	// partial fill's consumption and zero a missed-preceded interval.
+	let isPartialFill = $state(
+		getInitialLog()
+			? (getInitialLog()!.isPartialFill ?? false)
+			: fuelDraft['isPartialFill'] === 'true'
+	);
+	let precededByMissedFill = $state(
+		getInitialLog()
+			? (getInitialLog()!.precededByMissedFill ?? false)
+			: fuelDraft['precededByMissedFill'] === 'true'
+	);
 
 	// Field forwards no element ref, so focus recovery (mount auto-focus + first-invalid-field)
 	// targets the stable id passed to each Field — the proven story-1-5 migration pattern. We scope
@@ -450,6 +464,12 @@
 			else delete fuelDraft['quantity'];
 			if (cost) fuelDraft['cost'] = cost;
 			else delete fuelDraft['cost'];
+			// Story 7.1 — persist the fill-quality flags only when set (keeps the draft minimal; an
+			// absent key restores to false), so a reload mid-entry keeps the toggles.
+			if (isPartialFill) fuelDraft['isPartialFill'] = 'true';
+			else delete fuelDraft['isPartialFill'];
+			if (precededByMissedFill) fuelDraft['precededByMissedFill'] = 'true';
+			else delete fuelDraft['precededByMissedFill'];
 		}
 	});
 
@@ -612,7 +632,9 @@
 				unit: storageUnit,
 				distanceUnit,
 				totalCost: parsedCost,
-				currency
+				currency,
+				isPartialFill,
+				precededByMissedFill
 			};
 
 			const updatePlan = buildFuelLogUpdatePlan(timelineContextLogs, updatedLog);
@@ -645,25 +667,38 @@
 			return;
 		}
 
-		let consumption: number;
-		if (
-			previousOdometer !== undefined &&
-			lastLogDistanceUnit &&
-			lastLogDistanceUnit !== distanceUnit
-		) {
-			consumption = 0;
-		} else {
-			consumption = calculateConsumption(
-				parsedOdometer,
-				previousOdometer,
-				parsedQuantity,
-				storageUnit
-			);
-		}
+		// Story 7.1 — compute the new fill's consumption through the shared timeline engine so a partial
+		// or missed-preceded fill zeroes out, and a full fill spans back over any preceding partials
+		// (not just the immediate predecessor). The new row is normally the latest by date (now()), so
+		// no existing neighbor's consumption changes — only this row's. (Known pre-existing gap: if an
+		// existing log is FUTURE-dated, its stored consumption goes stale here — the create path only
+		// persists the new row, same as the old per-predecessor calc; tracked in deferred-work.md.)
+		// With no flags this is identical to the previous per-predecessor calc (the engine's anchor IS
+		// the immediate predecessor then).
+		const now = new Date();
+		const SYNTHETIC_NEW_ID = Number.MAX_SAFE_INTEGER;
+		const syntheticNewLog: FuelLog = {
+			id: SYNTHETIC_NEW_ID,
+			vehicleId,
+			date: now,
+			odometer: parsedOdometer,
+			quantity: parsedQuantity,
+			unit: storageUnit,
+			distanceUnit,
+			totalCost: parsedCost,
+			currency,
+			calculatedConsumption: 0,
+			isPartialFill,
+			precededByMissedFill
+		};
+		const consumption =
+			recalculateFuelLogConsumptions([...timelineLogs, syntheticNewLog]).find(
+				(log) => log.id === SYNTHETIC_NEW_ID
+			)?.calculatedConsumption ?? 0;
 
 		const entry: NewFuelLog = {
 			vehicleId,
-			date: new Date(),
+			date: now,
 			odometer: parsedOdometer,
 			quantity: parsedQuantity,
 			unit: storageUnit,
@@ -671,6 +706,8 @@
 			totalCost: parsedCost,
 			currency,
 			calculatedConsumption: consumption,
+			isPartialFill,
+			precededByMissedFill,
 			notes: ''
 		};
 
@@ -695,6 +732,11 @@
 		odometer = '';
 		quantity = '';
 		cost = '';
+		// Story 7.1 (review P2) — the fill-quality flags are per-fill facts, never a session default:
+		// reset them with the other fields, or the next entry silently inherits them AND the draft
+		// $effect re-writes 'true' into the just-cleared draft once suppressDraftSync drops.
+		isPartialFill = false;
+		precededByMissedFill = false;
 		// Allow the next entry in a long session to re-seed its odometer suggestion from the
 		// freshly-updated timeline (the field was just cleared).
 		hasSeededSuggestion = false;
@@ -794,6 +836,39 @@
 		</div>
 		<CurrencyChips recent={recentCurrencies} selected={currency} onpick={(c) => (currency = c)} />
 	</div>
+
+	<!-- Story 7.1 (Data Quality): two unobtrusive fill-quality toggles, both default off. Native
+	     checkboxes wrapped implicitly in their labels (NOT `for`/`id` association) so the dual-mounted
+	     form — page + Capture sheet share field ids — can never activate the sibling instance's control
+	     (the documented dual-mount hazard). Each label row is min-h-11 so the whole ≥44px area is the
+	     hit target; the checkbox is keyboard-operable (Tab + Space) and labelled by the wrapping text. -->
+	<fieldset class="flex flex-col gap-1 border-0 p-0">
+		<legend class="sr-only">{m.fuel_fill_quality_legend()}</legend>
+		<label class="flex min-h-11 cursor-pointer items-center gap-3 py-1">
+			<input
+				type="checkbox"
+				bind:checked={isPartialFill}
+				onchange={clearSubmissionFeedback}
+				class="size-5 shrink-0 accent-primary"
+			/>
+			<span class="flex flex-col">
+				<span class="text-base">{m.fuel_partial_fill_label()}</span>
+				<span class="text-meta text-muted-foreground">{m.fuel_partial_fill_hint()}</span>
+			</span>
+		</label>
+		<label class="flex min-h-11 cursor-pointer items-center gap-3 py-1">
+			<input
+				type="checkbox"
+				bind:checked={precededByMissedFill}
+				onchange={clearSubmissionFeedback}
+				class="size-5 shrink-0 accent-primary"
+			/>
+			<span class="flex flex-col">
+				<span class="text-base">{m.fuel_missed_fill_label()}</span>
+				<span class="text-meta text-muted-foreground">{m.fuel_missed_fill_hint()}</span>
+			</span>
+		</label>
+	</fieldset>
 
 	<!-- Story 2.4 (AC-1/2/3/6): the value-revealing save confirmation. The outer wrapper carries the
 	     always-present polite live region (role="status") — its text is EMPTY until a save fills it,

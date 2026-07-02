@@ -98,16 +98,26 @@ function buildColumnMapping(fields: string[], units: FuellyDetectedUnits): Colum
 		'city_percentage',
 		'date_added',
 		'tags',
-		'missed_fuelup',
-		'partial_fuelup',
 		'latitude',
 		'longitude',
 		'brand'
 	];
 
-	const ignoredColumns: ColumnMappingEntry[] = [];
 	const lowerFields = fields.map((f) => f.toLowerCase().trim());
 
+	// Story 7.1 — the missed/partial columns are no longer discarded; surface them as mapped when
+	// present so the review UI shows them wired to the new fill-quality fields (not "(ignored)").
+	const conditionalMappedColumns: ColumnMappingEntry[] = [];
+	for (const [colName, targetField] of [
+		['missed_fuelup', 'Missed previous fill-up'],
+		['partial_fuelup', 'Partial fill-up']
+	] as const) {
+		if (lowerFields.includes(colName)) {
+			conditionalMappedColumns.push({ sourceColumn: colName, targetField, status: 'mapped' });
+		}
+	}
+
+	const ignoredColumns: ColumnMappingEntry[] = [];
 	for (const colName of ignoredColumnNames) {
 		if (lowerFields.includes(colName.toLowerCase())) {
 			ignoredColumns.push({
@@ -118,7 +128,7 @@ function buildColumnMapping(fields: string[], units: FuellyDetectedUnits): Colum
 		}
 	}
 
-	return [...mappedColumns, ...ignoredColumns];
+	return [...mappedColumns, ...conditionalMappedColumns, ...ignoredColumns];
 }
 
 /**
@@ -128,6 +138,13 @@ function buildColumnMapping(fields: string[], units: FuellyDetectedUnits): Colum
  * @param rawCSV - Raw CSV string content from the uploaded file
  * @returns Result containing parsed rows, summary, detected units, and column mapping
  */
+// Story 7.1 — Fuelly writes the missed/partial columns as '0'/'1'. Accept the common truthy tokens
+// and treat anything else (incl. empty) as unset, so a blank column never flags a fill.
+function isFuellyFlagSet(value: string): boolean {
+	const token = value.trim().toLowerCase();
+	return token === '1' || token === 'true' || token === 'yes';
+}
+
 export async function parseFuellyCSV(rawCSV: string): Promise<Result<FuellyParseResult>> {
 	try {
 		const Papa = await import('papaparse');
@@ -171,6 +188,9 @@ export async function parseFuellyCSV(rawCSV: string): Promise<Result<FuellyParse
 			const priceStr = getColumn(row, 'price');
 			const notes = getColumn(row, 'notes');
 			const carName = getColumn(row, 'car_name');
+			// Story 7.1 — Fuelly exports these as '0'/'1'; treat 1/true/yes as set, everything else off.
+			const isPartialFill = isFuellyFlagSet(getColumn(row, 'partial_fuelup'));
+			const precededByMissedFill = isFuellyFlagSet(getColumn(row, 'missed_fuelup'));
 
 			const date = parseFuellyDate(dateStr);
 			const odometer = parseFloat(odometerStr);
@@ -187,7 +207,9 @@ export async function parseFuellyCSV(rawCSV: string): Promise<Result<FuellyParse
 				totalCost,
 				notes: notes || '',
 				type: 'fuel',
-				sourceVehicleName: carName || undefined
+				sourceVehicleName: carName || undefined,
+				isPartialFill,
+				precededByMissedFill
 			};
 
 			mappedEntries.push({ data: entry, rowNumber: i + 1 });

@@ -19,6 +19,10 @@ export interface FuelLog {
 	currency?: string; // display currency the cost was entered in (e.g. '€', 'Ft'). Optional for back-compat; new entries always set it, migration v3 backfills, readers fall back to the home currency.
 	calculatedConsumption: number; // L/100km or MPG — computed on save
 	notes?: string;
+	// Story 7.1 (Data Quality, Dexie v5). Additive, non-indexed, optional for back-compat — absent on
+	// v1–v4 rows and treated as `false` by readers (the timeline engine coerces `?? false`).
+	isPartialFill?: boolean; // a top-up: defers its own consumption (0) and rolls litres+distance forward to the next full fill
+	precededByMissedFill?: boolean; // a fill was missed before this one: the interval into it is unreliable → consumption 0 (excluded from trends)
 }
 export type NewFuelLog = Omit<FuelLog, 'id'>;
 

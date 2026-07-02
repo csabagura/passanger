@@ -232,4 +232,35 @@ MyCar,Make,10,49000,300,40,1.5,50,01/15/2022 0:00,01/15/2022,,,0,0,,,`;
 		const secondRow = rows.find((r) => r.rowNumber === 2)!;
 		expect(secondRow.issues).toContain('Odometer is lower than the previous entry');
 	});
+
+	it('maps the missed_fuelup / partial_fuelup columns into the fill-quality flags (Story 7.1)', async () => {
+		const csv = `car_name,model,l/100km,odometer,km,litres,price,city_percentage,fuelup_date,date_added,tags,notes,missed_fuelup,partial_fuelup,latitude,longitude,brand
+Renegade,Jeep,18.71,186886,306.998,57.432,1.269,50,06/06/2021 0:00,06/06/2021,,,0,1,,,
+Renegade,Jeep,15.82,187205,319.016,50.441,1.319,50,06/12/2021 0:00,06/12/2021,,,1,0,,,`;
+
+		const result = await parseFuellyCSV(csv);
+		expect(result.error).toBeNull();
+		const rows = result.data!.rows;
+
+		// Row 1: partial_fuelup=1 → partial; missed_fuelup=0 → not missed.
+		expect(rows[0].data.isPartialFill).toBe(true);
+		expect(rows[0].data.precededByMissedFill).toBe(false);
+		// Row 2: missed_fuelup=1 → missed; partial_fuelup=0 → not partial.
+		expect(rows[1].data.isPartialFill).toBe(false);
+		expect(rows[1].data.precededByMissedFill).toBe(true);
+
+		// The columns are surfaced as mapped (no longer "(ignored)").
+		const mapping = result.data!.columnMapping;
+		const partial = mapping.find((c) => c.sourceColumn === 'partial_fuelup');
+		const missed = mapping.find((c) => c.sourceColumn === 'missed_fuelup');
+		expect(partial?.status).toBe('mapped');
+		expect(missed?.status).toBe('mapped');
+	});
+
+	it('defaults both fill-quality flags to false when the columns are empty (Story 7.1)', async () => {
+		const result = await parseFuellyCSV(SAMPLE_FUELLY_CSV);
+		const rows = result.data!.rows;
+		expect(rows[0].data.isPartialFill).toBe(false);
+		expect(rows[0].data.precededByMissedFill).toBe(false);
+	});
 });

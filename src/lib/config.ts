@@ -41,7 +41,7 @@ export const ZERO_DECIMAL_CURRENCIES = new Set([
 export const SUFFIX_CURRENCIES = new Set(['FT', 'HUF', 'KR', 'ZŁ', 'KČ']);
 
 export const DB_NAME = 'passangerDB'; // Note: double-a brand name — NOT 'passengerDB'
-export const DB_VERSION = 4;
+export const DB_VERSION = 5;
 
 // Full-dataset JSON backup. `BACKUP_APP_ID` tags exported files so a restore can reject a
 // foreign file; the schemaVersion in a backup reuses DB_VERSION (exact-match on restore).

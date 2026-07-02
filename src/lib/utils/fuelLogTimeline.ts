@@ -27,26 +27,77 @@ export function getFuelLogSuccessor(logs: FuelLog[], logId: number): FuelLog | u
 	return logIndex >= 0 && logIndex < sortedLogs.length - 1 ? sortedLogs[logIndex + 1] : undefined;
 }
 
-function calculateTimelineConsumption(log: FuelLog, predecessor?: FuelLog): number {
-	if (!predecessor || predecessor.distanceUnit !== log.distanceUnit) {
-		return 0;
-	}
-
-	return calculateConsumption(log.odometer, predecessor.odometer, log.quantity, log.unit);
-}
-
 function recalculateSortedFuelLogs(logs: FuelLog[]): FuelLog[] {
 	const sortedLogs = sortFuelLogsForTimeline(logs);
 
-	return sortedLogs.map((log, index) => ({
-		...log,
-		calculatedConsumption: calculateTimelineConsumption(log, sortedLogs[index - 1])
-	}));
+	// Consumption is measured full-fill → full-fill (Story 7.1, strict AC3 semantics per review
+	// decision D1). ONLY a full fill can anchor a span — at a full fill the tank level is KNOWN
+	// (full), so "litres added since the anchor ÷ distance since the anchor" is honest. A partial's
+	// tank level is unknown, so a partial NEVER anchors: it defers its own value (0) and, when a span
+	// is open, rolls its litres into `carriedQuantity` for the next full fill to close the interval.
+	// A `precededByMissedFill` interval is unreliable (0); if that fill is FULL it re-anchors (the
+	// reading is trustworthy again), if it is also partial the span stays closed until the next full
+	// fill. A distance-unit change breaks the span the same way (mixed km/mi — and, via the L↔km /
+	// gal↔mi pairing invariant, mixed litres/gallons — must never blend into one number).
+	// Flags are coerced `?? false` so v1–v4 rows (and rows restored from a v4 backup, which never run
+	// the v5 upgrade) behave exactly as before: every fill full, none missed → identical to v4 output.
+	let anchor: { odometer: number; distanceUnit: 'km' | 'mi' } | undefined;
+	let carriedQuantity = 0;
+
+	return sortedLogs.map((log) => {
+		const isPartial = log.isPartialFill ?? false;
+		const missed = log.precededByMissedFill ?? false;
+		const spanBroken = !anchor || anchor.distanceUnit !== log.distanceUnit;
+
+		let consumption: number;
+		if (missed || isPartial || spanBroken) {
+			// Missed → interval spans an unknown tank; partial → deferred to the next full fill;
+			// no anchor / unit change → no comparable full-fill predecessor. All honest 0.
+			consumption = 0;
+		} else {
+			// Full fill closing the open span: distance since the anchor, litres = carried partials +
+			// this fill. Reuses calculateConsumption (non-positive distance/quantity → 0, PREP-1 finite).
+			consumption = calculateConsumption(
+				log.odometer,
+				anchor!.odometer,
+				carriedQuantity + log.quantity,
+				log.unit
+			);
+		}
+
+		// Advance the span state AFTER computing this fill's value.
+		if (isPartial) {
+			if (missed || spanBroken) {
+				// The span can't be measured through this partial (missed predecessor, first-ever fill,
+				// or unit change) and a partial can't anchor a new one → closed until the next full fill.
+				anchor = undefined;
+				carriedQuantity = 0;
+			} else {
+				// Open span continues: accumulate this partial's litres toward the next full fill.
+				carriedQuantity += log.quantity;
+			}
+		} else {
+			// Full fill (incl. first-ever / missed-preceded / unit-change): the tank is full here, so
+			// this reading anchors the next span regardless of how the previous one ended.
+			anchor = { odometer: log.odometer, distanceUnit: log.distanceUnit };
+			carriedQuantity = 0;
+		}
+
+		return { ...log, calculatedConsumption: consumption };
+	});
 }
 
 export function recalculateFuelLogTimeline(logs: FuelLog[], updatedLog: FuelLog): FuelLog[] {
 	const nextLogs = [...logs.filter((log) => log.id !== updatedLog.id), updatedLog];
 	return recalculateSortedFuelLogs(nextLogs);
+}
+
+// Span-aware consumption for a full set of logs, sorted into timeline order. The single public entry
+// point for bulk (re)computation — used by the CSV importer (Story 7.1) so imported partial/missed
+// fills defer/zero exactly like live edits, keeping the timeline engine (AD-DA-3) the sole owner of
+// the math. Returns the logs in timeline order with `calculatedConsumption` filled.
+export function recalculateFuelLogConsumptions(logs: FuelLog[]): FuelLog[] {
+	return recalculateSortedFuelLogs(logs);
 }
 
 export function buildFuelLogUpdatePlan(
@@ -70,7 +121,11 @@ export function buildFuelLogUpdatePlan(
 				unit: log.unit,
 				distanceUnit: log.distanceUnit,
 				totalCost: log.totalCost,
-				calculatedConsumption: log.calculatedConsumption
+				calculatedConsumption: log.calculatedConsumption,
+				// Story 7.1 — persist the edited fill-quality flags for the updated row (coerced so a
+				// pre-v5 row edited without touching them stays explicit `false`, not `undefined`).
+				isPartialFill: log.isPartialFill ?? false,
+				precededByMissedFill: log.precededByMissedFill ?? false
 			};
 
 			if (log.notes !== undefined) {

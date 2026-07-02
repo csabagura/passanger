@@ -9,6 +9,7 @@ import { DB_NAME } from '$lib/config';
 import type { Vehicle, FuelLog, Expense, ServiceReminder } from './schema';
 import { migrateV1ToV2 } from './migrations/v2';
 import { migrateV2ToV3 } from './migrations/v3';
+import { migrateV4ToV5 } from './migrations/v5';
 
 class PassangerDB extends Dexie {
 	vehicles!: EntityTable<Vehicle, 'id'>;
@@ -57,6 +58,19 @@ class PassangerDB extends Dexie {
 			expenses: '++id, vehicleId, date, type, odometer',
 			serviceReminders: '++id, vehicleId'
 		});
+
+		// Version 5 (Story 7.1, Data Quality) — add `isPartialFill` / `precededByMissedFill` to
+		// fuelLogs. The flags are NOT indexed (never queried by key — the timeline engine reads them
+		// in-memory), so the schema strings are re-declared verbatim; the upgrade backfills existing
+		// rows to `false`. See ADR-005 and migrations/v5.ts.
+		this.version(5)
+			.stores({
+				vehicles: '++id, name, make, model, year',
+				fuelLogs: '++id, vehicleId, date, odometer',
+				expenses: '++id, vehicleId, date, type, odometer',
+				serviceReminders: '++id, vehicleId'
+			})
+			.upgrade(migrateV4ToV5);
 	}
 }
 

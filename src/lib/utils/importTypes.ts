@@ -18,6 +18,10 @@ export interface NormalizedImportEntry {
 	type: 'fuel' | 'maintenance';
 	maintenanceType?: string;
 	sourceVehicleName?: string; // original vehicle name from CSV
+	// Story 7.1 — fill-quality flags mapped from source columns where the format exposes them (e.g.
+	// Fuelly's `partial_fuelup` / `missed_fuelup`); default false when the format has no equivalent.
+	isPartialFill?: boolean;
+	precededByMissedFill?: boolean;
 }
 
 export interface ImportRow {

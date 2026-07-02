@@ -245,6 +245,36 @@ describe('commitImportRows', () => {
 		expect(logs[1].calculatedConsumption).toBe(9); // (45/500)*100 = 9
 	});
 
+	it('defers partial fills, zeroes missed-preceded intervals, and persists the flags (Story 7.1)', async () => {
+		const vehicleId = await db.vehicles.add({
+			name: 'TestCar',
+			make: 'Honda',
+			model: 'Civic'
+		} as any);
+
+		const rows = [
+			makeFuelRow(1, { odometer: 10000, quantity: 40 }),
+			makeFuelRow(2, { odometer: 10500, quantity: 45 }),
+			makeFuelRow(3, { odometer: 11000, quantity: 20, isPartialFill: true }),
+			makeFuelRow(4, { odometer: 11500, quantity: 30 }),
+			makeFuelRow(5, { odometer: 12000, quantity: 42, precededByMissedFill: true })
+		];
+		const assignments = [makeExistingAssignment('TestCar', vehicleId as number, 5)];
+
+		const result = await commitImportRows(rows, assignments);
+		expect(result.error).toBeNull();
+
+		const logs = (await db.fuelLogs.toArray()).sort((a, b) => a.odometer - b.odometer);
+		expect(logs[0].calculatedConsumption).toBe(0); // first fill
+		expect(logs[1].calculatedConsumption).toBe(9); // full: (45/500)*100
+		expect(logs[2].calculatedConsumption).toBe(0); // partial deferred
+		expect(logs[2].isPartialFill).toBe(true);
+		// full fill spanning the partial: litres (20+30) over 1000 km → (50/1000)*100 = 5
+		expect(logs[3].calculatedConsumption).toBe(5);
+		expect(logs[4].calculatedConsumption).toBe(0); // missed-preceded → excluded
+		expect(logs[4].precededByMissedFill).toBe(true);
+	});
+
 	it('rolls back entire import on transaction failure (Dexie atomicity)', async () => {
 		const vehicleId = await db.vehicles.add({
 			name: 'TestCar',
