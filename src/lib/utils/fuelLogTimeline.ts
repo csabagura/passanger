@@ -30,11 +30,15 @@ export function getFuelLogSuccessor(logs: FuelLog[], logId: number): FuelLog | u
 function recalculateSortedFuelLogs(logs: FuelLog[]): FuelLog[] {
 	const sortedLogs = sortFuelLogsForTimeline(logs);
 
-	// Consumption is measured full-fill → full-fill (Story 7.1). A partial fill defers its own value
-	// (0) and rolls its litres + distance into the next full fill's span; a `precededByMissedFill`
-	// interval is unreliable (0) and re-anchors the span. `anchor` is the odometer the current open
-	// span is measured FROM (the last trustworthy full-fill reading); `carriedQuantity` is the litres
-	// of partials accumulated since that anchor, waiting for the next full fill to close the interval.
+	// Consumption is measured full-fill → full-fill (Story 7.1, strict AC3 semantics per review
+	// decision D1). ONLY a full fill can anchor a span — at a full fill the tank level is KNOWN
+	// (full), so "litres added since the anchor ÷ distance since the anchor" is honest. A partial's
+	// tank level is unknown, so a partial NEVER anchors: it defers its own value (0) and, when a span
+	// is open, rolls its litres into `carriedQuantity` for the next full fill to close the interval.
+	// A `precededByMissedFill` interval is unreliable (0); if that fill is FULL it re-anchors (the
+	// reading is trustworthy again), if it is also partial the span stays closed until the next full
+	// fill. A distance-unit change breaks the span the same way (mixed km/mi — and, via the L↔km /
+	// gal↔mi pairing invariant, mixed litres/gallons — must never blend into one number).
 	// Flags are coerced `?? false` so v1–v4 rows (and rows restored from a v4 backup, which never run
 	// the v5 upgrade) behave exactly as before: every fill full, none missed → identical to v4 output.
 	let anchor: { odometer: number; distanceUnit: 'km' | 'mi' } | undefined;
@@ -43,40 +47,38 @@ function recalculateSortedFuelLogs(logs: FuelLog[]): FuelLog[] {
 	return sortedLogs.map((log) => {
 		const isPartial = log.isPartialFill ?? false;
 		const missed = log.precededByMissedFill ?? false;
+		const spanBroken = !anchor || anchor.distanceUnit !== log.distanceUnit;
 
 		let consumption: number;
-		if (missed || isPartial) {
-			// Missed → interval spans an unknown tank; partial → deferred to the next full fill.
-			consumption = 0;
-		} else if (!anchor || anchor.distanceUnit !== log.distanceUnit) {
-			// First-ever fill, or a unit change that breaks the span → no comparable predecessor.
+		if (missed || isPartial || spanBroken) {
+			// Missed → interval spans an unknown tank; partial → deferred to the next full fill;
+			// no anchor / unit change → no comparable full-fill predecessor. All honest 0.
 			consumption = 0;
 		} else {
 			// Full fill closing the open span: distance since the anchor, litres = carried partials +
 			// this fill. Reuses calculateConsumption (non-positive distance/quantity → 0, PREP-1 finite).
 			consumption = calculateConsumption(
 				log.odometer,
-				anchor.odometer,
+				anchor!.odometer,
 				carriedQuantity + log.quantity,
 				log.unit
 			);
 		}
 
 		// Advance the span state AFTER computing this fill's value.
-		if (missed) {
-			// Span broken → re-anchor here (this reading is trustworthy again). If also partial, its
-			// litres start the new carry; otherwise it's a clean full-fill anchor.
-			anchor = { odometer: log.odometer, distanceUnit: log.distanceUnit };
-			carriedQuantity = isPartial ? log.quantity : 0;
-		} else if (isPartial) {
-			// Keep the span open and accumulate. A partial as the first-ever fill anchors here so the
-			// next full fill can measure the distance from it.
-			if (!anchor) {
-				anchor = { odometer: log.odometer, distanceUnit: log.distanceUnit };
+		if (isPartial) {
+			if (missed || spanBroken) {
+				// The span can't be measured through this partial (missed predecessor, first-ever fill,
+				// or unit change) and a partial can't anchor a new one → closed until the next full fill.
+				anchor = undefined;
+				carriedQuantity = 0;
+			} else {
+				// Open span continues: accumulate this partial's litres toward the next full fill.
+				carriedQuantity += log.quantity;
 			}
-			carriedQuantity += log.quantity;
 		} else {
-			// Full fill (incl. first-ever / unit-change): closes the span, becomes the new anchor.
+			// Full fill (incl. first-ever / missed-preceded / unit-change): the tank is full here, so
+			// this reading anchors the next span regardless of how the previous one ended.
 			anchor = { odometer: log.odometer, distanceUnit: log.distanceUnit };
 			carriedQuantity = 0;
 		}

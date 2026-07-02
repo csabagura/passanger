@@ -113,4 +113,36 @@ describe('migrateV4ToV5', () => {
 		expect(log?.isPartialFill).toBe(true);
 		expect(log?.precededByMissedFill).toBe(true);
 	});
+
+	it('a literal second run of migrateV4ToV5 is a no-op (review P7 — idempotency proven, not implied)', async () => {
+		// Dexie never re-runs a version's .upgrade(), but the migration fn documents itself as
+		// idempotent — prove it by invoking the fn AGAIN on an already-migrated database.
+		const dbName = createDbName();
+		const v4 = trackDb(new V4DB(dbName));
+		await v4.open();
+		await v4.fuelLogs.add({
+			vehicleId: 1,
+			date: new Date('2025-01-10'),
+			odometer: 50000,
+			quantity: 40,
+			unit: 'L',
+			distanceUnit: 'km',
+			totalCost: 70,
+			calculatedConsumption: 7,
+			currency: '€',
+			isPartialFill: true
+		} as FuelLog);
+		v4.close();
+
+		const v5 = trackDb(new V5DB(dbName));
+		await v5.open();
+		const before = await v5.fuelLogs.toArray();
+
+		await v5.transaction('rw', v5.fuelLogs, (tx) => migrateV4ToV5(tx));
+
+		const after = await v5.fuelLogs.toArray();
+		expect(after).toEqual(before);
+		expect(after[0]?.isPartialFill).toBe(true); // pre-set flag untouched
+		expect(after[0]?.precededByMissedFill).toBe(false); // backfilled once, stays false
+	});
 });

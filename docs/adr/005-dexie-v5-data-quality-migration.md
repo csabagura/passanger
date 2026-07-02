@@ -90,6 +90,7 @@ The Fuelly parser **already reads** `missed_fuelup` / `partial_fuelup` (`:101-10
 
 - **Partial fill:** defers its own calc — distance and litres accumulate forward to the next **full** fill, which computes consumption across the spanning interval (the predecessor lookup must skip over partials when composing the interval).
 - **Missed-preceded interval:** compute `calculatedConsumption = 0` so it drops out of trends/stats via the **existing** analytics `> 0` filter — no engine (Hero Metric / Insight / trend) change beyond feeding it the corrected series (no NaN/false-low leak).
+- **Anchor rule (strict AC3 — code-review decision D1, 2026-07-02):** only a **full** fill can anchor a span, because only there is the tank level known. A partial never anchors — not as the first-ever log, not when missed-preceded, not across a distance-unit change (which also drops any carried litres rather than blending units). Until the next full fill arrives, affected fills report an honest `0`.
 - Capture form exposes two unobtrusive, accessible, default-off toggles (a11y floor from Epic 6 applies — computed-style/behavioral test discipline, [[a11y-axe-false-green-trap]]).
 
 ### 8. `config.ts`
@@ -104,7 +105,7 @@ The Fuelly parser **already reads** `missed_fuelup` / `partial_fuelup` (`:101-10
 
 ## Testing mandates
 
-- **`v5.test.ts`:** upgrade backfills both booleans to `false`; reminder `distanceUnit` derived from latest log / undefined when no logs; idempotent re-run is a no-op. Use `fake-indexeddb`.
+- **`v5.test.ts`:** upgrade backfills both booleans to `false`; idempotent re-run is a no-op (proven by a literal second invocation, not just a skip-populated-rows check). Use `fake-indexeddb`. _(The reminder-`distanceUnit` backfill tests ride with the deferred PREP-4.3 follow-up migration — see the Scope note above; they are not 7.1 deliverables.)_
 - **Backup round-trip v4↔v5:** a v4-schema backup restores cleanly on v5 (defaults applied); a v5 backup round-trips; a `schemaVersion > DB_VERSION` backup is rejected with the existing `VALIDATION_ERROR` copy.
 - **Calc spine:** partial defers + accumulates to next full; missed-preceded → `0` and is absent from trend/Insight/Hero; no NaN.
 - **Importer:** Fuelly rows with `missed_fuelup`/`partial_fuelup` set land the flags.

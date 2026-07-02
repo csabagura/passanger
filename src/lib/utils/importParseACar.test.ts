@@ -219,6 +219,55 @@ describe('parseACarCSV', () => {
 		expect(summary.dateRange!.end).toEqual(new Date(2018, 9, 14));
 	});
 
+	it('maps the Full / Missed columns into the fill-quality flags (Story 7.1 / review P1)', async () => {
+		const csv = `## Vehicle
+"Name","DistUnit","FuelUnit"
+"Toyota","0","0"
+
+## Log
+"Data","Odo (km)","Fuel (litres)","Full","Price (optional)","Missed"
+"2018-10-07","424","33.04","1","1172.92","0"
+"2018-10-14","850","15.00","0","500.00","0"
+"2018-10-21","1200","31.50","1","1100.00","1"`;
+
+		const result = await parseACarCSV(csv);
+		expect(result.error).toBeNull();
+		const rows = result.data!.rows;
+
+		// Row 1: Full=1 → not partial; Missed=0 → not missed.
+		expect(rows[0].data.isPartialFill).toBe(false);
+		expect(rows[0].data.precededByMissedFill).toBe(false);
+		// Row 2: Full=0 → PARTIAL (Full is the boolean inverse of isPartialFill).
+		expect(rows[1].data.isPartialFill).toBe(true);
+		expect(rows[1].data.precededByMissedFill).toBe(false);
+		// Row 3: Missed=1 → missed predecessor.
+		expect(rows[2].data.isPartialFill).toBe(false);
+		expect(rows[2].data.precededByMissedFill).toBe(true);
+
+		// The columns are surfaced as mapped (no longer "(ignored)").
+		const mapping = result.data!.columnMapping;
+		expect(mapping.find((c) => c.sourceColumn === 'Full')?.status).toBe('mapped');
+		expect(mapping.find((c) => c.sourceColumn === 'Missed')?.status).toBe('mapped');
+	});
+
+	it('defaults both fill-quality flags to false when Full/Missed are absent (Story 7.1)', async () => {
+		const csv = `## Vehicle
+"Name","DistUnit","FuelUnit"
+"Toyota","0","0"
+
+## Log
+"Data","Odo (km)","Fuel (litres)","Price (optional)"
+"2018-10-07","424","33.04","1172.92"`;
+
+		const result = await parseACarCSV(csv);
+		expect(result.error).toBeNull();
+		const rows = result.data!.rows;
+		// An ABSENT Full column must not flag a partial (inverse semantics only apply to an
+		// explicit '0'/'false'/'no').
+		expect(rows[0].data.isPartialFill).toBe(false);
+		expect(rows[0].data.precededByMissedFill).toBe(false);
+	});
+
 	it('handles BOM in the file', async () => {
 		const csv = `\uFEFF## Vehicle
 "Name","DistUnit","FuelUnit"

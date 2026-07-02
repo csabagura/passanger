@@ -669,9 +669,12 @@
 
 		// Story 7.1 — compute the new fill's consumption through the shared timeline engine so a partial
 		// or missed-preceded fill zeroes out, and a full fill spans back over any preceding partials
-		// (not just the immediate predecessor). The new row is the latest by date (now()), so no
-		// existing neighbor's consumption changes — only this row's. With no flags this is identical to
-		// the previous per-predecessor calc (the engine's anchor IS the immediate predecessor then).
+		// (not just the immediate predecessor). The new row is normally the latest by date (now()), so
+		// no existing neighbor's consumption changes — only this row's. (Known pre-existing gap: if an
+		// existing log is FUTURE-dated, its stored consumption goes stale here — the create path only
+		// persists the new row, same as the old per-predecessor calc; tracked in deferred-work.md.)
+		// With no flags this is identical to the previous per-predecessor calc (the engine's anchor IS
+		// the immediate predecessor then).
 		const now = new Date();
 		const SYNTHETIC_NEW_ID = Number.MAX_SAFE_INTEGER;
 		const syntheticNewLog: FuelLog = {
@@ -729,6 +732,11 @@
 		odometer = '';
 		quantity = '';
 		cost = '';
+		// Story 7.1 (review P2) — the fill-quality flags are per-fill facts, never a session default:
+		// reset them with the other fields, or the next entry silently inherits them AND the draft
+		// $effect re-writes 'true' into the just-cleared draft once suppressDraftSync drops.
+		isPartialFill = false;
+		precededByMissedFill = false;
 		// Allow the next entry in a long session to re-seed its odometer suggestion from the
 		// freshly-updated timeline (the field was just cleared).
 		hasSeededSuggestion = false;
@@ -835,7 +843,7 @@
 	     (the documented dual-mount hazard). Each label row is min-h-11 so the whole ≥44px area is the
 	     hit target; the checkbox is keyboard-operable (Tab + Space) and labelled by the wrapping text. -->
 	<fieldset class="flex flex-col gap-1 border-0 p-0">
-		<legend class="sr-only">Fill quality (optional)</legend>
+		<legend class="sr-only">{m.fuel_fill_quality_legend()}</legend>
 		<label class="flex min-h-11 cursor-pointer items-center gap-3 py-1">
 			<input
 				type="checkbox"
@@ -844,8 +852,8 @@
 				class="size-5 shrink-0 accent-primary"
 			/>
 			<span class="flex flex-col">
-				<span class="text-base">Partial fill-up</span>
-				<span class="text-meta text-muted-foreground">A top-up, not a full tank</span>
+				<span class="text-base">{m.fuel_partial_fill_label()}</span>
+				<span class="text-meta text-muted-foreground">{m.fuel_partial_fill_hint()}</span>
 			</span>
 		</label>
 		<label class="flex min-h-11 cursor-pointer items-center gap-3 py-1">
@@ -856,8 +864,8 @@
 				class="size-5 shrink-0 accent-primary"
 			/>
 			<span class="flex flex-col">
-				<span class="text-base">I missed a previous fill-up</span>
-				<span class="text-meta text-muted-foreground">A tank went unlogged before this one</span>
+				<span class="text-base">{m.fuel_missed_fill_label()}</span>
+				<span class="text-meta text-muted-foreground">{m.fuel_missed_fill_hint()}</span>
 			</span>
 		</label>
 	</fieldset>

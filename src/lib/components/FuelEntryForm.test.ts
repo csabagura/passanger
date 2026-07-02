@@ -2771,6 +2771,7 @@ describe('FuelEntryForm component — review fixes validation', () => {
 			await new Promise((r) => setTimeout(r, 50));
 			flushSync();
 
+			expect(mockSaveFuelLog).toHaveBeenCalledTimes(1);
 			const entry = mockSaveFuelLog.mock.calls[0][0] as {
 				isPartialFill: boolean;
 				precededByMissedFill: boolean;
@@ -2785,12 +2786,81 @@ describe('FuelEntryForm component — review fixes validation', () => {
 			await new Promise((r) => setTimeout(r, 50));
 			flushSync();
 
+			expect(mockSaveFuelLog).toHaveBeenCalledTimes(1);
 			const entry = mockSaveFuelLog.mock.calls[0][0] as {
 				isPartialFill: boolean;
 				precededByMissedFill: boolean;
 			};
 			expect(entry.isPartialFill).toBe(false);
 			expect(entry.precededByMissedFill).toBe(false);
+		});
+
+		it('resets both toggles after a successful save — flags never leak into the next entry (review P2)', async () => {
+			await fillAndRender();
+			await fireEvent.click(screen.getByRole('checkbox', { name: /partial fill-up/i }));
+			await fireEvent.click(screen.getByRole('checkbox', { name: /missed a previous fill-up/i }));
+			await fireEvent.click(screen.getByRole('button', { name: /save/i }));
+			await new Promise((r) => setTimeout(r, 50));
+			flushSync();
+
+			expect(mockSaveFuelLog).toHaveBeenCalledTimes(1);
+			// The fill-quality flags are per-fill facts: after the save clears the form, both
+			// checkboxes must be off again (and the durable draft must not resurrect them).
+			const partial = screen.getByRole('checkbox', {
+				name: /partial fill-up/i
+			}) as HTMLInputElement;
+			const missed = screen.getByRole('checkbox', {
+				name: /missed a previous fill-up/i
+			}) as HTMLInputElement;
+			expect(partial.checked).toBe(false);
+			expect(missed.checked).toBe(false);
+		});
+
+		it('edit mode seeds the toggles from the log and persists a flag change via the update plan', async () => {
+			const initialLog: FuelLog = {
+				id: 2,
+				vehicleId: 1,
+				date: new Date('2026-03-09T10:00:00Z'),
+				odometer: 87400,
+				quantity: 42,
+				unit: 'L',
+				distanceUnit: 'km',
+				totalCost: 78,
+				calculatedConsumption: 10.5,
+				notes: '',
+				isPartialFill: true,
+				precededByMissedFill: false
+			};
+			mockGetAllFuelLogs.mockResolvedValue({ data: [initialLog], error: null });
+			mockUpdateFuelLogsAtomic.mockResolvedValue({ data: [initialLog], error: null });
+
+			render(FuelEntryForm, {
+				props: { vehicleId: 1, mode: 'edit', initialFuelLog: initialLog, onSave: onSaveSpy }
+			});
+			await new Promise((r) => setTimeout(r, 0));
+			flushSync();
+
+			// AC2: editing a flagged log SHOWS the flag…
+			const partial = screen.getByRole('checkbox', {
+				name: /partial fill-up/i
+			}) as HTMLInputElement;
+			expect(partial.checked).toBe(true);
+
+			// …and UPDATES it: uncheck partial, check missed, save.
+			await fireEvent.click(partial);
+			await fireEvent.click(screen.getByRole('checkbox', { name: /missed a previous fill-up/i }));
+			await fireEvent.click(screen.getByRole('button', { name: /save changes/i }));
+			await new Promise((r) => setTimeout(r, 50));
+			flushSync();
+
+			expect(mockUpdateFuelLogsAtomic).toHaveBeenCalledTimes(1);
+			const patches = mockUpdateFuelLogsAtomic.mock.calls[0][0] as Array<{
+				id: number;
+				changes: { isPartialFill?: boolean; precededByMissedFill?: boolean };
+			}>;
+			const updated = patches.find((p) => p.id === 2);
+			expect(updated?.changes.isPartialFill).toBe(false);
+			expect(updated?.changes.precededByMissedFill).toBe(true);
 		});
 	});
 });
