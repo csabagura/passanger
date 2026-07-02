@@ -263,9 +263,15 @@ test('Skip-to-content link is the first tab stop and moves focus into <main> (St
 	await page.goto('/');
 	await page.waitForLoadState('networkidle');
 
-	// First Tab from a cold load lands on the skip-link (it precedes AppHeader in the markup).
-	await page.keyboard.press('Tab');
+	// The skip-link precedes AppHeader in the markup, so it is the FIRST focusable control. Headless
+	// Chromium can absorb the very first Tab after navigation to prime page focus (activeElement stays
+	// <body>), so press until focus leaves <body> — the first non-body element reached must BE the
+	// skip-link (which still proves "first tab stop", tolerant of the priming Tab).
 	const skipLink = page.getByRole('link', { name: 'Skip to content' });
+	for (let i = 0; i < 3; i++) {
+		await page.keyboard.press('Tab');
+		if (await page.evaluate(() => document.activeElement !== document.body)) break;
+	}
 	await expect(skipLink).toBeFocused();
 
 	// It escapes `sr-only` on focus → it has real layout box (visible), not a 0×0 clipped element.

@@ -139,14 +139,20 @@ test('6.2 skip-link: renders Hungarian after the language switch', async ({ page
 	await page.goto('/settings');
 	await page.waitForLoadState('networkidle');
 	await page.getByRole('combobox', { name: 'Language' }).selectOption('hu');
-	await page.waitForLoadState('networkidle');
+	// setLocale() reloads to apply the locale — wait for the Hungarian nav to render before navigating
+	// away, else goto('/') races the in-flight reload (mirrors the passing switch tests above).
+	await expect(page.getByRole('link', { name: 'Kezdőlap' })).toBeVisible();
 
 	await page.goto('/');
 	await page.waitForLoadState('networkidle');
 
-	// The skip-link is the first focusable element; it carries the Hungarian accessible name.
-	await page.keyboard.press('Tab');
+	// The skip-link is the first focusable element; it carries the Hungarian accessible name. Same
+	// first-Tab priming tolerance as the AC3 skip-link test (headless Chromium may absorb the first Tab).
 	const skipLink = page.getByRole('link', { name: 'Ugrás a tartalomra' });
+	for (let i = 0; i < 3; i++) {
+		await page.keyboard.press('Tab');
+		if (await page.evaluate(() => document.activeElement !== document.body)) break;
+	}
 	await expect(skipLink).toBeFocused();
 	await expect(page.getByRole('link', { name: 'Skip to content' })).toHaveCount(0);
 });
