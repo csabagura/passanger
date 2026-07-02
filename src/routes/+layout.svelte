@@ -21,6 +21,7 @@
 	} from '$lib/utils/onboardingSurvey';
 	import type { OnboardingSurveyResponse } from '$lib/utils/onboardingSurvey';
 	import { Toaster } from '$lib/components/ui/sonner';
+	import { m } from '$lib/paraglide/messages';
 	import { toast } from '$lib/state/toast';
 	import {
 		APP_SHELL_MAIN_PADDING,
@@ -464,6 +465,12 @@
 	<title>passanger</title>
 </svelte:head>
 
+<a
+	href="#main-content"
+	class="sr-only rounded-md bg-card px-4 py-2 text-foreground focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+>
+	{m.skip_to_content()}
+</a>
 <UpdatePrompt onVisibilityChange={(visible) => (updatePromptVisible = visible)} />
 <TabSyncNotice
 	cue={remoteCue}
@@ -471,7 +478,12 @@
 	onReload={() => location.reload()}
 />
 <AppHeader />
-<main class="min-h-screen" style={`padding-bottom: ${mainBottomPadding};`}>
+<main
+	id="main-content"
+	tabindex="-1"
+	class="min-h-screen focus:outline-none"
+	style={`padding-bottom: ${mainBottomPadding};`}
+>
 	{#if showNotice}
 		<StorageProtectionNotice ondismiss={handleNoticeDismiss} />
 	{/if}

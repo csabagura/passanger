@@ -231,7 +231,7 @@
 				<label class="flex flex-col gap-1">
 					<span class="text-xs text-muted-foreground">{m.import_mapping_fuel_unit()}</span>
 					<select
-						class="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
+						class="min-h-11 rounded-lg border border-border bg-background px-3 py-2 text-base text-foreground"
 						value={drivvoFuelUnit}
 						onchange={(e) => {
 							drivvoFuelUnit = (e.target as HTMLSelectElement).value as 'L' | 'gal' | '';
@@ -245,7 +245,7 @@
 				<label class="flex flex-col gap-1">
 					<span class="text-xs text-muted-foreground">{m.import_mapping_distance()}</span>
 					<select
-						class="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
+						class="min-h-11 rounded-lg border border-border bg-background px-3 py-2 text-base text-foreground"
 						value={drivvoDistanceUnit}
 						onchange={(e) => {
 							drivvoDistanceUnit = (e.target as HTMLSelectElement).value as 'km' | 'mi' | '';
@@ -383,7 +383,7 @@
 					{#if ignored.length > 0}
 						<button
 							type="button"
-							class="mt-3 text-xs text-muted-foreground underline"
+							class="mt-3 inline-flex min-h-11 items-center text-xs text-muted-foreground underline"
 							onclick={() => (showIgnored = !showIgnored)}
 						>
 							{showIgnored
@@ -437,7 +437,7 @@
 							<label class="flex flex-col gap-1">
 								<span class="text-xs text-muted-foreground">{m.import_mapping_fuel_unit()}</span>
 								<select
-									class="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
+									class="min-h-11 rounded-lg border border-border bg-background px-3 py-2 text-base text-foreground"
 									value={effectiveUnits?.fuel ?? detectedUnits.fuel}
 									onchange={(e) => {
 										fuelUnitOverride = (e.target as HTMLSelectElement).value as 'L' | 'gal';
@@ -450,7 +450,7 @@
 							<label class="flex flex-col gap-1">
 								<span class="text-xs text-muted-foreground">{m.import_mapping_distance()}</span>
 								<select
-									class="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
+									class="min-h-11 rounded-lg border border-border bg-background px-3 py-2 text-base text-foreground"
 									value={effectiveUnits?.distance ?? detectedUnits.distance}
 									onchange={(e) => {
 										distanceUnitOverride = (e.target as HTMLSelectElement).value as 'km' | 'mi';

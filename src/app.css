@@ -187,6 +187,17 @@
 		@apply bg-background text-foreground;
 		font-family: var(--font-sans);
 	}
+
+	/* Story 6.2 (AC3): a consistent, branded visible focus ring on every keyboard-focused interactive
+	   element. The shadcn primitives apply `outline-none` via a Tailwind @layer utilities rule (higher
+	   precedence than @layer base) and supply their own `focus-visible:ring`, so this base outline does
+	   NOT double up on them — it lands only on the app-level native <button>/<a>/<select>/<summary>/
+	   [role] controls that previously got nothing but the UA default. --ring is already brand-blue in
+	   both themes (#2563eb light, #5b97f6 dark). */
+	:focus-visible {
+		outline: 2px solid var(--ring);
+		outline-offset: 2px;
+	}
 }
 
 /* NFR-3: neutralize the sonner toast enter/leave motion under reduced-motion. sonner animates its

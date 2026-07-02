@@ -132,3 +132,21 @@ test('6.1 catalog: every primary surface renders Hungarian after the switch (zer
 	// The whole Hungarian surface tour fetched NOTHING off-device (translations are bundled).
 	expect(offDeviceRequests, `off-device requests: ${offDeviceRequests.join(', ')}`).toEqual([]);
 });
+
+// Story 6.2 (AC3/AC5): the new skip-to-content link is i18n'd — after switching to Hungarian it
+// renders the bundled HU string (not an English echo), exercised on the real switch+reload path.
+test('6.2 skip-link: renders Hungarian after the language switch', async ({ page }) => {
+	await page.goto('/settings');
+	await page.waitForLoadState('networkidle');
+	await page.getByRole('combobox', { name: 'Language' }).selectOption('hu');
+	await page.waitForLoadState('networkidle');
+
+	await page.goto('/');
+	await page.waitForLoadState('networkidle');
+
+	// The skip-link is the first focusable element; it carries the Hungarian accessible name.
+	await page.keyboard.press('Tab');
+	const skipLink = page.getByRole('link', { name: 'Ugrás a tartalomra' });
+	await expect(skipLink).toBeFocused();
+	await expect(page.getByRole('link', { name: 'Skip to content' })).toHaveCount(0);
+});

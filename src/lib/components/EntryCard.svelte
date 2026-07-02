@@ -395,7 +395,7 @@
 				disabled={editDisabled}
 				tabindex={actionsRevealed ? 0 : -1}
 				aria-label={m.entry_edit_aria({ context: getEntryContextLabel() })}
-				class="flex-1 bg-card px-4 text-sm font-semibold text-foreground disabled:cursor-not-allowed disabled:opacity-70"
+				class="min-h-11 flex-1 bg-card px-4 text-sm font-semibold text-foreground disabled:cursor-not-allowed disabled:opacity-70"
 			>
 				{m.common_edit()}
 			</button>
@@ -404,7 +404,7 @@
 				onclick={handleDelete}
 				tabindex={actionsRevealed ? 0 : -1}
 				aria-label={m.entry_delete_aria({ context: getEntryContextLabel() })}
-				class="flex-1 bg-destructive px-4 text-sm font-semibold text-destructive-foreground disabled:cursor-not-allowed disabled:opacity-70"
+				class="min-h-11 flex-1 bg-destructive px-4 text-sm font-semibold text-destructive-foreground disabled:cursor-not-allowed disabled:opacity-70"
 			>
 				{m.common_delete()}
 			</button>
@@ -458,7 +458,7 @@
 					onclick={handleEdit}
 					disabled={editDisabled}
 					aria-label={m.entry_edit_aria({ context: getEntryContextLabel() })}
-					class="rounded-xl border border-border px-3 py-2 text-sm font-semibold text-foreground disabled:cursor-not-allowed disabled:opacity-70"
+					class="min-h-11 rounded-xl border border-border px-3 py-2 text-sm font-semibold text-foreground disabled:cursor-not-allowed disabled:opacity-70"
 				>
 					{m.common_edit()}
 				</button>
@@ -466,7 +466,7 @@
 					type="button"
 					onclick={handleDelete}
 					aria-label={m.entry_delete_aria({ context: getEntryContextLabel() })}
-					class="rounded-xl border border-destructive/20 px-3 py-2 text-sm font-semibold text-destructive disabled:cursor-not-allowed disabled:opacity-70"
+					class="min-h-11 rounded-xl border border-destructive/20 px-3 py-2 text-sm font-semibold text-destructive disabled:cursor-not-allowed disabled:opacity-70"
 				>
 					{m.common_delete()}
 				</button>

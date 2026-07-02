@@ -282,7 +282,7 @@
 				</label>
 				<select
 					id="assign-{group.sourceVehicleName}"
-					class="h-12 w-full rounded-md border border-border bg-card px-3 text-sm text-foreground"
+					class="h-12 w-full rounded-md border border-border bg-card px-3 text-base text-foreground"
 					aria-label={m.import_vehicles_assign_label({ name: group.sourceVehicleName })}
 					value={getDropdownValue(group.sourceVehicleName)}
 					onchange={(e) =>
@@ -316,7 +316,7 @@
 						<input
 							id="new-vehicle-name-{group.sourceVehicleName}"
 							type="text"
-							class="mt-1 h-12 w-full rounded-md border border-border px-3 text-sm text-foreground"
+							class="mt-1 h-12 w-full rounded-md border border-border px-3 text-base text-foreground"
 							value={formData?.name ?? ''}
 							oninput={(e) =>
 								handleInlineFormChange(
@@ -336,7 +336,7 @@
 						<input
 							id="new-vehicle-make-{group.sourceVehicleName}"
 							type="text"
-							class="mt-1 h-12 w-full rounded-md border border-border px-3 text-sm text-foreground"
+							class="mt-1 h-12 w-full rounded-md border border-border px-3 text-base text-foreground"
 							value={formData?.make ?? ''}
 							oninput={(e) =>
 								handleInlineFormChange(
@@ -356,7 +356,7 @@
 						<input
 							id="new-vehicle-model-{group.sourceVehicleName}"
 							type="text"
-							class="mt-1 h-12 w-full rounded-md border border-border px-3 text-sm text-foreground"
+							class="mt-1 h-12 w-full rounded-md border border-border px-3 text-base text-foreground"
 							value={formData?.model ?? ''}
 							oninput={(e) =>
 								handleInlineFormChange(
@@ -377,7 +377,7 @@
 							id="new-vehicle-year-{group.sourceVehicleName}"
 							type="text"
 							inputmode="numeric"
-							class="mt-1 h-12 w-full rounded-md border border-border px-3 text-sm text-foreground"
+							class="mt-1 h-12 w-full rounded-md border border-border px-3 text-base text-foreground"
 							value={formData?.year != null ? String(formData.year) : ''}
 							oninput={(e) =>
 								handleInlineFormChange(

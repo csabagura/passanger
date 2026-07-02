@@ -658,7 +658,7 @@
 											id="field-{row.rowNumber}-{field.name}"
 											type="text"
 											inputmode={field.inputMode}
-											class="mt-1 h-12 w-full rounded-md border px-3 text-sm text-foreground {error
+											class="mt-1 h-12 w-full rounded-md border px-3 text-base text-foreground {error
 												? 'border-destructive'
 												: 'border-border'}"
 											value={editValues[field.name] ?? ''}
@@ -714,7 +714,7 @@
 		{#if flaggedRows.some((r) => getRowState(r.rowNumber).status === 'pending')}
 			<button
 				type="button"
-				class="text-xs text-muted-foreground underline"
+				class="inline-flex min-h-11 items-center text-xs text-muted-foreground underline"
 				onclick={handleSkipAllRemaining}
 			>
 				{m.import_review_skip_all()}
