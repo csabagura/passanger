@@ -13,8 +13,8 @@ describe('config', () => {
 		expect(DB_NAME).toBe('passangerDB');
 	});
 
-	it('exports DB_VERSION as 4 (with v4 serviceReminders store)', () => {
-		expect(DB_VERSION).toBe(4);
+	it('exports DB_VERSION as 5 (Story 7.1 — fill-quality flags migration)', () => {
+		expect(DB_VERSION).toBe(5);
 	});
 
 	it('exports supported fuel units', () => {
