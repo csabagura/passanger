@@ -181,6 +181,10 @@
 	// auto-dismiss timer. The calm message lives in an always-present polite live region.
 	let successMessage = $state('');
 	let showSuccessMessage = $state(false);
+	// A11Y-1 (Story 6.3): mirror FuelEntryForm — bump an invisible zero-width-space nonce each save so
+	// two byte-identical maintenance-save messages still present as a text change and re-announce to
+	// screen readers (a polite region whose text looks unchanged can be suppressed). Bounded toggle.
+	let announceNonce = $state(0);
 	let isComponentMounted = $state(true);
 
 	// "Start another action" dismissal (AC-7): clears the confirmation WITHOUT closing the sheet /
@@ -349,6 +353,7 @@
 		successMessage = isEditMode
 			? m.maintenance_updated_summary(summaryParams)
 			: m.maintenance_saved_summary(summaryParams);
+		announceNonce += 1; // A11Y-1: force a perceptible delta so identical repeats re-announce.
 		showSuccessMessage = true;
 
 		if (!isEditMode && !hasCreatedFirstSave) {
@@ -484,7 +489,9 @@
 				? 'text-sm text-success'
 				: 'sr-only'}
 		>
-			{showSuccessMessage ? successMessage : ''}
+			<!-- A11Y-1: trailing zero-width-space nonce toggles each save so byte-identical repeats
+			     still present as a text change and re-announce. Invisible to sighted users. -->
+			{showSuccessMessage ? successMessage + '\u200B'.repeat(announceNonce % 2) : ''}
 		</p>
 		{#if showSuccessMessage && saveState.status === 'success'}
 			<button

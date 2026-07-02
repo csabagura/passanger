@@ -152,6 +152,13 @@
 	// starts another action — NO auto-dismiss timer. The calm status sentence lives in an
 	// always-present polite live region (filled here on save), so screen readers announce the change.
 	let successText = $state('');
+	// A11Y-1 (Story 6.3): two consecutive byte-identical save messages can fail to re-announce to a
+	// screen reader — a polite `role="status"` region whose text looks unchanged is suppressed, and
+	// the `'' → message` interim can coalesce. Bump an invisible zero-width-space nonce each save so
+	// the announced string always differs (`msg` ↔ `msg`) → the region re-announces. Invisible
+	// to sighted users, bounded (toggles, never grows). Chosen over an `aria-live` off→on toggle,
+	// which is timing-fragile under rune flushing.
+	let announceNonce = $state(0);
 	let previousOdometer = $state<number | undefined>(undefined);
 	let pendingHistoryLoad: Promise<void> | null = null;
 	let historyLoadRequestId = 0;
@@ -488,6 +495,7 @@
 		setLastUsedCurrency(currency);
 		recentCurrenciesVersion += 1;
 
+		announceNonce += 1; // A11Y-1: force a perceptible delta so identical repeats re-announce.
 		saveState = { status: 'success', data: log };
 	}
 
@@ -803,7 +811,9 @@
 			aria-live="polite"
 			class={saveState.status === 'success' ? 'text-success' : 'sr-only'}
 		>
-			{saveState.status === 'success' ? successText : ''}
+			<!-- A11Y-1: trailing zero-width-space nonce toggles each save so byte-identical repeats
+			     still present as a text change and re-announce. Invisible to sighted users. -->
+			{saveState.status === 'success' ? successText + '\u200B'.repeat(announceNonce % 2) : ''}
 		</p>
 		{#if saveState.status === 'success'}
 			{#if !isEditMode && sparklineValues.length > 0}

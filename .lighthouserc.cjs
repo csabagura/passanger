@@ -25,7 +25,13 @@ module.exports = {
 				// TTI: error if exceeds 3s (NFR2) — CI gate
 				interactive: ['error', { maxNumericValue: 3000 }],
 				// CLS: error if exceeds 0.1 (best practice) — CI gate
-				'cumulative-layout-shift': ['error', { maxNumericValue: 0.1 }]
+				'cumulative-layout-shift': ['error', { maxNumericValue: 0.1 }],
+				// Accessibility score: error below 0.95 (Story 6.3 / SM-7, NFR-3) — CI gate.
+				// The Playwright/axe `test:a11y` suite is the primary a11y deploy gate (per-surface
+				// critical/serious scan); this adds Lighthouse's own audit set as a second net so a
+				// broad a11y regression (contrast, labels, landmarks) blocks deploy too. numberOfRuns:3
+				// above absorbs runner variance; LHCI asserts the best run.
+				'categories:accessibility': ['error', { minScore: 0.95 }]
 				// Note: Lighthouse 12 removed the PWA category entirely.
 				// PWA capabilities are verified via artifact tests in precache-manifest.test.ts.
 			}

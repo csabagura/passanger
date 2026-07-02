@@ -207,9 +207,12 @@
 						>
 							{m.common_edit()}
 						</Button>
+						<!-- AA contrast (Story 6.3 / AC5): outline + destructive TEXT (~4.5:1 on card),
+						     not the bg-destructive/10 fill (~3.86:1). Mirrors the Maintain delete trigger. -->
 						<Button
-							variant="destructive"
+							variant="outline"
 							size="icon"
+							class="text-destructive hover:text-destructive"
 							disabled={deletePromptVisible}
 							onclick={() => handleDeleteRequest(vehicle)}
 							aria-label={m.vehiclelist_delete_label({ name: vehicle.name })}
@@ -246,8 +249,11 @@
 							>
 								{m.common_cancel()}
 							</Button>
+							<!-- AA contrast (Story 6.3 / AC5): outline + destructive TEXT (~4.5:1 on card),
+							     not the bg-destructive/10 fill (~3.86:1). -->
 							<Button
-								variant="destructive"
+								variant="outline"
+								class="text-destructive hover:text-destructive"
 								disabled={deleteState === 'loading'}
 								onclick={handleDeleteConfirm}
 							>

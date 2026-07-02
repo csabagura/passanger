@@ -192,6 +192,23 @@ describe('EntryDetailSheet', () => {
 		expect(onClose).toHaveBeenCalledTimes(4);
 	});
 
+	it('does not close during an in-flight delete (A11Y-4): Close, backdrop, and Escape are no-ops', async () => {
+		const onClose = vi.fn();
+		render(EntryDetailSheet, {
+			entry: { kind: 'fuel', entry: createFuelEntry() },
+			currency: 'EUR ',
+			deleting: true,
+			onClose
+		});
+
+		// While History is tearing the sheet down + moving focus, a concurrent user close would race
+		// that teardown and could strand focus on <body>. All user close paths must no-op.
+		await fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+		await fireEvent.click(screen.getByRole('button', { name: /close entry details/i }));
+		await fireEvent.keyDown(window, { key: 'Escape', code: 'Escape' });
+		expect(onClose).not.toHaveBeenCalled();
+	});
+
 	it('traps keyboard focus inside the sheet when tabbing forward and backward', async () => {
 		renderSheet({ kind: 'fuel', entry: createFuelEntry() });
 

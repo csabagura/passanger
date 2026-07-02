@@ -414,8 +414,12 @@
 					{m.settings_restore_confirm_body()}
 				</p>
 				<div class="flex flex-wrap gap-2">
-					<Button variant="destructive" onclick={confirmRestore}
-						>{m.settings_restore_confirm_replace()}</Button
+					<!-- AA contrast (Story 6.3 / AC5): outline + destructive TEXT (~4.5:1 on card),
+					     not the bg-destructive/10 fill (~3.86:1). -->
+					<Button
+						variant="outline"
+						class="text-destructive hover:text-destructive"
+						onclick={confirmRestore}>{m.settings_restore_confirm_replace()}</Button
 					>
 					<Button variant="outline" onclick={cancelRestore}>{m.common_cancel()}</Button>
 				</div>
