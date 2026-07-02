@@ -201,4 +201,16 @@ describe('shared display helpers', () => {
 	it('keeps the default behavior for unknown/custom currencies', () => {
 		expect(formatCurrency(10, 'CHF ')).toBe('CHF 10.00');
 	});
+
+	it('renders an em dash for non-finite values instead of €NaN (H8 regression)', () => {
+		// A fabricated 0 would be dishonest — '—' matches the app's insufficient-data voice.
+		expect(formatCurrency(NaN, '€')).toBe('—');
+		expect(formatCurrency(Infinity, 'Ft')).toBe('—');
+		expect(formatCurrency(-Infinity, '$')).toBe('—');
+	});
+
+	it('leaves finite values untouched by the non-finite guard (prefix and suffix)', () => {
+		expect(formatCurrency(78, '€')).toBe('€78.00');
+		expect(formatCurrency(20000, 'Ft')).toBe('20000 Ft');
+	});
 });

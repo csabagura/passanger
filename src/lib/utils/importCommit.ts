@@ -16,6 +16,13 @@ import {
 import { recalculateFuelLogConsumptions } from '$lib/utils/fuelLogTimeline';
 import type { FuelLog } from '$lib/db/schema';
 import type { ImportRow, VehicleAssignment, ImportCommitResult } from '$lib/utils/importTypes';
+import { isFiniteNumber } from '$lib/utils/calculations';
+
+// Commit-boundary coercion for costs: `?? 0` lets NaN through (nullish covers only
+// null/undefined), and a NaN written to Dexie renders as '€NaN' on every surface.
+function finiteOr0(value: number | null | undefined): number {
+	return isFiniteNumber(value) ? value : 0;
+}
 
 export async function commitImportRows(
 	rows: ImportRow[],
@@ -123,7 +130,7 @@ export async function commitImportRows(
 				quantity: entry.row.data.quantity ?? 0,
 				unit: entry.row.data.unit ?? 'L',
 				distanceUnit: entry.row.data.distanceUnit ?? 'km',
-				totalCost: entry.row.data.totalCost ?? 0,
+				totalCost: finiteOr0(entry.row.data.totalCost),
 				calculatedConsumption: 0,
 				isPartialFill: entry.row.data.isPartialFill ?? false,
 				precededByMissedFill: entry.row.data.precededByMissedFill ?? false
@@ -152,7 +159,7 @@ export async function commitImportRows(
 					quantity: entry.row.data.quantity!,
 					unit: entry.row.data.unit!,
 					distanceUnit: entry.row.data.distanceUnit!,
-					totalCost: entry.row.data.totalCost ?? 0,
+					totalCost: finiteOr0(entry.row.data.totalCost),
 					currency: homeCurrency,
 					calculatedConsumption: consumptionMap.get(entry.row) ?? 0,
 					isPartialFill: entry.row.data.isPartialFill ?? false,
@@ -171,7 +178,7 @@ export async function commitImportRows(
 					date: entry.row.data.date!,
 					type: entry.row.data.maintenanceType || 'Imported',
 					odometer: entry.row.data.odometer || undefined,
-					cost: entry.row.data.totalCost ?? 0,
+					cost: finiteOr0(entry.row.data.totalCost),
 					currency: homeCurrency,
 					notes: entry.row.data.notes || undefined
 				};

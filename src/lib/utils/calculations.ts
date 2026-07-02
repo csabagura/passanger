@@ -86,6 +86,11 @@ export function formatConsumption(consumption: number, unit: 'L' | 'gal'): strin
 // the decimal places and symbol position for known currencies. Unknown/custom currencies
 // keep the historical behavior (prefix, two decimals).
 export function formatCurrency(value: number, currency: string): string {
+	// Non-finite input (NaN/±Infinity from corrupt or legacy rows) must never render as '€NaN' —
+	// and a fabricated 0 would be dishonest. Em dash is the app's insufficient-data voice.
+	if (!Number.isFinite(value)) {
+		return '—';
+	}
 	const key = currency.trim().toUpperCase();
 	const decimals = ZERO_DECIMAL_CURRENCIES.has(key) ? 0 : 2;
 	const amount = value.toFixed(decimals);

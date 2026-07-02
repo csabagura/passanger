@@ -78,8 +78,11 @@ function formatCount(value: number): string {
 /**
  * Compute the due status of a reminder relative to the current odometer and `today`.
  *
- * - `kmRemaining` = lastServiceOdometer + intervalKm − currentOdometer, only when
- *   `intervalKm` and `currentOdometer` are both known (lastServiceOdometer defaults to 0).
+ * - `kmRemaining` = lastServiceOdometer + intervalKm − currentOdometer, only when `intervalKm`,
+ *   a usable `lastServiceOdometer` AND `currentOdometer` are all known (H11a: a missing baseline
+ *   used to default to 0, screaming "Overdue by 195,000 km" on a 200,000 km car — with no usable
+ *   base the km dimension now contributes no signal, mirroring the days dimension's absent
+ *   `lastServiceDate`. Honest "since creation" baselines arrive with `createdAt` in 8-5/ADR-007).
  * - `daysRemaining` = whole days between (lastServiceDate + intervalDays) and `today`,
  *   only when `intervalDays` and `lastServiceDate` are both known.
  * - `status` is `overdue` if any computed remaining ≤ 0, `due-soon` if any is within its
@@ -93,11 +96,11 @@ export function computeReminderStatus(
 	let kmRemaining: number | undefined;
 	if (
 		isUsablePositive(reminder.intervalKm) &&
+		isUsablePositive(reminder.lastServiceOdometer) &&
 		typeof currentOdometer === 'number' &&
 		Number.isFinite(currentOdometer)
 	) {
-		const base = isUsablePositive(reminder.lastServiceOdometer) ? reminder.lastServiceOdometer : 0;
-		kmRemaining = base + reminder.intervalKm - currentOdometer;
+		kmRemaining = reminder.lastServiceOdometer + reminder.intervalKm - currentOdometer;
 	}
 
 	let daysRemaining: number | undefined;

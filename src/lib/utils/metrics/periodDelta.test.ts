@@ -65,6 +65,14 @@ describe('comparePeriods', () => {
 		expect(comparePeriods(-10, -30)).toEqual({ status: 'insufficient', reason: 'no-baseline' });
 	});
 
+	it('is insufficient (no-current) when current is zero or negative (H19a regression)', () => {
+		// A single 0-cost entry used to read as ok/−100% → "Spending is down about 100% this month".
+		// A percent change to a non-positive current is as meaningless as one from a non-positive
+		// baseline — symmetric guard.
+		expect(comparePeriods(0, 300)).toEqual({ status: 'insufficient', reason: 'no-current' });
+		expect(comparePeriods(-10, 30)).toEqual({ status: 'insufficient', reason: 'no-current' });
+	});
+
 	it('reports an upward change with signed absolute + percent', () => {
 		expect(comparePeriods(6, 5)).toEqual({
 			status: 'ok',

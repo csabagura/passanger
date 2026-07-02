@@ -32,13 +32,14 @@ export type PeriodDelta =
 			/** Sign of `absoluteChange`; `0 → 'flat'`. (A flat band, if any, is a downstream decision.) */
 			direction: 'up' | 'down' | 'flat';
 	  }
-	| { status: 'insufficient'; reason: 'missing-period' | 'no-baseline' };
+	| { status: 'insufficient'; reason: 'missing-period' | 'no-baseline' | 'no-current' };
 
 /**
  * The reusable comparison primitive. Either side being `null`/non-finite yields `missing-period`; a
  * non-positive `previous` (`<= 0`) yields `no-baseline` (a percent change against a zero or negative
  * baseline is meaningless — `0` gives `Infinity`, and a negative baseline sign-flips `percentChange`
- * against `direction` — so downstream shows "log more to see a trend" instead).
+ * against `direction` — so downstream shows "log more to see a trend" instead); a non-positive
+ * `current` yields `no-current` (H19a — a single 0-cost entry must not read as "down about 100%").
  */
 export function comparePeriods(current: number | null, previous: number | null): PeriodDelta {
 	if (!isFiniteNumber(current) || !isFiniteNumber(previous)) {
@@ -50,6 +51,12 @@ export function comparePeriods(current: number | null, previous: number | null):
 	// against `direction`. Treat both as "no baseline yet".
 	if (previous <= 0) {
 		return { status: 'insufficient', reason: 'no-baseline' };
+	}
+
+	// Symmetric guard for the current side (H19a): a zero/negative current (a month whose only
+	// entries are 0-cost imports, or a refund-netted month) is insufficient, not a −100% signal.
+	if (current <= 0) {
+		return { status: 'insufficient', reason: 'no-current' };
 	}
 
 	const absoluteChange = current - previous;

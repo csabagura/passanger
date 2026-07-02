@@ -338,12 +338,15 @@
 			<p class="mt-2 text-sm text-muted-foreground">
 				{m.export_empty_body()}
 			</p>
+			<!-- eslint-disable svelte/no-navigation-without-resolve -- the path part IS resolve('/'); only the
+			     `?capture=fuel` query string (which base-path resolution never touches) is appended. -->
 			<a
-				href={resolve('/log')}
+				href={resolve('/') + '?capture=fuel'}
 				class="mt-4 inline-flex min-h-11 items-center justify-center rounded-xl bg-accent px-5 py-3 text-sm font-semibold text-accent-foreground no-underline"
 			>
 				{m.export_empty_cta()}
 			</a>
+			<!-- eslint-enable svelte/no-navigation-without-resolve -->
 		</section>
 	{/if}
 

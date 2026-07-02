@@ -92,7 +92,9 @@ function getMonthKey(date: Date): string {
  * Volume-weighted price per litre, per currency: `Σ totalCost / Σ litres`. Gallons are normalized to
  * litres (`quantity * LITERS_PER_GALLON`) so the ratio is comparable within a currency. Mirrors the
  * `isFiniteNumber` / non-positive guards the analytics aggregates use (PREP-1) — a non-finite or
- * non-positive row is skipped, and a currency with no usable volume yields no entry.
+ * non-positive row is skipped, and a currency with no usable volume yields no entry. Costless rows
+ * (`totalCost <= 0`, e.g. an imported fill with unknown cost stored as 0) carry no price
+ * information: their litres would dilute the ratio toward a phantom price change (H19a).
  */
 function pricePerLitreByCurrency(
 	fuelLogs: FuelLog[],
@@ -100,7 +102,12 @@ function pricePerLitreByCurrency(
 ): Record<string, number> {
 	const totals = new Map<string, { cost: number; litres: number }>();
 	for (const log of fuelLogs) {
-		if (!isFiniteNumber(log.totalCost) || !isFiniteNumber(log.quantity) || log.quantity <= 0) {
+		if (
+			!isFiniteNumber(log.totalCost) ||
+			log.totalCost <= 0 ||
+			!isFiniteNumber(log.quantity) ||
+			log.quantity <= 0
+		) {
 			continue;
 		}
 		const currency = log.currency ?? homeCurrency;

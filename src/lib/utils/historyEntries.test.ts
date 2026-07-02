@@ -555,6 +555,81 @@ describe('historyEntries', () => {
 		expect(summary.averageConsumptionUnit).toBe('gal');
 	});
 
+	it('skips an Infinity-consumption row instead of doubling the average (S1 regression)', () => {
+		// Infinity consumption → derived distance 0, which passed the `!== null` gate and added the
+		// row's litres against zero distance — doubling the average. The row must be skipped, exactly
+		// like the hardened analytics.ts twin (PREP-1).
+		const entries = mergeHistoryEntries(
+			[
+				createFuelEntry({
+					id: 1,
+					date: new Date('2026-03-10T12:00:00Z'),
+					quantity: 40,
+					calculatedConsumption: 8
+				}),
+				createFuelEntry({
+					id: 2,
+					date: new Date('2026-03-12T12:00:00Z'),
+					quantity: 40,
+					calculatedConsumption: Infinity
+				})
+			],
+			[]
+		);
+
+		const summary = summarizeHistoryEntries(entries, 'L/100km');
+		expect(summary.averageConsumption).toBeCloseTo(8, 6);
+	});
+
+	it('skips a NaN-consumption row instead of nulling the whole summary average (S1 regression)', () => {
+		// NaN consumption → NaN distance → NaN total → the `> 0` gate failed and the summary showed
+		// "No data" while Home (via the hardened analytics twin) showed a number. Skip the row.
+		const entries = mergeHistoryEntries(
+			[
+				createFuelEntry({
+					id: 1,
+					date: new Date('2026-03-10T12:00:00Z'),
+					quantity: 40,
+					calculatedConsumption: 8
+				}),
+				createFuelEntry({
+					id: 2,
+					date: new Date('2026-03-12T12:00:00Z'),
+					quantity: 40,
+					calculatedConsumption: NaN
+				})
+			],
+			[]
+		);
+
+		const summary = summarizeHistoryEntries(entries, 'L/100km');
+		expect(summary.averageConsumption).toBeCloseTo(8, 6);
+	});
+
+	it('keeps NaN quantities out of totalFuelVolume (no "NaN L" in the StatBar, S1 regression)', () => {
+		const entries = mergeHistoryEntries(
+			[
+				createFuelEntry({
+					id: 1,
+					date: new Date('2026-03-10T12:00:00Z'),
+					quantity: 40,
+					calculatedConsumption: 8
+				}),
+				createFuelEntry({
+					id: 2,
+					date: new Date('2026-03-12T12:00:00Z'),
+					quantity: NaN,
+					calculatedConsumption: 8
+				})
+			],
+			[]
+		);
+
+		const summary = summarizeHistoryEntries(entries, 'L/100km');
+		expect(summary.totalFuelVolume).toBe(40);
+		expect(summary.averageConsumption).toBeCloseTo(8, 6);
+	});
+
 	it('returns zeroed fuel metrics and no average when only maintenance entries remain visible', () => {
 		const entries = mergeHistoryEntries(
 			[],

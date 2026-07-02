@@ -245,7 +245,8 @@ describe('Export page', () => {
 
 		expect(screen.getByText('Nothing to export yet - log your first fill-up!')).toBeTruthy();
 		const link = screen.getByRole('link', { name: 'Go to Log' });
-		expect(link.getAttribute('href')).toBe('/log');
+		// S31: deep-link the Capture destination directly — the retired /log shim only 307'd here.
+		expect(link.getAttribute('href')).toBe('/?capture=fuel');
 		expect(screen.queryByRole('button', { name: 'Export CSV' })).toBeNull();
 	});
 
@@ -262,7 +263,9 @@ describe('Export page', () => {
 
 		expect(screen.getByText(/Old Faithful · Ford/)).toBeTruthy();
 		expect(screen.getByText('Nothing to export yet - log your first fill-up!')).toBeTruthy();
-		expect(screen.getByRole('link', { name: 'Go to Log' }).getAttribute('href')).toBe('/log');
+		expect(screen.getByRole('link', { name: 'Go to Log' }).getAttribute('href')).toBe(
+			'/?capture=fuel'
+		);
 		expect(screen.queryByRole('button', { name: 'Export CSV' })).toBeNull();
 	});
 

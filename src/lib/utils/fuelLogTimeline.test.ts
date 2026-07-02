@@ -10,7 +10,7 @@ import {
 } from './fuelLogTimeline';
 
 function createFuelLog(overrides: Partial<FuelLog>): FuelLog {
-	return {
+	const log: FuelLog = {
 		id: overrides.id ?? 1,
 		vehicleId: overrides.vehicleId ?? 7,
 		date: overrides.date ?? new Date('2026-03-10T12:00:00Z'),
@@ -24,6 +24,12 @@ function createFuelLog(overrides: Partial<FuelLog>): FuelLog {
 		isPartialFill: overrides.isPartialFill ?? false,
 		precededByMissedFill: overrides.precededByMissedFill ?? false
 	};
+	// currency stays absent unless explicitly provided — logs without one exercise the
+	// no-currency patch shape (Dexie update() deletes undefined-valued keys).
+	if (overrides.currency !== undefined) {
+		log.currency = overrides.currency;
+	}
+	return log;
 }
 
 describe('fuelLogTimeline', () => {
@@ -133,6 +139,57 @@ describe('fuelLogTimeline', () => {
 				calculatedConsumption: 20
 			}
 		});
+	});
+
+	it('carries a currency-only edit into the updated row patch (H1 regression)', () => {
+		const logs = [
+			createFuelLog({
+				id: 1,
+				date: new Date('2026-03-09T12:00:00Z'),
+				odometer: 100,
+				currency: '€',
+				calculatedConsumption: 0
+			}),
+			createFuelLog({
+				id: 2,
+				date: new Date('2026-03-10T12:00:00Z'),
+				odometer: 200,
+				currency: '€',
+				calculatedConsumption: 10
+			})
+		];
+
+		// Currency-only edit: identical date/odometer/quantity/cost, only currency differs.
+		const patches = buildFuelLogUpdatePlan(
+			logs,
+			createFuelLog({
+				id: 2,
+				date: new Date('2026-03-10T12:00:00Z'),
+				odometer: 200,
+				currency: 'Ft',
+				calculatedConsumption: 10
+			})
+		);
+
+		expect(patches).toHaveLength(1);
+		expect(patches[0].id).toBe(2);
+		expect(patches[0].changes.currency).toBe('Ft');
+	});
+
+	it('omits the currency key from the patch when the edited log carries none', () => {
+		const logs = [
+			createFuelLog({ id: 1, date: new Date('2026-03-09T12:00:00Z'), odometer: 100 }),
+			createFuelLog({ id: 2, date: new Date('2026-03-10T12:00:00Z'), odometer: 200 })
+		];
+
+		const patches = buildFuelLogUpdatePlan(
+			logs,
+			createFuelLog({ id: 2, date: new Date('2026-03-10T12:00:00Z'), odometer: 250 })
+		);
+
+		// Dexie update() deletes undefined-valued keys — the key must be absent, not undefined.
+		expect(patches[0].id).toBe(2);
+		expect('currency' in patches[0].changes).toBe(false);
 	});
 
 	it('builds a deletion plan that recalculates the next log after deleting a middle entry', () => {

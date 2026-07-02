@@ -179,6 +179,30 @@ describe('getInsights — fuel-price detection (trailing 90-day baseline)', () =
 		expect(change['€']).toEqual({ status: 'insufficient', reason: 'missing-period' });
 	});
 
+	it('excludes 0-cost fills from the price metric — no phantom price spike (H19a regression)', () => {
+		// Imported fills with unknown cost are stored as totalCost 0 (commit-boundary convention).
+		// Their litres used to dilute the baseline price toward 0 (60 / 480 L = 0.125 €/L here), so a
+		// normal June fill read as a massive phantom increase (+1100%, "up ~4000%" in the audit's
+		// longer history). A costless row carries no price information — it must be excluded.
+		const fuelLogs = [
+			...Array.from({ length: 11 }, (_, index) =>
+				createFuelEntry({ id: index + 1, date: APRIL, quantity: 40, totalCost: 0 })
+			),
+			createFuelEntry({ id: 12, date: MAY, quantity: 40, totalCost: 60 }),
+			createFuelEntry({ id: 13, date: JUNE, quantity: 40, totalCost: 60 })
+		];
+
+		const change = fuelPriceChange(fuelLogs, '€', NOW);
+		expect(change['€'].status).toBe('ok');
+		if (change['€'].status === 'ok') {
+			expect(change['€'].previous).toBeCloseTo(1.5); // undiluted by the 0-cost litres
+			expect(change['€'].percentChange).toBeCloseTo(0); // flat, not a phantom spike
+		}
+
+		const insights = getInsights(fuelLogs, [], OPTS);
+		expect(insights.some((insight) => insight.metric === 'fuel-price')).toBe(false);
+	});
+
 	it('fuelPriceChange normalizes gallons to litres before averaging', () => {
 		// 10 gal = 37.854 L at 37.854 cost → 1.0 €/L baseline (May); June 40 L at 60 → 1.5 €/L → +50%.
 		const fuelLogs = [
