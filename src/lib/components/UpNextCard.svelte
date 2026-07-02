@@ -50,7 +50,8 @@
 	let loaded = $state(false);
 	// H10a (interim — the due-instance model lands in 8-5): the dismissal map is GLOBAL across
 	// vehicles, so the prune below may only touch markers belonging to THIS vehicle's reminders, and
-	// never after a failed read. Set together with dueReminders so the pair is always coherent.
+	// never after a failed read. Set together with dueReminders on a successful read; on a failed
+	// read only pruneSafe is reset (the id set may be stale) — the prune must never read past the flag.
 	let vehicleReminderIds = $state<Set<number>>(new Set());
 	let pruneSafe = $state(false);
 
@@ -110,9 +111,11 @@
 	});
 
 	// Loop-cleanup (AC3 hygiene): prune dismissal markers for THIS vehicle's reminders that are no
-	// longer due (returned to `ok` or deleted) so stale markers don't accumulate. The map is shared
-	// by all vehicles, so the prune is scoped to the active vehicle's reminder ids and skipped after
-	// a failed read (H10a) — an unscoped prune wiped other vehicles' dismissals on every switch.
+	// longer due (returned to `ok`) so stale markers don't accumulate. The map is shared by all
+	// vehicles, so the prune is scoped to the active vehicle's reminder ids and skipped after a
+	// failed read (H10a) — an unscoped prune wiped other vehicles' dismissals on every switch. A
+	// DELETED reminder's marker is out of reach here (its id left vehicleReminderIds, making it
+	// indistinguishable from another vehicle's); orphans wait for 8-5's due-instance model.
 	$effect(() => {
 		void dismissVersion;
 		// Wait for the first load — pruning against the initial empty set would wipe a fresh dismissal.

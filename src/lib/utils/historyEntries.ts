@@ -338,11 +338,12 @@ export function summarizeHistoryEntries(
 	const fuelEntries = entries.filter(
 		(entry): entry is Extract<HistoryEntry, { kind: 'fuel' }> => entry.kind === 'fuel'
 	);
-	// A non-finite quantity must not poison the total ("NaN L" in the StatBar) — skip it, in
-	// lockstep with the totalSpend guard above (S1).
+	// A non-finite or non-positive quantity must not poison the total ("NaN L" in the StatBar; a
+	// finite negative row would silently SUBTRACT) — skip it, aligned with getFuelEntryDistance's
+	// `<= 0` exclusion above (S1 + review patch).
 	const totalFuelVolume = fuelEntries.reduce(
 		(sum, fuelEntry) =>
-			isFiniteNumber(fuelEntry.entry.quantity)
+			isFiniteNumber(fuelEntry.entry.quantity) && fuelEntry.entry.quantity > 0
 				? sum +
 					convertFuelVolumeToUnit(
 						fuelEntry.entry.quantity,

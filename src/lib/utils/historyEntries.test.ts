@@ -630,6 +630,31 @@ describe('historyEntries', () => {
 		expect(summary.averageConsumption).toBeCloseTo(8, 6);
 	});
 
+	it('keeps a negative quantity from subtracting from totalFuelVolume (S1 review patch)', () => {
+		// A finite negative quantity (reachable via unvalidated backup restore) passed the
+		// finite-only guard and SUBTRACTED from the total — align with getFuelEntryDistance's <= 0.
+		const entries = mergeHistoryEntries(
+			[
+				createFuelEntry({
+					id: 1,
+					date: new Date('2026-03-10T12:00:00Z'),
+					quantity: 40,
+					calculatedConsumption: 8
+				}),
+				createFuelEntry({
+					id: 2,
+					date: new Date('2026-03-12T12:00:00Z'),
+					quantity: -5,
+					calculatedConsumption: 8
+				})
+			],
+			[]
+		);
+
+		const summary = summarizeHistoryEntries(entries, 'L/100km');
+		expect(summary.totalFuelVolume).toBe(40);
+	});
+
 	it('returns zeroed fuel metrics and no average when only maintenance entries remain visible', () => {
 		const entries = mergeHistoryEntries(
 			[],
