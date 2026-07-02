@@ -13,7 +13,8 @@ import {
 	QUOTA_EXCEEDED_CODE,
 	QUOTA_EXCEEDED_MESSAGE
 } from '$lib/db/dbErrors';
-import { calculateConsumption } from '$lib/utils/calculations';
+import { recalculateFuelLogConsumptions } from '$lib/utils/fuelLogTimeline';
+import type { FuelLog } from '$lib/db/schema';
 import type { ImportRow, VehicleAssignment, ImportCommitResult } from '$lib/utils/importTypes';
 
 export async function commitImportRows(
@@ -90,8 +91,10 @@ export async function commitImportRows(
 		}
 	}
 
-	// Step 5: Calculate consumption for fuel rows
-	// Group by vehicleId, sort by odometer ascending, first row gets 0
+	// Step 5: Calculate consumption for fuel rows via the shared timeline engine (Story 7.1), so
+	// imported partial/missed fills defer/zero exactly like live edits (AD-DA-3) — a naive
+	// per-predecessor pass would surface false-low numbers on missed fills and noise on partials.
+	// Group by vehicleId; build synthetic FuelLogs (index-based ids) the engine can sort + span.
 	const consumptionMap = new Map<ImportRow, number>();
 	const byVehicle = new Map<number, Array<{ row: ImportRow; vehicleId: number }>>();
 	for (const entry of fuelEntries) {
@@ -100,22 +103,38 @@ export async function commitImportRows(
 		byVehicle.set(entry.vehicleId, group);
 	}
 
-	for (const [, group] of byVehicle) {
-		group.sort((a, b) => (a.row.data.odometer ?? 0) - (b.row.data.odometer ?? 0));
-		let prevOdometer: number | undefined;
-		for (const entry of group) {
-			if (prevOdometer == null) {
-				consumptionMap.set(entry.row, 0);
-			} else {
-				const consumption = calculateConsumption(
-					entry.row.data.odometer ?? 0,
-					prevOdometer,
-					entry.row.data.quantity ?? 0,
-					entry.row.data.unit ?? 'L'
-				);
-				consumptionMap.set(entry.row, consumption);
+	for (const [vehicleId, group] of byVehicle) {
+		// Order by odometer (the import spine — 3rd-party CSV dates are often day-granular and tie),
+		// then hand the engine synthetic monotonic dates + ids in that order so its date-then-id sort
+		// preserves the odometer order. The engine's flag-aware span math then defers partials / zeroes
+		// missed intervals; the real per-row date is used later when the NewFuelLog is built.
+		const ordered = [...group].sort(
+			(a, b) => (a.row.data.odometer ?? 0) - (b.row.data.odometer ?? 0)
+		);
+		const rowBySyntheticId = new Map<number, ImportRow>();
+		const synthetic: FuelLog[] = ordered.map((entry, index) => {
+			const syntheticId = index + 1;
+			rowBySyntheticId.set(syntheticId, entry.row);
+			return {
+				id: syntheticId,
+				vehicleId,
+				date: new Date(syntheticId), // synthetic monotonic ordering key only — NOT the stored date
+				odometer: entry.row.data.odometer ?? 0,
+				quantity: entry.row.data.quantity ?? 0,
+				unit: entry.row.data.unit ?? 'L',
+				distanceUnit: entry.row.data.distanceUnit ?? 'km',
+				totalCost: entry.row.data.totalCost ?? 0,
+				calculatedConsumption: 0,
+				isPartialFill: entry.row.data.isPartialFill ?? false,
+				precededByMissedFill: entry.row.data.precededByMissedFill ?? false
+			};
+		});
+
+		for (const log of recalculateFuelLogConsumptions(synthetic)) {
+			const row = rowBySyntheticId.get(log.id);
+			if (row) {
+				consumptionMap.set(row, log.calculatedConsumption);
 			}
-			prevOdometer = entry.row.data.odometer;
 		}
 	}
 
@@ -136,6 +155,8 @@ export async function commitImportRows(
 					totalCost: entry.row.data.totalCost ?? 0,
 					currency: homeCurrency,
 					calculatedConsumption: consumptionMap.get(entry.row) ?? 0,
+					isPartialFill: entry.row.data.isPartialFill ?? false,
+					precededByMissedFill: entry.row.data.precededByMissedFill ?? false,
 					notes: entry.row.data.notes || undefined
 				};
 				// eslint-disable-next-line @typescript-eslint/no-explicit-any -- Dexie auto-generates id for auto-increment tables

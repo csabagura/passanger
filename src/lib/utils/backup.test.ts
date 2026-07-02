@@ -126,7 +126,7 @@ describe('parseBackup — rejections', () => {
 		expect(result.error?.message).toMatch(/not a passanger backup/i);
 	});
 
-	it('rejects a backup from a different schema version', () => {
+	it('rejects a backup from a NEWER app version', () => {
 		const json = JSON.stringify({
 			app: BACKUP_APP_ID,
 			schemaVersion: DB_VERSION + 1,
@@ -136,7 +136,36 @@ describe('parseBackup — rejections', () => {
 		});
 		const result = parseBackup(json);
 		expect(result.error?.code).toBe('VALIDATION_ERROR');
-		expect(result.error?.message).toMatch(/different app version/i);
+		expect(result.error?.message).toMatch(/newer app version/i);
+	});
+
+	it('accepts an OLDER-schema backup and restores it (Story 7.1 / AC7 — v4 → v5 round-trip)', () => {
+		// A v4 backup predates the isPartialFill / precededByMissedFill fields. It must still restore;
+		// the missing flags are simply absent on the revived rows (readers coerce them to false).
+		const v4FuelLog = {
+			id: 1,
+			vehicleId: 1,
+			date: new Date('2026-01-01').toISOString(),
+			odometer: 10000,
+			quantity: 40,
+			unit: 'L',
+			distanceUnit: 'km',
+			totalCost: 60,
+			calculatedConsumption: 0
+			// note: no isPartialFill / precededByMissedFill
+		};
+		const json = JSON.stringify({
+			app: BACKUP_APP_ID,
+			schemaVersion: 4,
+			exportedAt: new Date().toISOString(),
+			data: { vehicles: [], fuelLogs: [v4FuelLog], expenses: [], serviceReminders: [] },
+			settings
+		});
+		const result = parseBackup(json);
+		expect(result.error).toBeNull();
+		expect(result.data?.data.fuelLogs).toHaveLength(1);
+		expect(result.data?.data.fuelLogs[0].isPartialFill).toBeUndefined();
+		expect(result.data?.data.fuelLogs[0].precededByMissedFill).toBeUndefined();
 	});
 
 	it('rejects a backup missing the data sections', () => {

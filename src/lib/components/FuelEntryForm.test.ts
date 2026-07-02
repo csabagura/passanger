@@ -2732,4 +2732,65 @@ describe('FuelEntryForm component — review fixes validation', () => {
 			expect(currencySelect.value).toBe('$');
 		});
 	});
+
+	describe('Story 7.1: partial / missed fill toggles', () => {
+		async function fillAndRender() {
+			mockGetAllFuelLogs.mockResolvedValue({ data: [], error: null });
+			mockSaveFuelLog.mockResolvedValue({
+				data: { id: 1, vehicleId: 1 } as FuelLog,
+				error: null
+			});
+			render(FuelEntryForm, { props: { vehicleId: 1, onSave: onSaveSpy } });
+			await new Promise((r) => setTimeout(r, 0));
+			flushSync();
+			await fireEvent.input(screen.getByLabelText(/odometer/i), { target: { value: '87400' } });
+			await fireEvent.input(screen.getByLabelText(/quantity/i), { target: { value: '42' } });
+			await fireEvent.input(screen.getByLabelText(/total cost/i), { target: { value: '78' } });
+		}
+
+		it('threads the partial flag into the saved entry', async () => {
+			await fillAndRender();
+			await fireEvent.click(screen.getByRole('checkbox', { name: /partial fill-up/i }));
+			await fireEvent.click(screen.getByRole('button', { name: /save/i }));
+			await new Promise((r) => setTimeout(r, 50));
+			flushSync();
+
+			expect(mockSaveFuelLog).toHaveBeenCalledTimes(1);
+			const entry = mockSaveFuelLog.mock.calls[0][0] as {
+				isPartialFill: boolean;
+				precededByMissedFill: boolean;
+			};
+			expect(entry.isPartialFill).toBe(true);
+			expect(entry.precededByMissedFill).toBe(false);
+		});
+
+		it('threads the missed-previous-fill flag into the saved entry', async () => {
+			await fillAndRender();
+			await fireEvent.click(screen.getByRole('checkbox', { name: /missed a previous fill-up/i }));
+			await fireEvent.click(screen.getByRole('button', { name: /save/i }));
+			await new Promise((r) => setTimeout(r, 50));
+			flushSync();
+
+			const entry = mockSaveFuelLog.mock.calls[0][0] as {
+				isPartialFill: boolean;
+				precededByMissedFill: boolean;
+			};
+			expect(entry.isPartialFill).toBe(false);
+			expect(entry.precededByMissedFill).toBe(true);
+		});
+
+		it('defaults both toggles off — a plain save carries false flags', async () => {
+			await fillAndRender();
+			await fireEvent.click(screen.getByRole('button', { name: /save/i }));
+			await new Promise((r) => setTimeout(r, 50));
+			flushSync();
+
+			const entry = mockSaveFuelLog.mock.calls[0][0] as {
+				isPartialFill: boolean;
+				precededByMissedFill: boolean;
+			};
+			expect(entry.isPartialFill).toBe(false);
+			expect(entry.precededByMissedFill).toBe(false);
+		});
+	});
 });

@@ -128,8 +128,14 @@ export function parseBackup(text: string): Result<{ data: BackupData; settings: 
 		return err('VALIDATION_ERROR', 'This file is not a passanger backup.');
 	}
 
-	if (parsed.schemaVersion !== DB_VERSION) {
-		return err('VALIDATION_ERROR', 'This backup is from a different app version.');
+	// Accept any backup at or below the running schema version; reject only backups from a NEWER app
+	// (fields we don't understand). Older backups are forward-compatible because every schema bump so
+	// far has been additive with safe defaults — e.g. a v4 backup restores into v5 with the new
+	// fuelLog fields (`isPartialFill` / `precededByMissedFill`) simply absent, which readers coerce to
+	// `false` (Story 7.1 / ADR-005). Restored rows bypass the Dexie `.upgrade()` path, so this
+	// read-side coercion — not a backfill — is what keeps them valid. Was an exact `!==` match pre-v5.
+	if (typeof parsed.schemaVersion !== 'number' || parsed.schemaVersion > DB_VERSION) {
+		return err('VALIDATION_ERROR', 'This backup is from a newer app version.');
 	}
 
 	const data = parsed.data;
