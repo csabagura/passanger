@@ -530,8 +530,10 @@ test('NavBar tabs are reachable via keyboard', async ({ page }) => {
 test('Fill-quality toggles meet the 44px floor and are keyboard-operable (Story 7.1 AC2)', async ({
 	page
 }) => {
-	await page.goto('/?capture=fuel');
-	await page.waitForLoadState('networkidle');
+	// The Capture sheet mounts FuelEntryForm only once a vehicle exists (vehicles.activeVehicleId
+	// guard) — a bare deep-link on an empty DB shows the sheet chrome without the form.
+	await seedVehicleAndFill(page);
+	await page.getByRole('button', { name: /Log a fill-up or expense/i }).click();
 	const sheet = page.getByRole('dialog');
 	await expect(sheet.getByText('Log an entry')).toBeVisible();
 
