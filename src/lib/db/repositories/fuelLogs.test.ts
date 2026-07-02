@@ -12,6 +12,7 @@ import {
 	restoreFuelLog
 } from './fuelLogs';
 import type { FuelLog, NewFuelLog } from '../schema';
+import { buildFuelLogUpdatePlan } from '$lib/utils/fuelLogTimeline';
 
 // Factory functions — Dexie v4 mutates the input object after add() to set the id.
 // Always create fresh objects per test to avoid cross-test contamination.
@@ -278,6 +279,18 @@ describe('FuelLogRepository', () => {
 			const refreshedSecond = await getFuelLogById(second.data!.id);
 			expect(refreshedFirst.data?.quantity).toBe(41);
 			expect(refreshedSecond.data?.calculatedConsumption).toBe(7.8);
+		});
+
+		it('persists a currency-only edit end-to-end via buildFuelLogUpdatePlan (H1 regression)', async () => {
+			const saved = await saveFuelLog({ ...makeLog(), currency: '€' });
+			const original = saved.data!;
+
+			const patches = buildFuelLogUpdatePlan([original], { ...original, currency: 'Ft' });
+			const result = await updateFuelLogsAtomic(patches);
+			expect(result.error).toBeNull();
+
+			const refreshed = await getFuelLogById(original.id);
+			expect(refreshed.data?.currency).toBe('Ft');
 		});
 
 		it('rolls back earlier updates when any later patch fails', async () => {

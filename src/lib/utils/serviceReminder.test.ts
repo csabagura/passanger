@@ -61,12 +61,17 @@ describe('computeReminderStatus', () => {
 			expect(result.label).toBe('Overdue by 120 km');
 		});
 
-		it('treats a missing lastServiceOdometer as 0', () => {
-			const reminder = makeReminder({ intervalKm: 1000 });
-			// due at 0 + 1000 = 1000; current 300 → 700 remaining
-			const result = computeReminderStatus(reminder, 300, TODAY);
+		it('produces no km signal when lastServiceOdometer is missing (H11a — no 0-default)', () => {
+			// The old 0-default made a baseline-less reminder on a 200,000 km car scream
+			// "Overdue by 195,000 km". With no usable base the km dimension contributes nothing —
+			// exactly how the days dimension treats an absent lastServiceDate. (Honest "since
+			// creation" baselines arrive with createdAt in 8-5/ADR-007.)
+			const reminder = makeReminder({ intervalKm: 5000 });
+			const result = computeReminderStatus(reminder, 200000, TODAY);
+			expect(result.kmRemaining).toBeUndefined();
+			expect(result.daysRemaining).toBeUndefined();
 			expect(result.status).toBe('ok');
-			expect(result.kmRemaining).toBe(700);
+			expect(result.label).toBe('No due date yet');
 		});
 	});
 

@@ -132,6 +132,12 @@ export function buildFuelLogUpdatePlan(
 				changes.notes = log.notes;
 			}
 
+			// Conditional include like notes — an explicit `undefined` would make Dexie update()
+			// delete the stored key on legacy currency-less rows.
+			if (log.currency !== undefined) {
+				changes.currency = log.currency;
+			}
+
 			return [{ id: log.id, changes }];
 		}
 

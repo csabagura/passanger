@@ -48,6 +48,12 @@
 	// Distinguishes "not loaded yet" from "loaded, nothing due" so the loop-cleanup below never prunes
 	// a freshly-saved dismissal against the initial empty `dueReminders` (before the async read lands).
 	let loaded = $state(false);
+	// H10a (interim — the due-instance model lands in 8-5): the dismissal map is GLOBAL across
+	// vehicles, so the prune below may only touch markers belonging to THIS vehicle's reminders, and
+	// never after a failed read. Set together with dueReminders on a successful read; on a failed
+	// read only pruneSafe is reset (the id set may be stale) — the prune must never read past the flag.
+	let vehicleReminderIds = $state<Set<number>>(new Set());
+	let pruneSafe = $state(false);
 
 	$effect(() => {
 		// Reactive deps: active vehicle, cross-tab data revision, AND currentOdometer (read synchronously
@@ -69,12 +75,17 @@
 			const remindersResult = await getServiceRemindersForVehicle(id);
 			if (cancelled) return;
 			if (remindersResult.error) {
-				// Silent: the card simply doesn't render; never crash the dashboard.
+				// Silent: the card simply doesn't render; never crash the dashboard. A failed read also
+				// disables the prune (H10a) — one transient IndexedDB error used to wipe EVERY
+				// vehicle's dismissals through the then-empty due set.
 				dueReminders = [];
+				pruneSafe = false;
 				loaded = true;
 				return;
 			}
 			dueReminders = selectDueReminders(remindersResult.data, odometer, when);
+			vehicleReminderIds = new Set(remindersResult.data.map((reminder) => reminder.id));
+			pruneSafe = true;
 			loaded = true;
 		})();
 
@@ -99,16 +110,21 @@
 		);
 	});
 
-	// Loop-cleanup (AC3 hygiene): prune dismissal markers whose reminder is no longer due (returned to
-	// `ok` or was deleted) so stale markers don't accumulate. Read-only of the due set; safe + cheap.
+	// Loop-cleanup (AC3 hygiene): prune dismissal markers for THIS vehicle's reminders that are no
+	// longer due (returned to `ok`) so stale markers don't accumulate. The map is shared by all
+	// vehicles, so the prune is scoped to the active vehicle's reminder ids and skipped after a
+	// failed read (H10a) — an unscoped prune wiped other vehicles' dismissals on every switch. A
+	// DELETED reminder's marker is out of reach here (its id left vehicleReminderIds, making it
+	// indistinguishable from another vehicle's); orphans wait for 8-5's due-instance model.
 	$effect(() => {
 		void dismissVersion;
 		// Wait for the first load — pruning against the initial empty set would wipe a fresh dismissal.
-		if (!loaded) return;
+		if (!loaded || !pruneSafe) return;
 		const dueIds = new Set(dueReminders.map((d) => d.reminder.id));
 		const map = readDismissals();
 		for (const key of Object.keys(map)) {
 			const id = Number(key);
+			if (!vehicleReminderIds.has(id)) continue; // another vehicle's marker — not ours to judge
 			if (!dueIds.has(id)) {
 				clearDismissal(id);
 			}

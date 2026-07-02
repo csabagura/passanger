@@ -134,6 +134,33 @@ describe('commitImportRows', () => {
 		expect(expenses[0].cost).toBe(100);
 	});
 
+	it('coerces a non-finite totalCost to 0 at the commit boundary (H8 regression)', async () => {
+		const vehicleId = await db.vehicles.add({
+			name: 'TestCar',
+			make: 'Honda',
+			model: 'Civic'
+		} as any);
+
+		// NaN passes `?? 0` (nullish covers only null/undefined), so without the finite coercion a
+		// NaN cost lands in Dexie. The row itself stays a warning row upstream — unchanged here.
+		const rows = [
+			makeFuelRow(1, { totalCost: NaN }, 'warning'),
+			makeMaintenanceRow(2, { totalCost: NaN }, 'warning')
+		];
+		const assignments = [makeExistingAssignment('TestCar', vehicleId as number, 2)];
+
+		const result = await commitImportRows(rows, assignments);
+		expect(result.error).toBeNull();
+
+		const logs = await db.fuelLogs.toArray();
+		expect(logs).toHaveLength(1);
+		expect(logs[0].totalCost).toBe(0);
+
+		const expenses = await db.expenses.toArray();
+		expect(expenses).toHaveLength(1);
+		expect(expenses[0].cost).toBe(0);
+	});
+
 	it('stamps imported fuel AND expense rows with the home currency (defaults to DEFAULT_CURRENCY)', async () => {
 		// Story 5.3 AC4: imported rows carry a currency defaulting to home currency. In the node test
 		// env there is no localStorage, so getSettings() yields DEFAULT_CURRENCY — assert it propagates

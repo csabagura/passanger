@@ -273,7 +273,16 @@ function isHistoryEntryInTimePeriod(
 }
 
 function getFuelEntryDistance(entry: FuelLog): number | null {
-	if (entry.calculatedConsumption <= 0 || entry.quantity <= 0) {
+	// PREP-1 guards ported from the analytics.ts twin (S1): the older `<= 0` convention leaks
+	// non-finite rows (`NaN <= 0 → false`) — NaN nulls the whole summary average and +Infinity
+	// (distance 0) doubles it. `<= 0` itself stays: the 7.1 partial/missed sentinel (consumption 0)
+	// must keep excluding those rows.
+	if (
+		!isFiniteNumber(entry.calculatedConsumption) ||
+		entry.calculatedConsumption <= 0 ||
+		!isFiniteNumber(entry.quantity) ||
+		entry.quantity <= 0
+	) {
 		return null;
 	}
 
@@ -329,10 +338,19 @@ export function summarizeHistoryEntries(
 	const fuelEntries = entries.filter(
 		(entry): entry is Extract<HistoryEntry, { kind: 'fuel' }> => entry.kind === 'fuel'
 	);
+	// A non-finite or non-positive quantity must not poison the total ("NaN L" in the StatBar; a
+	// finite negative row would silently SUBTRACT) — skip it, aligned with getFuelEntryDistance's
+	// `<= 0` exclusion above (S1 + review patch).
 	const totalFuelVolume = fuelEntries.reduce(
 		(sum, fuelEntry) =>
-			sum +
-			convertFuelVolumeToUnit(fuelEntry.entry.quantity, fuelEntry.entry.unit, preferredVolumeUnit),
+			isFiniteNumber(fuelEntry.entry.quantity) && fuelEntry.entry.quantity > 0
+				? sum +
+					convertFuelVolumeToUnit(
+						fuelEntry.entry.quantity,
+						fuelEntry.entry.unit,
+						preferredVolumeUnit
+					)
+				: sum,
 		0
 	);
 

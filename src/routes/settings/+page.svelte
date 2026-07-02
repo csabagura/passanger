@@ -159,12 +159,20 @@
 		// longer meaningful, so drop them and let the user re-enter against the new home currency.
 		const homeCurrencyChanged = settingsCurrency !== settingsCtx.settings.currency;
 		const exchangeRates = homeCurrencyChanged ? {} : buildExchangeRates();
+		// Spread the current settings so fields this form doesn't own (heroMetric, any future
+		// optional field) survive the save instead of being wiped.
 		const nextSettings: AppSettings = {
+			...settingsCtx.settings,
 			fuelUnit: settingsFuelUnit,
-			currency: settingsCurrency,
-			theme: settingsCtx.settings.theme,
-			...(Object.keys(exchangeRates).length > 0 ? { exchangeRates } : {})
+			currency: settingsCurrency
 		};
+		if (Object.keys(exchangeRates).length > 0) {
+			nextSettings.exchangeRates = exchangeRates;
+		} else {
+			// The key must be ABSENT, not {} — a home-currency change drops the rates, and the spread
+			// above would otherwise resurrect the stale map.
+			delete nextSettings.exchangeRates;
+		}
 
 		currencyError = '';
 		settingsStatusMessage = '';

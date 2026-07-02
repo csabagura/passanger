@@ -44,7 +44,9 @@ export const DB_NAME = 'passangerDB'; // Note: double-a brand name — NOT 'pass
 export const DB_VERSION = 5;
 
 // Full-dataset JSON backup. `BACKUP_APP_ID` tags exported files so a restore can reject a
-// foreign file; the schemaVersion in a backup reuses DB_VERSION (exact-match on restore).
+// foreign file; the schemaVersion in a backup reuses DB_VERSION. On restore it is validated as an
+// integer within [4, DB_VERSION] (floor = the version the backup feature shipped at; ceiling
+// rejects backups from a newer app) — see backup.ts.
 export const BACKUP_APP_ID = 'passanger';
 export const BACKUP_FILENAME_PREFIX = 'passanger-backup';
 

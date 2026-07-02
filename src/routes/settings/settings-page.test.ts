@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/svelte';
 import { SETTINGS_STORAGE_KEY } from '$lib/config';
+import type { AppSettings } from '$lib/utils/settings';
 import SettingsPage from './+page.svelte';
 
 vi.mock('$lib/db/repositories/vehicles', () => ({
@@ -13,13 +14,7 @@ vi.mock('$lib/db/repositories/vehicles', () => ({
 
 const mockUpdateSettings = vi.fn();
 
-let settingsState: {
-	value: {
-		fuelUnit: 'L/100km' | 'MPG';
-		currency: string;
-		theme: 'system' | 'light' | 'dark';
-	};
-} = {
+let settingsState: { value: AppSettings } = {
 	value: {
 		fuelUnit: 'L/100km' as const,
 		currency: '€',
@@ -50,11 +45,7 @@ function renderPage() {
 		get settings() {
 			return settingsState.value;
 		},
-		updateSettings(nextSettings: {
-			fuelUnit: 'L/100km' | 'MPG';
-			currency: string;
-			theme: 'system' | 'light' | 'dark';
-		}) {
+		updateSettings(nextSettings: AppSettings) {
 			settingsState.value = nextSettings;
 			mockUpdateSettings(nextSettings);
 		}
@@ -146,6 +137,48 @@ describe('Settings page', () => {
 			currency: 'EUR ',
 			theme: 'system'
 		});
+	});
+
+	it('preserves heroMetric when saving unit/currency changes (H15 regression)', async () => {
+		settingsState.value = {
+			fuelUnit: 'L/100km',
+			currency: '€',
+			theme: 'system',
+			heroMetric: 'consumption'
+		};
+		renderPage();
+
+		await fireEvent.click(screen.getByRole('button', { name: '$' }));
+		await fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
+
+		expect(mockUpdateSettings).toHaveBeenCalledWith(
+			expect.objectContaining({ currency: '$', heroMetric: 'consumption' })
+		);
+		const saved = JSON.parse(localStorageMock.getItem(SETTINGS_STORAGE_KEY)!);
+		expect(saved.heroMetric).toBe('consumption');
+	});
+
+	it('still drops exchangeRates on a home-currency change (spread must not resurrect them)', async () => {
+		settingsState.value = {
+			fuelUnit: 'L/100km',
+			currency: '€',
+			theme: 'system',
+			exchangeRates: { Ft: 0.0025 },
+			heroMetric: 'consumption'
+		};
+		renderPage();
+
+		await fireEvent.click(screen.getByRole('button', { name: '$' }));
+		await fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
+
+		// Rates are relative to the home currency: after '€' → '$' they are meaningless and must be
+		// ABSENT from both the persisted object and the in-memory update — not carried over.
+		const saved = JSON.parse(localStorageMock.getItem(SETTINGS_STORAGE_KEY)!);
+		expect('exchangeRates' in saved).toBe(false);
+		expect(saved.heroMetric).toBe('consumption');
+
+		const updated = mockUpdateSettings.mock.calls.at(-1)![0];
+		expect('exchangeRates' in updated).toBe(false);
 	});
 
 	it('surfaces blocked settings persistence instead of updating runtime state', async () => {

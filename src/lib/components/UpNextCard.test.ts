@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import type { FuelLog, ServiceReminder } from '$lib/db/schema';
-import { REMINDER_DUE_SOON_KM } from '$lib/config';
+import { REMINDER_DISMISSED_STORAGE_KEY, REMINDER_DUE_SOON_KM } from '$lib/config';
 import UpNextCard from './UpNextCard.svelte';
 
 const mockGetServiceRemindersForVehicle = vi.fn();
@@ -69,6 +69,19 @@ async function flushLoad() {
 	await waitFor(() => expect(mockGetServiceRemindersForVehicle).toHaveBeenCalled());
 	await Promise.resolve();
 	await Promise.resolve();
+}
+
+// Seed/read dismissal markers directly (same shape reminderDismissal.ts persists).
+function seedDismissal(id: number, status: 'due-soon' | 'overdue', odometer?: number) {
+	const raw = globalThis.localStorage.getItem(REMINDER_DISMISSED_STORAGE_KEY);
+	const map = raw ? JSON.parse(raw) : {};
+	map[id] = { status, odometer };
+	globalThis.localStorage.setItem(REMINDER_DISMISSED_STORAGE_KEY, JSON.stringify(map));
+}
+
+function readDismissalMap(): Record<string, unknown> {
+	const raw = globalThis.localStorage.getItem(REMINDER_DISMISSED_STORAGE_KEY);
+	return raw ? JSON.parse(raw) : {};
 }
 
 describe('UpNextCard', () => {
@@ -237,6 +250,59 @@ describe('UpNextCard', () => {
 		await screen.findByText('Inspection');
 		expect(screen.queryByText(/≈ due/)).toBeNull();
 		expect(screen.queryByText(/Not enough recent driving/)).toBeNull();
+	});
+
+	it("H10a: leaves another vehicle's dismissal marker alone during the prune", async () => {
+		// Vehicle 7 owns ids 1 (not due → its stale marker must be pruned) and 2 (overdue → renders).
+		// Marker 99 belongs to a DIFFERENT vehicle's reminder — the global-map prune used to clear it
+		// on every render because it can never be in the active vehicle's due set.
+		mockGetServiceRemindersForVehicle.mockResolvedValue({
+			data: [
+				makeReminder({ id: 1, title: 'Air filter', intervalKm: 20000, lastServiceOdometer: 50000 }),
+				makeReminder({ id: 2, title: 'Oil change', intervalKm: 5000, lastServiceOdometer: 50000 })
+			],
+			error: null
+		});
+		seedDismissal(1, 'due-soon', 55000);
+		seedDismissal(99, 'overdue', 12000);
+		renderCard();
+
+		await screen.findByText('Oil change');
+		// Marker 1 (this vehicle, no longer due) getting pruned proves the cleanup ran…
+		await waitFor(() => expect(readDismissalMap()[1]).toBeUndefined());
+		// …and the other vehicle's marker survived it.
+		expect(readDismissalMap()[99]).toEqual({ status: 'overdue', odometer: 12000 });
+	});
+
+	it('H10a: never prunes dismissals after a failed reminder read', async () => {
+		mockGetServiceRemindersForVehicle.mockResolvedValue({
+			data: null,
+			error: { code: 'LOAD_FAILED', message: 'boom' }
+		});
+		seedDismissal(2, 'overdue', 60000);
+		seedDismissal(99, 'due-soon', 12000);
+		renderCard();
+		await flushLoad();
+
+		// Existing silent-error behavior preserved: no card…
+		expect(screen.queryByText('Up next')).toBeNull();
+		// …and one transient read failure must not wipe ANY dismissal (it used to wipe all of them).
+		const map = readDismissalMap();
+		expect(map[2]).toEqual({ status: 'overdue', odometer: 60000 });
+		expect(map[99]).toEqual({ status: 'due-soon', odometer: 12000 });
+	});
+
+	it("prunes this vehicle's marker once its reminder is no longer due (existing behavior)", async () => {
+		// due at 70000, current 60000 → ok (not due) → the stale marker for id 1 is cleared.
+		mockGetServiceRemindersForVehicle.mockResolvedValue({
+			data: [makeReminder({ id: 1, intervalKm: 20000, lastServiceOdometer: 50000 })],
+			error: null
+		});
+		seedDismissal(1, 'due-soon', 55000);
+		renderCard();
+		await flushLoad();
+
+		await waitFor(() => expect(readDismissalMap()[1]).toBeUndefined());
 	});
 
 	it('re-surfaces a dismissed reminder after driving a full due-soon window further', async () => {

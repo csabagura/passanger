@@ -120,6 +120,20 @@ describe('MaintainDashboard', () => {
 		expect(screen.getByText('Due soon')).toBeTruthy();
 	});
 
+	it('H11a: a km reminder without a baseline shows no signal instead of screaming overdue', async () => {
+		mockGetAllFuelLogs.mockResolvedValue(ok(cadenceLogs())); // currentOdometer 1700
+		mockGetServiceRemindersForVehicle.mockResolvedValue(
+			// No lastServiceOdometer: the old 0-default read this as due at 500 → "Overdue by 1,200 km".
+			ok([makeReminder({ id: 4, title: 'Timing belt', intervalKm: 500 })])
+		);
+		renderDashboard();
+		await settle();
+
+		expect(screen.getByText('On track')).toBeTruthy();
+		expect(screen.getByText('No due date yet')).toBeTruthy();
+		expect(screen.queryByText(/Overdue/)).toBeNull();
+	});
+
 	it('shows a predicted date for a distance reminder with sufficient cadence (FR-10/12)', async () => {
 		mockGetAllFuelLogs.mockResolvedValue(ok(cadenceLogs()));
 		mockGetServiceRemindersForVehicle.mockResolvedValue(
