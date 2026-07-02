@@ -249,6 +249,106 @@ test('App is fully usable with prefers-reduced-motion: reduce', async ({ page })
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Story 6.3 — extend the accessibility test suite (the formal axe / non-visual sweep).
+// Fills the last coverage gaps: the Entry-detail sheet axe scan (never scanned before), a
+// reduced-motion assertion that the SAVE animation degrades to instant, and a computed-contrast
+// check on a destructive confirm button. CRITICAL: axe (2.1 tag set) verifies NONE of the
+// reduced-motion or alpha-fill-contrast concerns — these use EXPLICIT computed-style assertions
+// (the C-2 false-green trap).
+// ─────────────────────────────────────────────────────────────────────────────
+
+test('Entry detail sheet is axe-clean (Story 6.3 AC1)', async ({ page }) => {
+	await seedVehicleAndFill(page);
+	await page.goto('/history');
+	await page.waitForLoadState('networkidle');
+
+	// Open the detail sheet on the real path. A plain .click() is swallowed by the swipe container's
+	// pointer capture, so dispatch the click directly (mirrors fuel-journey's openFirstEntryDetail).
+	await page
+		.getByRole('button', { name: /View details for fuel entry/i })
+		.first()
+		.dispatchEvent('click');
+	await expect(page.getByRole('dialog', { name: 'Entry details' })).toBeVisible();
+
+	const results = await new AxeBuilder({ page }).withTags(WCAG_TAGS).analyze();
+	const serious = results.violations.filter(
+		(v) => v.impact === 'critical' || v.impact === 'serious'
+	);
+	expect(serious).toEqual([]);
+});
+
+test('Reduced motion degrades the save sparkline animation to instant (Story 6.3 AC3)', async ({
+	page
+}) => {
+	await page.emulateMedia({ reducedMotion: 'reduce' });
+	await seedVehicleAndFill(page); // vehicle + 2 fills → a consumption trend exists
+
+	// A third new fill renders the value-reveal success card with the signature ConsumptionSparkline.
+	await page.getByRole('button', { name: /Log a fill-up or expense/i }).click();
+	const sheet = page.getByRole('dialog');
+	await sheet.getByLabel(/^Odometer/).fill('11000');
+	await sheet.getByLabel(/^Quantity/).fill('41');
+	await sheet.getByLabel('Total Cost').fill('70');
+	await sheet.getByRole('button', { name: 'Save', exact: true }).click();
+
+	// The sparkline's final point animates in normally (sparkline-point-in 360ms); under reduced motion
+	// the @media rule sets `animation: none`, so it snaps to its resting state. axe can't see this —
+	// assert the computed animation-name is 'none' (the false-green trap).
+	const point = page.locator('.sparkline-point').first();
+	await expect(point).toBeVisible();
+	const animationName = await point.evaluate((el) => getComputedStyle(el).animationName);
+	expect(animationName).toBe('none');
+});
+
+test('Destructive delete-confirm button meets AA text contrast (Story 6.3 AC5)', async ({
+	page
+}) => {
+	// Seed a vehicle + a reminder to reach the Maintain delete-confirm alertdialog.
+	await page.goto('/');
+	await page.waitForLoadState('networkidle');
+	await page.getByRole('button', { name: /Add your vehicle to get started/i }).click();
+	await page.getByLabel('Display Name').fill('Contrast Car');
+	await page.getByLabel('Make').fill('Mazda');
+	await page.getByLabel('Model').fill('3');
+	await page.getByRole('button', { name: 'Save vehicle' }).click();
+	await expect(page.getByText(/No entries yet for/i)).toBeVisible();
+
+	await page
+		.getByRole('navigation', { name: 'Main navigation' })
+		.getByRole('link', { name: 'Maintain' })
+		.click();
+	await page.waitForLoadState('networkidle');
+	await page.getByRole('button', { name: /Add reminder/i }).click();
+	await page.getByLabel('Title').fill('Brake check');
+	await page.getByLabel('Every (km)').fill('20000');
+	await page.getByRole('button', { name: 'Save reminder' }).click();
+
+	await page.getByRole('button', { name: 'Delete Brake check' }).click();
+	const confirm = page.getByRole('button', { name: 'Confirm delete' });
+	await expect(confirm).toBeVisible();
+
+	// AC5: the confirm button uses outline + destructive TEXT on the opaque `bg-background` surface
+	// (~4.5:1), not the `bg-destructive/10` fill (~3.86:1). axe returns `incomplete` on alpha fills, so
+	// compute the WCAG contrast of the red text over the button's own (opaque) background explicitly.
+	const ratio = await confirm.evaluate((el) => {
+		const channels = (value: string) => (value.match(/[\d.]+/g) ?? []).map(Number);
+		const relLum = (rgb: number[]) => {
+			const [r, g, b] = rgb.slice(0, 3).map((v) => {
+				const s = v / 255;
+				return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+			});
+			return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+		};
+		const style = getComputedStyle(el);
+		const l1 = relLum(channels(style.color));
+		const l2 = relLum(channels(style.backgroundColor));
+		const [hi, lo] = l1 > l2 ? [l1, l2] : [l2, l1];
+		return (hi + 0.05) / (lo + 0.05);
+	});
+	expect(ratio).toBeGreaterThanOrEqual(4.5);
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Story 6.2 — non-visual & gesture-free equivalents (the a11y-floor sweep).
 // These assert the NET-NEW work (skip-link, global focus-ring baseline) and LOCK
 // the already-shipped parts (gesture-free reveal). CRITICAL: axe (under the 2.1

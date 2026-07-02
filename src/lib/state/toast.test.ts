@@ -44,6 +44,9 @@ describe('toast wrapper (AC2/AC3)', () => {
 		const [message, opts] = sonnerBase.mock.calls[0] as [string, Record<string, unknown>];
 		expect(message).toBe('Deleted');
 		expect(opts.duration).toBe(TOAST_UNDO_DURATION_MS);
+		// A11Y-3 (Story 6.3): the time-limited (~5s) Undo affordance must announce assertively so a
+		// screen reader doesn't queue it past the window. `important` → sonner aria-live="assertive".
+		expect(opts.important).toBe(true);
 
 		const action = opts.action as { label: string; onClick: () => void };
 		expect(action.label).toBe('Undo');

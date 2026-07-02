@@ -25,6 +25,13 @@
 		currency: string;
 		preferredFuelUnit?: FuelUnit;
 		vehicleName?: string;
+		/**
+		 * True while an optimistic delete of THIS entry is in flight (Story 6.3 / A11Y-4). History
+		 * owns the delete + post-delete focus (`focusPostDeleteTarget`) and closes the sheet itself
+		 * via `closeDetailSheetWithoutFocus`; if the user also closes here mid-delete, the two close
+		 * paths race and focus can land on `<body>`. While `deleting`, all user close paths are no-ops.
+		 */
+		deleting?: boolean;
 		onClose: () => void;
 		onEdit?: (request: HistoryEntry) => void;
 		onDelete?: (request: HistoryEntry) => void;
@@ -38,6 +45,7 @@
 		currency,
 		preferredFuelUnit = 'L/100km',
 		vehicleName,
+		deleting = false,
 		onClose,
 		onEdit = () => {},
 		onDelete = () => {}
@@ -142,6 +150,13 @@
 	}
 
 	function handleClose(): void {
+		// A11Y-4: single chokepoint for every user close path (Close button, backdrop, Escape,
+		// swipe-dismiss). While an optimistic delete of this entry is in flight, History is already
+		// tearing the sheet down and moving focus — a concurrent user close would race that and strand
+		// focus on <body>, so we no-op until History finishes and unmounts us.
+		if (deleting) {
+			return;
+		}
 		onClose();
 	}
 

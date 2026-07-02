@@ -137,6 +137,42 @@ describe('MaintenanceForm', () => {
 		expect(screen.getByRole('status').textContent).toContain('EUR 100.00');
 	});
 
+	it('re-announces a byte-identical repeated save via an invisible nonce delta (A11Y-1)', async () => {
+		const savedExpense: Expense = {
+			id: 21,
+			vehicleId: 7,
+			date: new Date(2026, 2, 10, 12, 0, 0, 0),
+			type: 'Insurance',
+			cost: 100
+		};
+		mockSaveExpense.mockResolvedValue({ data: savedExpense, error: null });
+
+		render(MaintenanceForm, { vehicleId: 7, onSave: onSaveSpy });
+
+		await fireEvent.input(screen.getByLabelText(/^type$/i), { target: { value: 'Insurance' } });
+		await fireEvent.input(screen.getByLabelText(/cost/i), { target: { value: '100' } });
+		await fireEvent.click(screen.getByRole('button', { name: /^save$/i }));
+		await Promise.resolve();
+		flushSync();
+		const first = screen.getByRole('status').textContent ?? '';
+
+		// A byte-identical second save (same type + cost → same success message). Re-input first so the
+		// second save is valid regardless of any field reset.
+		await fireEvent.input(screen.getByLabelText(/^type$/i), { target: { value: 'Insurance' } });
+		await fireEvent.input(screen.getByLabelText(/cost/i), { target: { value: '100' } });
+		await fireEvent.click(screen.getByRole('button', { name: /^save$/i }));
+		await Promise.resolve();
+		flushSync();
+		const second = screen.getByRole('status').textContent ?? '';
+
+		// The VISIBLE message is identical (the nonce is a zero-width space, stripped here)...
+		const strip = (value: string) => value.replace(/\u200B/g, '');
+		expect(strip(first)).toBe(strip(second));
+		expect(strip(first)).toContain('Insurance');
+		// ...but the RAW text differs, so the polite region presents a change and re-announces (A11Y-1).
+		expect(first).not.toBe(second);
+	});
+
 	it('does not derive the maintenance odometer label from the fuel-unit preference', () => {
 		mockSettings.value = {
 			fuelUnit: 'MPG',

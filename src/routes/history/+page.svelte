@@ -794,6 +794,7 @@
 			currency={settingsCtx.settings.currency}
 			preferredFuelUnit={settingsCtx.settings.fuelUnit}
 			vehicleName={currentVehicle?.name}
+			deleting={deletingEntryKey !== null && deletingEntryKey === selectedDetailEntryKey}
 			onClose={() => void closeDetailSheet()}
 			onEdit={handleDetailEdit}
 			onDelete={handleDelete}

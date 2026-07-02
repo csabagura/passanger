@@ -317,8 +317,11 @@
 									>
 										{m.common_cancel()}
 									</Button>
+									<!-- AA contrast (Story 6.3 / AC5): outline + destructive TEXT (~4.5:1 on card),
+									     not the bg-destructive/10 fill (~3.86:1). Mirrors the delete trigger above. -->
 									<Button
-										variant="destructive"
+										variant="outline"
+										class="text-destructive hover:text-destructive"
 										disabled={deleteState === 'loading'}
 										onclick={handleDeleteConfirm}
 									>
