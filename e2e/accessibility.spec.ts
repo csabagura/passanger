@@ -263,18 +263,28 @@ test('Skip-to-content link is the first tab stop and moves focus into <main> (St
 	await page.goto('/');
 	await page.waitForLoadState('networkidle');
 
-	// The skip-link precedes AppHeader in the markup, so it is the FIRST focusable control. Headless
-	// Chromium can absorb the very first Tab after navigation to prime page focus (activeElement stays
-	// <body>), so press until focus leaves <body> — the first non-body element reached must BE the
-	// skip-link (which still proves "first tab stop", tolerant of the priming Tab).
-	const skipLink = page.getByRole('link', { name: 'Skip to content' });
-	for (let i = 0; i < 3; i++) {
-		await page.keyboard.press('Tab');
-		if (await page.evaluate(() => document.activeElement !== document.body)) break;
-	}
-	await expect(skipLink).toBeFocused();
+	// "First tab stop" asserted STRUCTURALLY (deterministic — headless Chromium's keyboard Tab is flaky
+	// after navigation, so we don't rely on press('Tab') landing). The skip-link must be the FIRST
+	// tabbable element in document order, so a keyboard user tabbing from the top reaches it before
+	// anything else. If something focusable precedes it, `first` prints it in the failure message.
+	const first = await page.evaluate(() => {
+		const sel =
+			'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]';
+		const tabbable = [...document.querySelectorAll(sel)].filter(
+			(el) => (el as HTMLElement).tabIndex >= 0
+		) as HTMLElement[];
+		const el = tabbable[0];
+		if (!el) return 'NONE';
+		return el.getAttribute('href') === '#main-content'
+			? 'SKIP_LINK'
+			: `${el.tagName}#${el.id}.${el.className}`.slice(0, 80);
+	});
+	expect(first, `first tabbable element was not the skip-link`).toBe('SKIP_LINK');
 
-	// It escapes `sr-only` on focus → it has real layout box (visible), not a 0×0 clipped element.
+	// It is keyboard-focusable and escapes `sr-only` on focus → real layout box (visible), not 0×0.
+	const skipLink = page.getByRole('link', { name: 'Skip to content' });
+	await skipLink.focus();
+	await expect(skipLink).toBeFocused();
 	const box = await skipLink.boundingBox();
 	expect(box).not.toBeNull();
 	expect(box!.height).toBeGreaterThan(0);

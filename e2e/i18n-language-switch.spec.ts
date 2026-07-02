@@ -146,13 +146,11 @@ test('6.2 skip-link: renders Hungarian after the language switch', async ({ page
 	await page.goto('/');
 	await page.waitForLoadState('networkidle');
 
-	// The skip-link is the first focusable element; it carries the Hungarian accessible name. Same
-	// first-Tab priming tolerance as the AC3 skip-link test (headless Chromium may absorb the first Tab).
+	// The skip-link carries the Hungarian accessible name and is keyboard-focusable (focus() directly —
+	// headless Chromium's Tab is flaky after navigation; the "first tab stop" ordering is asserted in the
+	// AC3 test). The English string must be gone entirely (no untranslated echo).
 	const skipLink = page.getByRole('link', { name: 'Ugrás a tartalomra' });
-	for (let i = 0; i < 3; i++) {
-		await page.keyboard.press('Tab');
-		if (await page.evaluate(() => document.activeElement !== document.body)) break;
-	}
+	await skipLink.focus();
 	await expect(skipLink).toBeFocused();
 	await expect(page.getByRole('link', { name: 'Skip to content' })).toHaveCount(0);
 });
