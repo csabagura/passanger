@@ -316,7 +316,7 @@
 					aria-checked={settingsCtx.settings.theme === option.value}
 					tabindex={settingsCtx.settings.theme === option.value ? 0 : -1}
 					onclick={() => handleThemeChange(option.value)}
-					class="flex flex-col items-center gap-1 rounded-xl border px-3 py-3 text-sm transition-colors {settingsCtx
+					class="flex min-h-11 flex-col items-center justify-center gap-1 rounded-xl border px-3 py-3 text-sm transition-colors {settingsCtx
 						.settings.theme === option.value
 						? 'border-accent bg-accent/5 font-semibold text-accent'
 						: 'border-border text-foreground hover:bg-muted/60'}"

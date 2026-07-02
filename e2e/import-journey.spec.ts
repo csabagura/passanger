@@ -99,3 +99,35 @@ test('import: upload → value-first Preview (before commit) → commit lands ro
 	).toBeVisible();
 	await expect(page.getByRole('list', { name: /History entries for/ })).toBeVisible();
 });
+
+// Story 6.2 (AC4) — the import wizard was the dense sizing cluster (10× sub-16px, 4× sub-44px).
+// Driven here because the wizard controls only render on the real upload path. axe cannot see the
+// 16px (iOS-zoom mitigation, not a WCAG rule) or 44px (target-size is WCAG 2.2, outside the 2.1 tag
+// set) floors, so this asserts computed font-size / boundingBox explicitly (the C-2 false-green trap).
+test('import: Vehicles-step select meets the 16px + 44px floors (Story 6.2 AC4)', async ({
+	page
+}, testInfo) => {
+	await createVehicle(page, 'Renegade');
+
+	const csvPath = testInfo.outputPath('fuelly.csv');
+	const fs = await import('node:fs/promises');
+	await fs.writeFile(csvPath, FUELLY_CSV, 'utf8');
+
+	await page.goto('/import');
+	await page.waitForLoadState('networkidle');
+	await page.getByRole('button', { name: /Import from Fuelly/i }).click();
+	await page.locator('input[type="file"]').setInputFiles(csvPath);
+	await page.getByRole('button', { name: /^Continue$/i }).click();
+	await expect(page.getByText('Step 3 of 6: Preview')).toBeVisible();
+	await page.getByRole('button', { name: /^Continue$/i }).click();
+	await expect(page.getByText('Step 5 of 6: Vehicles')).toBeVisible();
+
+	// The per-source assignment <select> always renders (line 285) — assert its real computed sizing.
+	const assignSelect = page.locator('select#assign-Renegade');
+	await expect(assignSelect).toBeVisible();
+	const fontSize = await assignSelect.evaluate((el) => parseFloat(getComputedStyle(el).fontSize));
+	expect(fontSize).toBeGreaterThanOrEqual(16);
+	const box = await assignSelect.boundingBox();
+	expect(box).not.toBeNull();
+	expect(box!.height).toBeGreaterThanOrEqual(44);
+});

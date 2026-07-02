@@ -248,6 +248,152 @@ test('App is fully usable with prefers-reduced-motion: reduce', async ({ page })
 	}
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Story 6.2 — non-visual & gesture-free equivalents (the a11y-floor sweep).
+// These assert the NET-NEW work (skip-link, global focus-ring baseline) and LOCK
+// the already-shipped parts (gesture-free reveal). CRITICAL: axe (under the 2.1
+// tag set) cannot see focus rings, sub-16px inputs, or sub-44px targets, so these
+// use EXPLICIT computed-style / boundingBox assertions — a green axe run proves
+// nothing about AC3-rings or AC4 (the C-2 false-green trap).
+// ─────────────────────────────────────────────────────────────────────────────
+
+test('Skip-to-content link is the first tab stop and moves focus into <main> (Story 6.2 AC3)', async ({
+	page
+}) => {
+	await page.goto('/');
+	await page.waitForLoadState('networkidle');
+
+	// "First tab stop" asserted STRUCTURALLY (deterministic — headless Chromium's keyboard Tab is flaky
+	// after navigation, so we don't rely on press('Tab') landing). The skip-link must be the FIRST
+	// tabbable element in document order, so a keyboard user tabbing from the top reaches it before
+	// anything else. If something focusable precedes it, `first` prints it in the failure message.
+	const first = await page.evaluate(() => {
+		const sel =
+			'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]';
+		const tabbable = [...document.querySelectorAll(sel)].filter(
+			(el) => (el as HTMLElement).tabIndex >= 0
+		) as HTMLElement[];
+		const el = tabbable[0];
+		if (!el) return 'NONE';
+		return el.getAttribute('href') === '#main-content'
+			? 'SKIP_LINK'
+			: `${el.tagName}#${el.id}.${el.className}`.slice(0, 80);
+	});
+	expect(first, `first tabbable element was not the skip-link`).toBe('SKIP_LINK');
+
+	// It is keyboard-focusable and escapes `sr-only` on focus → real layout box (visible), not 0×0.
+	const skipLink = page.getByRole('link', { name: 'Skip to content' });
+	await skipLink.focus();
+	await expect(skipLink).toBeFocused();
+	const box = await skipLink.boundingBox();
+	expect(box).not.toBeNull();
+	expect(box!.height).toBeGreaterThan(0);
+	expect(box!.width).toBeGreaterThan(0);
+
+	// Activating it lands focus on the main landmark (tabindex=-1 makes it a programmatic target).
+	await page.keyboard.press('Enter');
+	const focusInMain = await page.evaluate(() => {
+		const el = document.activeElement;
+		return el?.id === 'main-content' || el?.closest('#main-content') !== null;
+	});
+	expect(focusInMain).toBe(true);
+});
+
+test('Native nav links show a visible focus ring on keyboard focus (Story 6.2 AC3)', async ({
+	page
+}) => {
+	await page.goto('/');
+	await page.waitForLoadState('networkidle');
+
+	// Tab until focus lands inside the main navigation (the tabs are native <a>, not primitives).
+	let inNav = false;
+	for (let i = 0; i < 25; i++) {
+		await page.keyboard.press('Tab');
+		inNav = await page.evaluate(
+			() => document.activeElement?.closest('nav[aria-label="Main navigation"]') !== null
+		);
+		if (inNav) break;
+	}
+	expect(inNav).toBe(true);
+
+	// The global :focus-visible baseline (app.css @layer base) gives native elements a real outline.
+	// axe can't see this — assert the computed outline explicitly. Require the baseline's own 2px width
+	// (not merely > 0) so a stray UA-default outline can't false-pass this as "the new rule works".
+	const ring = await page.evaluate(() => {
+		const el = document.activeElement as HTMLElement;
+		const s = getComputedStyle(el);
+		return { style: s.outlineStyle, width: parseFloat(s.outlineWidth) };
+	});
+	expect(ring.style).not.toBe('none');
+	expect(ring.width).toBeGreaterThanOrEqual(2);
+});
+
+test('EntryCard actions are reachable without a gesture and meet the 44px floor (Story 6.2 AC1/AC4)', async ({
+	page
+}) => {
+	await seedVehicleAndFill(page);
+	await page.goto('/history');
+	await page.waitForLoadState('networkidle');
+
+	// The gesture-free equivalent: an sr-only "Show actions" button reveals the same Edit/Delete
+	// controls a swipe would — driven here purely by keyboard (focus → Enter).
+	const showActions = page.getByRole('button', { name: 'Show actions' }).first();
+	await showActions.focus();
+	await expect(showActions).toBeFocused();
+	await page.keyboard.press('Enter');
+
+	const editButton = page.getByRole('button', { name: /^Edit / }).first();
+	await expect(editButton).toBeVisible();
+
+	// AC4: the revealed action meets the ≥44px target floor (the A11Y-2 min-h-11 fix).
+	const box = await editButton.boundingBox();
+	expect(box).not.toBeNull();
+	expect(box!.height).toBeGreaterThanOrEqual(44);
+
+	// AC3: the revealed action is a native <button> that had NO outline before Story 6.2 — the global
+	// :focus-visible baseline must give it the branded 2px ring. This is the true net-new case (unlike
+	// nav links, which already had a UA-outline tint), so assert the ~2px width, not merely "some outline".
+	await editButton.focus();
+	const editRing = await editButton.evaluate((el) => {
+		const s = getComputedStyle(el);
+		return { style: s.outlineStyle, width: parseFloat(s.outlineWidth) };
+	});
+	expect(editRing.style).not.toBe('none');
+	expect(editRing.width).toBeGreaterThanOrEqual(2);
+});
+
+test('CaptureSheet returns focus to the FAB after closing with Escape (Story 6.2 AC3)', async ({
+	page
+}) => {
+	await page.goto('/');
+	await page.waitForLoadState('networkidle');
+
+	const fab = page.getByRole('button', { name: 'Log a fill-up or expense' });
+	await fab.focus();
+	await page.keyboard.press('Enter');
+	await expect(page.getByText('Log an entry')).toBeVisible();
+
+	// Escape closes the sheet and bits-ui restores focus to the invoking control (the FAB).
+	await page.keyboard.press('Escape');
+	await expect(page.getByText('Log an entry')).toHaveCount(0);
+	await expect(fab).toBeFocused();
+});
+
+test('Deep-link capture open (/?capture=fuel) lands focus inside the sheet (Story 6.2 AC3)', async ({
+	page
+}) => {
+	await page.goto('/?capture=fuel');
+	await page.waitForLoadState('networkidle');
+	await expect(page.getByText('Log an entry')).toBeVisible();
+
+	// With no invoking control (deep-link open), focus must still be trapped inside the dialog —
+	// not stranded on <body> — so a keyboard user is not lost.
+	const focusInDialog = await page.evaluate(
+		() => document.activeElement?.closest('[role="dialog"]') !== null
+	);
+	expect(focusInDialog).toBe(true);
+});
+
 test('NavBar tabs are reachable via keyboard', async ({ page }) => {
 	await page.goto('/');
 	await page.waitForLoadState('networkidle');

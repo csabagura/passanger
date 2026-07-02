@@ -56,6 +56,7 @@ describe('i18n string catalog (Story 6.1, EN + HU)', () => {
 	// One representative static key per surface — EN exact, then HU exact (never an English echo).
 	const STATIC: ReadonlyArray<[() => string, string, string]> = [
 		[() => m.common_cancel(), 'Cancel', 'Mégse'], // universals
+		[() => m.skip_to_content(), 'Skip to content', 'Ugrás a tartalomra'], // app chrome (Story 6.2 skip-link)
 		[() => m.capture_title(), 'Log an entry', 'Bejegyzés rögzítése'], // B capture
 		[() => m.fuel_field_cost(), 'Total Cost', 'Teljes költség'], // B fuel form
 		[() => m.upnext_heading(), 'Up next', 'Következő'], // C Home

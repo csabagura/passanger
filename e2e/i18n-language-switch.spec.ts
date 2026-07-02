@@ -132,3 +132,25 @@ test('6.1 catalog: every primary surface renders Hungarian after the switch (zer
 	// The whole Hungarian surface tour fetched NOTHING off-device (translations are bundled).
 	expect(offDeviceRequests, `off-device requests: ${offDeviceRequests.join(', ')}`).toEqual([]);
 });
+
+// Story 6.2 (AC3/AC5): the new skip-to-content link is i18n'd — after switching to Hungarian it
+// renders the bundled HU string (not an English echo), exercised on the real switch+reload path.
+test('6.2 skip-link: renders Hungarian after the language switch', async ({ page }) => {
+	await page.goto('/settings');
+	await page.waitForLoadState('networkidle');
+	await page.getByRole('combobox', { name: 'Language' }).selectOption('hu');
+	// setLocale() reloads to apply the locale — wait for the Hungarian nav to render before navigating
+	// away, else goto('/') races the in-flight reload (mirrors the passing switch tests above).
+	await expect(page.getByRole('link', { name: 'Kezdőlap' })).toBeVisible();
+
+	await page.goto('/');
+	await page.waitForLoadState('networkidle');
+
+	// The skip-link carries the Hungarian accessible name and is keyboard-focusable (focus() directly —
+	// headless Chromium's Tab is flaky after navigation; the "first tab stop" ordering is asserted in the
+	// AC3 test). The English string must be gone entirely (no untranslated echo).
+	const skipLink = page.getByRole('link', { name: 'Ugrás a tartalomra' });
+	await skipLink.focus();
+	await expect(skipLink).toBeFocused();
+	await expect(page.getByRole('link', { name: 'Skip to content' })).toHaveCount(0);
+});
