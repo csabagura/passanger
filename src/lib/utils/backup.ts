@@ -3,6 +3,25 @@ import { ok, err } from '$lib/utils/result';
 import type { Result } from '$lib/utils/result';
 import type { AppSettings } from '$lib/utils/settings';
 import type { BackupData } from '$lib/db/backup';
+import type {
+	Vehicle,
+	NewVehicle,
+	FuelLog,
+	NewFuelLog,
+	Expense,
+	NewExpense,
+	ServiceReminder,
+	NewServiceReminder
+} from '$lib/db/schema';
+import {
+	validateNewVehicle,
+	validateNewFuelLog,
+	validateNewExpense,
+	validateNewServiceReminder,
+	isValidRowId,
+	validateVehicleCount,
+	validateVehicleReferentialIntegrity
+} from '$lib/db/validators/rowValidation';
 
 // The on-disk JSON shape. Dates inside `data` serialize to ISO strings via Date.toJSON and are
 // revived back to Date objects in parseBackup.
@@ -46,62 +65,43 @@ function reviveDate(value: unknown): Date | null {
 	return null;
 }
 
-function isValidVehicle(row: unknown): boolean {
-	return (
-		isObject(row) &&
-		typeof row.id === 'number' &&
-		typeof row.name === 'string' &&
-		typeof row.make === 'string' &&
-		typeof row.model === 'string'
-	);
+// ADR-006 AD-WB-2/AD-WB-4 (H17a): each helper revives its Date field(s) then runs the row through
+// the SAME shared validator the repositories use — a hand-edited or foreign backup can no longer
+// seed a row the write boundary would otherwise reject (unpaired units, NaN/Infinity/negative
+// numerics, empty strings). Returns the revived, validated row, or null if invalid.
+
+function reviveAndValidateVehicle(row: unknown): Vehicle | null {
+	if (!isObject(row) || !isValidRowId(row.id)) return null;
+	if (validateNewVehicle(row as unknown as NewVehicle)) return null;
+	return row as unknown as Vehicle;
 }
 
-function isValidFuelLog(row: unknown): boolean {
-	// unit/distanceUnit are enum-typed and load-bearing for consumption/distance math — a foreign
-	// or hand-edited backup with a bad/absent value must be rejected, not silently restored.
-	return (
-		isObject(row) &&
-		typeof row.id === 'number' &&
-		typeof row.vehicleId === 'number' &&
-		reviveDate(row.date) !== null &&
-		typeof row.odometer === 'number' &&
-		typeof row.quantity === 'number' &&
-		(row.unit === 'L' || row.unit === 'gal') &&
-		(row.distanceUnit === 'km' || row.distanceUnit === 'mi') &&
-		typeof row.totalCost === 'number' &&
-		typeof row.calculatedConsumption === 'number' &&
-		// Story 7.1 (v5, review P6) — the fill-quality flags are optional (absent on pre-v5 backups)
-		// but must be BOOLEAN when present: readers coerce `?? false`, so a hand-edited truthy string
-		// like "yes" would silently flag the fill as partial/missed (ADR-005 §5 gate pattern).
-		(row.isPartialFill === undefined || typeof row.isPartialFill === 'boolean') &&
-		(row.precededByMissedFill === undefined || typeof row.precededByMissedFill === 'boolean')
-	);
+function reviveAndValidateFuelLog(row: unknown): FuelLog | null {
+	if (!isObject(row) || !isValidRowId(row.id)) return null;
+	const revived = { ...row, date: reviveDate(row.date) };
+	if (validateNewFuelLog(revived as unknown as NewFuelLog)) return null;
+	return revived as unknown as FuelLog;
 }
 
-function isValidExpense(row: unknown): boolean {
-	return (
-		isObject(row) &&
-		typeof row.id === 'number' &&
-		typeof row.vehicleId === 'number' &&
-		reviveDate(row.date) !== null &&
-		typeof row.type === 'string' &&
-		typeof row.cost === 'number'
-	);
+function reviveAndValidateExpense(row: unknown): Expense | null {
+	if (!isObject(row) || !isValidRowId(row.id)) return null;
+	const revived = { ...row, date: reviveDate(row.date) };
+	if (validateNewExpense(revived as unknown as NewExpense)) return null;
+	return revived as unknown as Expense;
 }
 
-function isValidServiceReminder(row: unknown): boolean {
-	// A reminder must specify at least one interval (km or days), per the schema invariant.
-	// lastServiceDate is optional; only validate it when present.
-	return (
-		isObject(row) &&
-		typeof row.id === 'number' &&
-		typeof row.vehicleId === 'number' &&
-		typeof row.title === 'string' &&
-		(typeof row.intervalKm === 'number' || typeof row.intervalDays === 'number') &&
-		(row.lastServiceDate === undefined ||
-			row.lastServiceDate === null ||
-			reviveDate(row.lastServiceDate) !== null)
-	);
+function reviveAndValidateServiceReminder(row: unknown): ServiceReminder | null {
+	if (!isObject(row) || !isValidRowId(row.id)) return null;
+	// lastServiceDate is optional — normalize an absent/null value to "no key" (matches export's
+	// shape) BEFORE validating, so the validator's optional-field check sees a true absence.
+	const revived: Record<string, unknown> = { ...row };
+	if (row.lastServiceDate === undefined || row.lastServiceDate === null) {
+		delete revived.lastServiceDate;
+	} else {
+		revived.lastServiceDate = reviveDate(row.lastServiceDate);
+	}
+	if (validateNewServiceReminder(revived as unknown as NewServiceReminder)) return null;
+	return revived as unknown as ServiceReminder;
 }
 
 function isValidSettings(value: unknown): boolean {
@@ -169,13 +169,41 @@ export function parseBackup(text: string): Result<{ data: BackupData; settings: 
 		return err('VALIDATION_ERROR', 'This backup is missing or has invalid sections.');
 	}
 
+	// ADR-006 AD-WB-4 (H17a): the vehicle-count cap is checked BEFORE per-row revival — a backup
+	// with more than MAX_VEHICLES rows is rejected outright, matching the write boundary's guard.
+	const vehicleCountError = validateVehicleCount(vehicles.length);
+	if (vehicleCountError) {
+		return err('VALIDATION_ERROR', vehicleCountError);
+	}
+
+	const revivedVehicles = vehicles.map(reviveAndValidateVehicle);
+	const revivedFuelLogs = fuelLogs.map(reviveAndValidateFuelLog);
+	const revivedExpenses = expenses.map(reviveAndValidateExpense);
+	const revivedServiceReminders = serviceReminders.map(reviveAndValidateServiceReminder);
+
 	if (
-		!vehicles.every(isValidVehicle) ||
-		!fuelLogs.every(isValidFuelLog) ||
-		!expenses.every(isValidExpense) ||
-		!serviceReminders.every(isValidServiceReminder)
+		revivedVehicles.some((row) => row === null) ||
+		revivedFuelLogs.some((row) => row === null) ||
+		revivedExpenses.some((row) => row === null) ||
+		revivedServiceReminders.some((row) => row === null)
 	) {
 		return err('VALIDATION_ERROR', 'This backup is missing or has invalid sections.');
+	}
+
+	const validVehicles = revivedVehicles as Vehicle[];
+	const validFuelLogs = revivedFuelLogs as FuelLog[];
+	const validExpenses = revivedExpenses as Expense[];
+	const validServiceReminders = revivedServiceReminders as ServiceReminder[];
+
+	// ADR-006 AD-WB-4 (H17a): every fuelLog/expense/serviceReminder must reference a vehicle
+	// present in THIS file — otherwise it restores as an orphan unreachable by any UI switcher.
+	const vehicleIds = new Set(validVehicles.map((vehicle) => vehicle.id));
+	const referentialError =
+		validateVehicleReferentialIntegrity(vehicleIds, validFuelLogs, 'A fuel log') ||
+		validateVehicleReferentialIntegrity(vehicleIds, validExpenses, 'An expense') ||
+		validateVehicleReferentialIntegrity(vehicleIds, validServiceReminders, 'A service reminder');
+	if (referentialError) {
+		return err('VALIDATION_ERROR', referentialError);
 	}
 
 	if (!isValidSettings(settings)) {
@@ -183,25 +211,10 @@ export function parseBackup(text: string): Result<{ data: BackupData; settings: 
 	}
 
 	const revived: BackupData = {
-		vehicles: vehicles as BackupData['vehicles'],
-		fuelLogs: fuelLogs.map((log) => ({
-			...(log as Record<string, unknown>),
-			date: reviveDate((log as Record<string, unknown>).date) as Date
-		})) as BackupData['fuelLogs'],
-		expenses: expenses.map((expense) => ({
-			...(expense as Record<string, unknown>),
-			date: reviveDate((expense as Record<string, unknown>).date) as Date
-		})) as BackupData['expenses'],
-		serviceReminders: serviceReminders.map((reminder) => {
-			const row = reminder as Record<string, unknown>;
-			if (row.lastServiceDate === undefined || row.lastServiceDate === null) {
-				// Normalize absent/null to "no key" so the restored shape matches what export emits.
-				const rest = { ...row };
-				delete rest.lastServiceDate;
-				return rest;
-			}
-			return { ...row, lastServiceDate: reviveDate(row.lastServiceDate) as Date };
-		}) as unknown as BackupData['serviceReminders']
+		vehicles: validVehicles,
+		fuelLogs: validFuelLogs,
+		expenses: validExpenses,
+		serviceReminders: validServiceReminders
 	};
 
 	return ok({ data: revived, settings: settings as unknown as AppSettings });

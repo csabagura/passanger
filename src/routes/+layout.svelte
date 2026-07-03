@@ -174,6 +174,11 @@
 			if (message.kind === 'restore') {
 				// The whole DB was replaced elsewhere — never silently swap this tab's now-orphaned rows.
 				remoteRestorePending = true;
+				// ADR-006 AD-WB-4 (H17c): bump dataRevision so a pending Undo's generation guard
+				// (history/+page.svelte) sees a change and refuses — otherwise it could re-insert a
+				// pre-restore snapshot into the freshly restored DB. The restoring tab's own pending
+				// Undo is already safe via its location.reload(); this closes the RECEIVING tab's gap.
+				dataRevision++;
 				return;
 			}
 			if (message.kind === 'settings') {

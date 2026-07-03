@@ -11,6 +11,7 @@ import {
 	getVehicleCount
 } from './vehicles';
 import { MAX_VEHICLES } from '$lib/config';
+import { getDataGeneration } from '$lib/utils/tabSync';
 
 beforeEach(async () => {
 	await db.delete();
@@ -282,9 +283,26 @@ describe('VehicleRepository', () => {
 			expect(fetched.error?.code).toBe('NOT_FOUND');
 		});
 
-		it('returns ok for non-existent id (Dexie delete is idempotent)', async () => {
+		it('returns NOT_FOUND for a non-existent id (S17: no silent no-op)', async () => {
+			// ADR-006 AD-WB-6: a no-op delete must not report success or fire notifyDataChanged
+			// (which would bump the data generation and invalidate a pending Undo elsewhere for a
+			// mutation that never happened).
 			const result = await deleteVehicle(999);
-			expect(result.error).toBeNull();
+			expect(result.data).toBeNull();
+			expect(result.error?.code).toBe('NOT_FOUND');
+		});
+
+		it('a no-op delete does not bump the local data generation (S17)', async () => {
+			const generationBefore = getDataGeneration();
+			await deleteVehicle(999);
+			expect(getDataGeneration()).toBe(generationBefore);
+		});
+
+		it('a real delete DOES bump the local data generation', async () => {
+			const saved = await saveVehicle({ name: 'To Delete', make: 'Ford', model: 'Focus' });
+			const generationBefore = getDataGeneration();
+			await deleteVehicle(saved.data!.id);
+			expect(getDataGeneration()).toBe(generationBefore + 1);
 		});
 
 		it('cascade-deletes the vehicle owned fuel logs, expenses, and reminders', async () => {

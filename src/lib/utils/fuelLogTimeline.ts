@@ -48,6 +48,16 @@ function recalculateSortedFuelLogs(logs: FuelLog[]): FuelLog[] {
 		const isPartial = log.isPartialFill ?? false;
 		const missed = log.precededByMissedFill ?? false;
 		const spanBroken = !anchor || anchor.distanceUnit !== log.distanceUnit;
+		// ADR-006 AD-WB-5 (H4 anchor-trust rule): a FULL fill whose odometer does not exceed the
+		// current anchor's is an untrusted/regressing reading (e.g. a below-previous odometer typo).
+		// Anchor selection used to be decoupled from span sign — a regressing full fill still became
+		// the next span's anchor even though its OWN span was non-positive, silently inflating every
+		// downstream span measured from the bogus-low reading. Quarantine it instead: report 0 (below,
+		// via calculateConsumption's own distance<=0 guard) and leave the anchor/carry untouched, so
+		// the NEXT full fill is still measured from the last TRUSTED reading. The first-ever anchor is
+		// unaffected (`anchor === undefined` makes this false) and a unit change still always re-anchors
+		// (`spanBroken` short-circuits this to false, matching existing behaviour).
+		const isRegression = !spanBroken && anchor !== undefined && log.odometer <= anchor.odometer;
 
 		let consumption: number;
 		if (missed || isPartial || spanBroken) {
@@ -56,7 +66,8 @@ function recalculateSortedFuelLogs(logs: FuelLog[]): FuelLog[] {
 			consumption = 0;
 		} else {
 			// Full fill closing the open span: distance since the anchor, litres = carried partials +
-			// this fill. Reuses calculateConsumption (non-positive distance/quantity → 0, PREP-1 finite).
+			// this fill. Reuses calculateConsumption (non-positive distance/quantity → 0, PREP-1 finite)
+			// — a regression also lands here and naturally computes 0 via the distance<=0 guard.
 			consumption = calculateConsumption(
 				log.odometer,
 				anchor!.odometer,
@@ -76,9 +87,15 @@ function recalculateSortedFuelLogs(logs: FuelLog[]): FuelLog[] {
 				// Open span continues: accumulate this partial's litres toward the next full fill.
 				carriedQuantity += log.quantity;
 			}
+		} else if (isRegression) {
+			// QUARANTINE (H4): do NOT re-anchor and do NOT touch carriedQuantity — the untrusted
+			// reading is skipped entirely. Its own litres are deliberately NOT carried forward either:
+			// carrying them would import a known-corrupt endpoint's fuel into the NEXT trusted span's
+			// numerator (a smaller copy of the same poison). Under-counting one fill is bounded and
+			// honest; over-attributing is not (ADR-005 strict-anchor doctrine, D1).
 		} else {
-			// Full fill (incl. first-ever / missed-preceded / unit-change): the tank is full here, so
-			// this reading anchors the next span regardless of how the previous one ended.
+			// Full fill (incl. first-ever / missed-preceded / unit-change / a genuine odometer advance):
+			// the tank is full here and the reading is trusted, so it anchors the next span.
 			anchor = { odometer: log.odometer, distanceUnit: log.distanceUnit };
 			carriedQuantity = 0;
 		}

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { serializeBackup, parseBackup, buildBackupFilename, type BackupFile } from './backup';
-import { BACKUP_APP_ID, DB_VERSION } from '$lib/config';
+import { BACKUP_APP_ID, DB_VERSION, MAX_VEHICLES } from '$lib/config';
 import type { BackupData } from '$lib/db/backup';
 import type { AppSettings } from '$lib/utils/settings';
 
@@ -158,7 +158,12 @@ describe('parseBackup — rejections', () => {
 			app: BACKUP_APP_ID,
 			schemaVersion: 4,
 			exportedAt: new Date().toISOString(),
-			data: { vehicles: [], fuelLogs: [v4FuelLog], expenses: [], serviceReminders: [] },
+			data: {
+				vehicles: [{ id: 1, name: 'Car', make: 'Honda', model: 'Civic' }],
+				fuelLogs: [v4FuelLog],
+				expenses: [],
+				serviceReminders: []
+			},
 			settings
 		});
 		const result = parseBackup(json);
@@ -332,6 +337,135 @@ describe('parseBackup — rejections', () => {
 		const result = parseBackup(json);
 		expect(result.error?.code).toBe('VALIDATION_ERROR');
 		expect(result.error?.message).toMatch(/settings/i);
+	});
+
+	it('rejects an unpaired L+mi fuel log (ADR-006 AD-WB-2 pairing gate)', () => {
+		const json = JSON.stringify({
+			app: BACKUP_APP_ID,
+			schemaVersion: DB_VERSION,
+			exportedAt: new Date().toISOString(),
+			data: {
+				vehicles: [{ id: 1, name: 'Car', make: 'Honda', model: 'Civic' }],
+				fuelLogs: [
+					{
+						id: 1,
+						vehicleId: 1,
+						date: new Date('2026-01-01').toISOString(),
+						odometer: 1000,
+						quantity: 40,
+						unit: 'L',
+						distanceUnit: 'mi',
+						totalCost: 60,
+						calculatedConsumption: 0
+					}
+				],
+				expenses: [],
+				serviceReminders: []
+			},
+			settings
+		});
+		const result = parseBackup(json);
+		expect(result.error?.code).toBe('VALIDATION_ERROR');
+	});
+
+	it.each([NaN, Infinity, -Infinity, -1, 0])(
+		'rejects a fuel log with odometer=%s (NaN/±Infinity/negative/zero numerics)',
+		(odometer) => {
+			const json = JSON.stringify({
+				app: BACKUP_APP_ID,
+				schemaVersion: DB_VERSION,
+				exportedAt: new Date().toISOString(),
+				data: {
+					vehicles: [{ id: 1, name: 'Car', make: 'Honda', model: 'Civic' }],
+					fuelLogs: [
+						{
+							id: 1,
+							vehicleId: 1,
+							date: new Date('2026-01-01').toISOString(),
+							odometer,
+							quantity: 40,
+							unit: 'L',
+							distanceUnit: 'km',
+							totalCost: 60,
+							calculatedConsumption: 0
+						}
+					],
+					expenses: [],
+					serviceReminders: []
+				},
+				settings
+			});
+			// JSON has no NaN/Infinity literal — it round-trips as `null`, which the number checks
+			// reject just as surely as the finite guard rejects a literal Infinity from a hand-edit.
+			const result = parseBackup(json);
+			expect(result.error?.code).toBe('VALIDATION_ERROR');
+		}
+	);
+
+	it('rejects an empty-string vehicle name (empty strings)', () => {
+		const json = JSON.stringify({
+			app: BACKUP_APP_ID,
+			schemaVersion: DB_VERSION,
+			exportedAt: new Date().toISOString(),
+			data: {
+				vehicles: [{ id: 1, name: '', make: 'Honda', model: 'Civic' }],
+				fuelLogs: [],
+				expenses: [],
+				serviceReminders: []
+			},
+			settings
+		});
+		const result = parseBackup(json);
+		expect(result.error?.code).toBe('VALIDATION_ERROR');
+	});
+
+	it('rejects a dangling vehicleId (fuel log references a vehicle absent from the file)', () => {
+		const json = JSON.stringify({
+			app: BACKUP_APP_ID,
+			schemaVersion: DB_VERSION,
+			exportedAt: new Date().toISOString(),
+			data: {
+				vehicles: [{ id: 1, name: 'Car', make: 'Honda', model: 'Civic' }],
+				fuelLogs: [
+					{
+						id: 1,
+						vehicleId: 99,
+						date: new Date('2026-01-01').toISOString(),
+						odometer: 1000,
+						quantity: 40,
+						unit: 'L',
+						distanceUnit: 'km',
+						totalCost: 60,
+						calculatedConsumption: 0
+					}
+				],
+				expenses: [],
+				serviceReminders: []
+			},
+			settings
+		});
+		const result = parseBackup(json);
+		expect(result.error?.code).toBe('VALIDATION_ERROR');
+		expect(result.error?.message).toMatch(/does not exist in this backup/i);
+	});
+
+	it('rejects more than MAX_VEHICLES vehicles', () => {
+		const vehicles = Array.from({ length: MAX_VEHICLES + 1 }, (_, i) => ({
+			id: i + 1,
+			name: `Car ${i + 1}`,
+			make: 'Honda',
+			model: 'Civic'
+		}));
+		const json = JSON.stringify({
+			app: BACKUP_APP_ID,
+			schemaVersion: DB_VERSION,
+			exportedAt: new Date().toISOString(),
+			data: { vehicles, fuelLogs: [], expenses: [], serviceReminders: [] },
+			settings
+		});
+		const result = parseBackup(json);
+		expect(result.error?.code).toBe('VALIDATION_ERROR');
+		expect(result.error?.message).toMatch(/cannot contain more than/i);
 	});
 
 	it('accepts empty arrays (empty-dataset backup)', () => {

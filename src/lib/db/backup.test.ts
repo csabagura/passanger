@@ -102,6 +102,18 @@ describe('exportAllTables', () => {
 		const result = await exportAllTables();
 		expect(result.error?.code).toBe('GET_FAILED');
 	});
+
+	it('blocks export of a corrupt row instead of shipping an unrestorable backup (ADR-006 AD-WB-4 / H17b)', async () => {
+		// A legacy NaN odometer would round-trip through JSON.stringify as `null`, which the read-side
+		// validator rejects on restore — better to catch it truthfully at export time.
+		await db.vehicles.bulkPut(vehicles);
+		await db.fuelLogs.bulkPut([{ ...fuelLogs[0], odometer: NaN }]);
+
+		const result = await exportAllTables();
+		expect(result.error?.code).toBe('VALIDATION_ERROR');
+		expect(result.error?.message).toMatch(/export blocked/i);
+		expect(result.error?.message).toMatch(/1 fuel log row/i);
+	});
 });
 
 describe('restoreAllTables', () => {

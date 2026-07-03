@@ -1,7 +1,11 @@
 <script lang="ts">
 	import { onDestroy, getContext } from 'svelte';
 	import type { Snippet } from 'svelte';
-	import { getAllFuelLogs, saveFuelLog, updateFuelLogsAtomic } from '$lib/db/repositories/fuelLogs';
+	import {
+		getAllFuelLogs,
+		saveFuelLog,
+		updateFuelLogWithTimeline
+	} from '$lib/db/repositories/fuelLogs';
 	import { saveErrorMessage } from '$lib/utils/saveErrorMessage';
 	import type { FuelLog, NewFuelLog } from '$lib/db/schema';
 	import {
@@ -28,10 +32,8 @@
 		getVolumeUnitForFuelUnit
 	} from '$lib/utils/calculations';
 	import {
-		buildFuelLogUpdatePlan,
 		getFuelLogPredecessor,
 		getFuelLogSuccessor,
-		recalculateFuelLogConsumptions,
 		sortFuelLogsForTimeline
 	} from '$lib/utils/fuelLogTimeline';
 	import { consumptionTrend } from '$lib/utils/analytics';
@@ -55,7 +57,6 @@
 		onSave: (result: FuelEntrySaveResult) => void;
 		mode?: FormMode;
 		initialFuelLog?: FuelLog;
-		timelineContextVersion?: number;
 		onCancel?: () => void;
 		onSuccessFeedbackComplete?: () => void;
 		onFirstCreateSave?: (log: FuelLog) => void;
@@ -67,7 +68,6 @@
 		onSave,
 		mode = 'create',
 		initialFuelLog = undefined,
-		timelineContextVersion = 0,
 		onCancel = () => {},
 		onSuccessFeedbackComplete = () => {},
 		onFirstCreateSave = () => {},
@@ -437,6 +437,12 @@
 
 	let isComponentMounted = $state(true);
 
+	// ADR-006 AD-WB-1: the mount-time load below is UX context only (previous-odometer hint, amber
+	// warning, sparkline) — it is no longer the source of the PERSISTED plan (that is fresh-read
+	// in-transaction by updateFuelLogWithTimeline/saveFuelLog at commit), so a cross-tab-staleness
+	// re-read trigger is no longer load-bearing for correctness. Retired (closes S12's mechanism at
+	// the root rather than patching it — the history/+page.svelte fuelEditTimelineVersion plumbing
+	// that used to drive this is retired alongside it).
 	$effect(() => {
 		isComponentMounted = true;
 		loadTimelineContext(vehicleId);
@@ -446,14 +452,6 @@
 			historyLoadRequestId += 1;
 			pendingHistoryLoad = null;
 		};
-	});
-
-	$effect(() => {
-		if (!isEditMode || initialFuelLog === undefined || timelineContextVersion === 0) {
-			return;
-		}
-
-		loadTimelineContext(vehicleId);
 	});
 
 	$effect(() => {
@@ -610,6 +608,11 @@
 		}
 
 		if (isEditMode && initialFuelLog) {
+			// ADR-006 AD-WB-1: timelineContextLogs is a pre-submit UX estimate ONLY (the successor
+			// bound warning below) — it may be stale (another tab, a same-tab neighbor delete). The
+			// PERSISTED plan is no longer built here; updateFuelLogWithTimeline fresh-reads the
+			// vehicle's timeline and builds+applies the plan itself, inside one transaction, closing
+			// the H14 TOCTOU (a concurrent write can no longer be silently overwritten by a stale plan).
 			const timelineContextLogs = timelineLogs.some((log) => log.id === initialFuelLog.id)
 				? timelineLogs
 				: [...timelineLogs, initialFuelLog];
@@ -637,8 +640,7 @@
 				precededByMissedFill
 			};
 
-			const updatePlan = buildFuelLogUpdatePlan(timelineContextLogs, updatedLog);
-			const result = await updateFuelLogsAtomic(updatePlan);
+			const result = await updateFuelLogWithTimeline(updatedLog);
 			if (!isComponentMounted) {
 				return;
 			}
@@ -652,50 +654,19 @@
 				return;
 			}
 
-			const savedEditedLog = result.data.find((log) => log.id === initialFuelLog.id) ?? null;
-
-			const completedLog = savedEditedLog ?? {
-				...updatedLog,
-				calculatedConsumption:
-					updatePlan.find((patch) => patch.id === initialFuelLog.id)?.changes
-						.calculatedConsumption ?? updatedLog.calculatedConsumption
-			};
+			const completedLog = result.data.find((log) => log.id === initialFuelLog.id) ?? updatedLog;
 
 			setFormValuesFromLog(completedLog);
 			showSuccessResult(completedLog, parsedCost, 'Updated');
-			onSave(result.data.length > 0 ? result.data : [completedLog]);
+			onSave(result.data);
 			return;
 		}
 
-		// Story 7.1 — compute the new fill's consumption through the shared timeline engine so a partial
-		// or missed-preceded fill zeroes out, and a full fill spans back over any preceding partials
-		// (not just the immediate predecessor). The new row is normally the latest by date (now()), so
-		// no existing neighbor's consumption changes — only this row's. (Known pre-existing gap: if an
-		// existing log is FUTURE-dated, its stored consumption goes stale here — the create path only
-		// persists the new row, same as the old per-predecessor calc; tracked in deferred-work.md.)
-		// With no flags this is identical to the previous per-predecessor calc (the engine's anchor IS
-		// the immediate predecessor then).
+		// ADR-006 AD-WB-1: consumption is no longer precomputed here from the form's (possibly stale)
+		// timelineLogs snapshot — saveFuelLog computes it in-transaction from a fresh read, and also
+		// recomputes+persists any affected successor (a backdated/interleaved insert). notes stays a
+		// UI-owned field (never engine-derived), so it's set here as before.
 		const now = new Date();
-		const SYNTHETIC_NEW_ID = Number.MAX_SAFE_INTEGER;
-		const syntheticNewLog: FuelLog = {
-			id: SYNTHETIC_NEW_ID,
-			vehicleId,
-			date: now,
-			odometer: parsedOdometer,
-			quantity: parsedQuantity,
-			unit: storageUnit,
-			distanceUnit,
-			totalCost: parsedCost,
-			currency,
-			calculatedConsumption: 0,
-			isPartialFill,
-			precededByMissedFill
-		};
-		const consumption =
-			recalculateFuelLogConsumptions([...timelineLogs, syntheticNewLog]).find(
-				(log) => log.id === SYNTHETIC_NEW_ID
-			)?.calculatedConsumption ?? 0;
-
 		const entry: NewFuelLog = {
 			vehicleId,
 			date: now,
@@ -705,7 +676,7 @@
 			distanceUnit,
 			totalCost: parsedCost,
 			currency,
-			calculatedConsumption: consumption,
+			calculatedConsumption: 0,
 			isPartialFill,
 			precededByMissedFill,
 			notes: ''
