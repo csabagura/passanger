@@ -40,7 +40,9 @@
 	] as const satisfies ReadonlyArray<{ label: string; value: HistoryEntryFilter }>;
 
 	const vehiclesCtx = getContext<VehiclesContext>('vehicles');
-	const tabSyncCtx = getContext<{ dataRevision: number } | undefined>('tabSync');
+	const tabSyncCtx = getContext<{ dataRevision: number; restorePending?: boolean } | undefined>(
+		'tabSync'
+	);
 	const toast = getContext<ToastApi | undefined>('toast');
 
 	let currentVehicle = $derived(vehiclesCtx.activeVehicle);
@@ -57,7 +59,6 @@
 
 	// Edit state
 	let editingEntry = $state<HistoryEntry | null>(null);
-	let fuelEditTimelineVersion = $state(0);
 	let pendingEditReturnFocusKey = $state<string | null>(null);
 
 	// Delete state — single-action (no arm-then-confirm). `deletingEntryKey` only guards re-entrancy
@@ -294,7 +295,6 @@
 
 	function handleEdit(request: HistoryEntry): void {
 		if (deletingEntryKey) return;
-		fuelEditTimelineVersion = 0;
 		editingEntry = request;
 	}
 
@@ -336,25 +336,6 @@
 		document.querySelector<HTMLElement>('[data-history-empty-state-cta="true"]')?.focus();
 	}
 
-	function refreshOpenFuelEditAfterFuelDeletion(
-		deletedFuelLogId: number,
-		updatedEntries: HistoryEntry[]
-	): void {
-		if (editingEntry?.kind !== 'fuel' || editingEntry.entry.id === deletedFuelLogId) {
-			return;
-		}
-
-		const updatedEditingEntry = updatedEntries.find(
-			(entry): entry is Extract<HistoryEntry, { kind: 'fuel' }> =>
-				entry.kind === 'fuel' && entry.entry.id === editingEntry?.entry.id
-		);
-		if (updatedEditingEntry) {
-			editingEntry = updatedEditingEntry;
-		}
-
-		fuelEditTimelineVersion += 1;
-	}
-
 	async function handleDelete(request: HistoryEntry): Promise<void> {
 		if (deletingEntryKey) return;
 
@@ -381,11 +362,8 @@
 					return;
 				}
 
-				const updatedEntries = (result.data?.updatedLogs ?? []).map(
-					(entry) => ({ kind: 'fuel', entry }) satisfies HistoryEntry
-				);
 				const updatedById = new Map(
-					updatedEntries.map((updatedEntry) => [updatedEntry.entry.id, updatedEntry.entry])
+					(result.data?.updatedLogs ?? []).map((entry) => [entry.id, entry])
 				);
 				historyEntries = historyEntries.map((item) => {
 					if (item.kind === 'fuel') {
@@ -394,12 +372,10 @@
 					}
 					return item;
 				});
-				refreshOpenFuelEditAfterFuelDeletion(request.entry.id, updatedEntries);
 			}
 
 			if (editingEntry && getHistoryEntryKey(editingEntry) === entryKey) {
 				editingEntry = null;
-				fuelEditTimelineVersion = 0;
 			}
 			if (deletingSelectedDetailEntry) {
 				closeDetailSheetWithoutFocus();
@@ -486,12 +462,10 @@
 				return item;
 			})
 			.sort(compareHistoryEntriesNewestFirst);
-		fuelEditTimelineVersion = 0;
 	}
 
 	function handleEditedFuelFeedbackComplete(): void {
 		editingEntry = null;
-		fuelEditTimelineVersion = 0;
 		void restorePendingEditFocus();
 	}
 
@@ -513,7 +487,6 @@
 
 	function handleEditCancelled(): void {
 		editingEntry = null;
-		fuelEditTimelineVersion = 0;
 		void restorePendingEditFocus();
 	}
 
@@ -561,6 +534,10 @@
 		const vehicleId = vehiclesCtx.activeVehicle?.id;
 		// Reactive dep: a write in another tab bumps dataRevision → re-run this load (multi-tab safety).
 		const revision = tabSyncCtx?.dataRevision ?? 0;
+		// ADR-006 AD-WB-4 (H17c): a pending cross-tab restore ALSO bumps dataRevision (to disarm this
+		// tab's Undo guard, read below), but must NOT trigger a reload here — that would silently swap
+		// this tab's intentionally-stale list for the restored data before the user clicks Reload.
+		if (tabSyncCtx?.restorePending) return;
 		if (vehicleId && revision >= 0) {
 			void loadEntriesForVehicle(vehicleId);
 		} else {
@@ -671,7 +648,6 @@
 								vehicleId={currentVehicle.id}
 								mode="edit"
 								initialFuelLog={editingFuelLog}
-								timelineContextVersion={fuelEditTimelineVersion}
 								onSave={handleEditedFuelSaved}
 								onSuccessFeedbackComplete={handleEditedFuelFeedbackComplete}
 								onCancel={handleEditCancelled}

@@ -6,13 +6,11 @@ import {
 	saveFuelLog,
 	getFuelLogById,
 	getAllFuelLogs,
-	updateFuelLog,
-	updateFuelLogsAtomic,
+	updateFuelLogWithTimeline,
 	deleteFuelLog,
 	restoreFuelLog
 } from './fuelLogs';
 import type { FuelLog, NewFuelLog } from '../schema';
-import { buildFuelLogUpdatePlan } from '$lib/utils/fuelLogTimeline';
 
 // Factory functions — Dexie v4 mutates the input object after add() to set the id.
 // Always create fresh objects per test to avoid cross-test contamination.
@@ -125,31 +123,35 @@ describe('FuelLogRepository', () => {
 		});
 	});
 
-	describe('updateFuelLog — validation', () => {
-		it('rejects zero quantity in changes', async () => {
+	describe('updateFuelLogWithTimeline — validation', () => {
+		it('rejects zero quantity', async () => {
 			const saved = await saveFuelLog(makeLog());
-			const result = await updateFuelLog(saved.data!.id, { quantity: 0 });
+			const result = await updateFuelLogWithTimeline({ ...saved.data!, quantity: 0 });
 			expect(result.data).toBeNull();
 			expect(result.error?.code).toBe('VALIDATION_ERROR');
 		});
 
-		it('rejects invalid unit in changes', async () => {
+		it('rejects an unpaired unit/distanceUnit combination', async () => {
 			const saved = await saveFuelLog(makeLog());
-			const result = await updateFuelLog(saved.data!.id, { unit: 'km' as 'L' });
+			const result = await updateFuelLogWithTimeline({
+				...saved.data!,
+				unit: 'gal',
+				distanceUnit: 'km'
+			});
 			expect(result.data).toBeNull();
 			expect(result.error?.code).toBe('VALIDATION_ERROR');
 		});
 
-		it('rejects Infinity quantity in changes', async () => {
+		it('rejects Infinity quantity', async () => {
 			const saved = await saveFuelLog(makeLog());
-			const result = await updateFuelLog(saved.data!.id, { quantity: Infinity });
+			const result = await updateFuelLogWithTimeline({ ...saved.data!, quantity: Infinity });
 			expect(result.data).toBeNull();
 			expect(result.error?.code).toBe('VALIDATION_ERROR');
 		});
 
-		it('rejects Infinity totalCost in changes', async () => {
+		it('rejects Infinity totalCost', async () => {
 			const saved = await saveFuelLog(makeLog());
-			const result = await updateFuelLog(saved.data!.id, { totalCost: Infinity });
+			const result = await updateFuelLogWithTimeline({ ...saved.data!, totalCost: Infinity });
 			expect(result.data).toBeNull();
 			expect(result.error?.code).toBe('VALIDATION_ERROR');
 		});
@@ -166,10 +168,10 @@ describe('FuelLogRepository', () => {
 			expect(result.data?.unit).toBe('L');
 		});
 
-		it('stores calculatedConsumption field correctly', async () => {
+		it('ADR-006 AD-WB-1: calculatedConsumption is engine-computed in-transaction, not trusted from the caller — a first-ever fill (no anchor) always computes 0 regardless of what the caller passed', async () => {
 			const result = await saveFuelLog(makeLog());
 			expect(result.error).toBeNull();
-			expect(result.data?.calculatedConsumption).toBe(7.2);
+			expect(result.data?.calculatedConsumption).toBe(0);
 		});
 
 		it('stores notes field correctly', async () => {
@@ -182,7 +184,60 @@ describe('FuelLogRepository', () => {
 			const result = await saveFuelLog(makeGalLog());
 			expect(result.error).toBeNull();
 			expect(result.data?.unit).toBe('gal');
-			expect(result.data?.calculatedConsumption).toBe(35.8);
+			expect(result.data?.calculatedConsumption).toBe(0);
+		});
+
+		it('ADR-006 AD-WB-1: computes real consumption against a fresh-read prior fill (not a caller-supplied value)', async () => {
+			await saveFuelLog({
+				...makeLog(),
+				date: new Date('2025-01-10'),
+				odometer: 100,
+				quantity: 10,
+				calculatedConsumption: 999 // caller-supplied — must be IGNORED
+			});
+			const second = await saveFuelLog({
+				...makeLog(),
+				date: new Date('2025-01-11'),
+				odometer: 200,
+				quantity: 10,
+				calculatedConsumption: 999 // caller-supplied — must be IGNORED
+			});
+			expect(second.error).toBeNull();
+			// distance 100, litres 10 -> 10 L/100km, NOT the caller's 999.
+			expect(second.data?.calculatedConsumption).toBeCloseTo(10);
+		});
+
+		it('ADR-006 AD-WB-1: a backdated/interleaved insert recomputes and persists the affected successor', async () => {
+			const first = await saveFuelLog({
+				...makeLog(),
+				date: new Date('2025-01-10'),
+				odometer: 100,
+				quantity: 10
+			});
+			const last = await saveFuelLog({
+				...makeLog(),
+				date: new Date('2025-01-12'),
+				odometer: 300,
+				quantity: 10
+			});
+			// last's pre-insert consumption: distance 200 (300-100), litres 10 -> 5 L/100km.
+			expect((await getFuelLogById(last.data!.id)).data?.calculatedConsumption).toBeCloseTo(5);
+
+			// Backdated insert BETWEEN first and last splits the span: first->middle (100->200,
+			// litres 10 -> 10) and middle->last (200->300, litres 10 -> 10). last's stored value
+			// must be recomputed from 5 to 10 as a side effect of this insert, even though the
+			// caller only asked to save the middle row.
+			await saveFuelLog({
+				...makeLog(),
+				date: new Date('2025-01-11'),
+				odometer: 200,
+				quantity: 10
+			});
+
+			const refreshedFirst = await getFuelLogById(first.data!.id);
+			const refreshedLast = await getFuelLogById(last.data!.id);
+			expect(refreshedFirst.data?.calculatedConsumption).toBe(0); // still the anchor, unaffected
+			expect(refreshedLast.data?.calculatedConsumption).toBeCloseTo(10);
 		});
 
 		it('saves without optional notes', async () => {
@@ -241,78 +296,156 @@ describe('FuelLogRepository', () => {
 		});
 	});
 
-	describe('updateFuelLog', () => {
-		it('persists quantity change while preserving other fields', async () => {
+	describe('updateFuelLogWithTimeline (ADR-006 AD-WB-1 — repo-owned create/update timeline boundary)', () => {
+		it('persists a field change while preserving other fields', async () => {
 			const saved = await saveFuelLog(makeLog());
-			const updated = await updateFuelLog(saved.data!.id, { quantity: 55.0 });
-			expect(updated.error).toBeNull();
-			expect(updated.data?.quantity).toBe(55.0);
-			expect(updated.data?.vehicleId).toBe(1);
-			expect(updated.data?.unit).toBe('L');
+			const result = await updateFuelLogWithTimeline({ ...saved.data!, quantity: 55.0 });
+			expect(result.error).toBeNull();
+			const editedRow = result.data?.find((log) => log.id === saved.data!.id);
+			expect(editedRow?.quantity).toBe(55.0);
+			expect(editedRow?.vehicleId).toBe(1);
+			expect(editedRow?.unit).toBe('L');
 		});
 
-		it('returns err with NOT_FOUND when id does not exist', async () => {
-			const result = await updateFuelLog(999, { quantity: 10 });
+		it('returns NOT_FOUND when id does not exist', async () => {
+			const saved = await saveFuelLog(makeLog());
+			const result = await updateFuelLogWithTimeline({ ...saved.data!, id: 999 });
 			expect(result.data).toBeNull();
 			expect(result.error?.code).toBe('NOT_FOUND');
 		});
-	});
 
-	describe('updateFuelLogsAtomic', () => {
-		it('updates the requested logs inside a single transaction', async () => {
-			const first = await saveFuelLog(makeLog());
-			const second = await saveFuelLog({
-				...makeLog(),
-				odometer: 51000,
-				calculatedConsumption: 8.1
-			});
+		it('rejects a vehicleId change rather than silently dropping the edit (ADR-006 — the timeline query uses the NEW vehicleId and would otherwise never find this row)', async () => {
+			const saved = await saveFuelLog(makeLog());
+			const original = saved.data!;
 
-			const result = await updateFuelLogsAtomic([
-				{ id: first.data!.id, changes: { quantity: 41 } },
-				{ id: second.data!.id, changes: { calculatedConsumption: 7.8 } }
-			]);
+			const result = await updateFuelLogWithTimeline({ ...original, vehicleId: 2, quantity: 99 });
+			expect(result.data).toBeNull();
+			expect(result.error?.code).toBe('VALIDATION_ERROR');
 
-			expect(result.error).toBeNull();
-			expect(result.data).toHaveLength(2);
-
-			const refreshedFirst = await getFuelLogById(first.data!.id);
-			const refreshedSecond = await getFuelLogById(second.data!.id);
-			expect(refreshedFirst.data?.quantity).toBe(41);
-			expect(refreshedSecond.data?.calculatedConsumption).toBe(7.8);
+			// The row is untouched — neither the vehicleId nor the attempted quantity change landed.
+			const refreshed = await getFuelLogById(original.id);
+			expect(refreshed.data?.vehicleId).toBe(1);
+			expect(refreshed.data?.quantity).toBe(original.quantity);
 		});
 
-		it('persists a currency-only edit end-to-end via buildFuelLogUpdatePlan (H1 regression)', async () => {
+		it('persists a currency-only edit end-to-end (H1 regression)', async () => {
 			const saved = await saveFuelLog({ ...makeLog(), currency: '€' });
 			const original = saved.data!;
 
-			const patches = buildFuelLogUpdatePlan([original], { ...original, currency: 'Ft' });
-			const result = await updateFuelLogsAtomic(patches);
+			const result = await updateFuelLogWithTimeline({ ...original, currency: 'Ft' });
 			expect(result.error).toBeNull();
 
 			const refreshed = await getFuelLogById(original.id);
 			expect(refreshed.data?.currency).toBe('Ft');
 		});
 
-		it('rolls back earlier updates when any later patch fails', async () => {
-			const first = await saveFuelLog(makeLog());
-			const second = await saveFuelLog({
+		it('recomputes and persists a successor whose span the edit affects', async () => {
+			const first = await saveFuelLog({
 				...makeLog(),
-				odometer: 51000,
-				calculatedConsumption: 8.1
+				date: new Date('2025-01-10'),
+				odometer: 100,
+				quantity: 10
+			});
+			const middle = await saveFuelLog({
+				...makeLog(),
+				date: new Date('2025-01-11'),
+				odometer: 200,
+				quantity: 10
+			});
+			const last = await saveFuelLog({
+				...makeLog(),
+				date: new Date('2025-01-12'),
+				odometer: 300,
+				quantity: 10
+			});
+			// Pre-edit: last spans 200->300 (distance 100), litres 10 -> 10 L/100km.
+			expect((await getFuelLogById(last.data!.id)).data?.calculatedConsumption).toBeCloseTo(10);
+
+			// Editing middle's odometer shrinks the middle->last span.
+			const result = await updateFuelLogWithTimeline({ ...middle.data!, odometer: 250 });
+			expect(result.error).toBeNull();
+
+			const refreshedLast = await getFuelLogById(last.data!.id);
+			// last now spans 250->300 (distance 50), litres 10 -> 20 L/100km.
+			expect(refreshedLast.data?.calculatedConsumption).toBeCloseTo(20);
+			expect((await getFuelLogById(first.data!.id)).data?.calculatedConsumption).toBe(0);
+			expect(result.data!.some((log) => log.id === last.data!.id)).toBe(true);
+		});
+
+		it('ADR-006 AD-WB-1 (H14/S12 — the concurrent-write edit test): recomputes a successor added by a concurrent write, which no caller-supplied timeline snapshot could have known about', async () => {
+			// updateFuelLogWithTimeline takes NO timeline/plan parameter — it can only see the
+			// timeline by fresh-reading at commit time. This test proves that fresh-read actually
+			// happens: a row created AFTER the edited row was fetched (simulating a second tab or
+			// the documented dual-mounted page+CaptureSheet writing between "mount" and "save") is
+			// still correctly recomputed. This is the exact TOCTOU the old client-built-plan +
+			// updateFuelLogsAtomic pattern could not close (a plan built from a stale snapshot simply
+			// never contained this row's id, so it was never recomputed).
+			const first = await saveFuelLog({
+				...makeLog(),
+				date: new Date('2025-01-10'),
+				odometer: 100,
+				quantity: 10
+			});
+			const middle = await saveFuelLog({
+				...makeLog(),
+				date: new Date('2025-01-11'),
+				odometer: 200,
+				quantity: 10
+			});
+			void first;
+
+			// The "concurrent write" — lands in the DB after `middle` was captured by the test/caller.
+			const concurrent = await saveFuelLog({
+				...makeLog(),
+				date: new Date('2025-01-12'),
+				odometer: 300,
+				quantity: 10
+			});
+			expect((await getFuelLogById(concurrent.data!.id)).data?.calculatedConsumption).toBeCloseTo(
+				10
+			);
+
+			const result = await updateFuelLogWithTimeline({ ...middle.data!, odometer: 250 });
+			expect(result.error).toBeNull();
+
+			// concurrent (invisible to any pre-captured snapshot) IS recomputed: 250->300 (distance
+			// 50), litres 10 -> 20 L/100km — proof the plan came from a fresh read, not a stale one.
+			const refreshedConcurrent = await getFuelLogById(concurrent.data!.id);
+			expect(refreshedConcurrent.data?.calculatedConsumption).toBeCloseTo(20);
+			expect(result.data!.some((log) => log.id === concurrent.data!.id)).toBe(true);
+		});
+
+		it('rolls back the edited row when a successor update fails (atomicity)', async () => {
+			const middle = await saveFuelLog({
+				...makeLog(),
+				date: new Date('2025-01-11'),
+				odometer: 200,
+				quantity: 10
+			});
+			const last = await saveFuelLog({
+				...makeLog(),
+				date: new Date('2025-01-12'),
+				odometer: 300,
+				quantity: 10
 			});
 
-			const result = await updateFuelLogsAtomic([
-				{ id: first.data!.id, changes: { quantity: 41 } },
-				{ id: second.data!.id + 999, changes: { calculatedConsumption: 7.8 } }
-			]);
+			const updateSpy = vi
+				.spyOn(db.fuelLogs, 'update')
+				.mockRejectedValue(new Error('Simulated successor update failure'));
 
-			expect(result.data).toBeNull();
-			expect(result.error?.code).toBe('NOT_FOUND');
+			try {
+				const result = await updateFuelLogWithTimeline({ ...middle.data!, odometer: 250 });
+				expect(result.data).toBeNull();
+				expect(result.error?.code).toBe('UPDATE_FAILED');
 
-			const refreshedFirst = await getFuelLogById(first.data!.id);
-			const refreshedSecond = await getFuelLogById(second.data!.id);
-			expect(refreshedFirst.data?.quantity).toBe(40.5);
-			expect(refreshedSecond.data?.calculatedConsumption).toBe(8.1);
+				// Nothing was persisted — the edited row's OWN change rolled back too, one transaction.
+				const refreshedMiddle = await getFuelLogById(middle.data!.id);
+				const refreshedLast = await getFuelLogById(last.data!.id);
+				expect(refreshedMiddle.data?.odometer).toBe(200);
+				expect(refreshedLast.data?.calculatedConsumption).toBeCloseTo(10);
+			} finally {
+				updateSpy.mockRestore();
+			}
 		});
 	});
 
@@ -577,7 +710,9 @@ describe('FuelLogRepository', () => {
 			expect(saved.unit).toBe(log.unit);
 			expect(saved.distanceUnit).toBe(log.distanceUnit);
 			expect(saved.totalCost).toBe(log.totalCost);
-			expect(saved.calculatedConsumption).toBe(log.calculatedConsumption);
+			// calculatedConsumption is engine-computed (ADR-006 AD-WB-1), not a pass-through field —
+			// a first-ever fill has no anchor, so it is always 0 regardless of what was requested.
+			expect(saved.calculatedConsumption).toBe(0);
 		});
 	});
 

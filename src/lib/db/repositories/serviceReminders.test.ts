@@ -9,6 +9,7 @@ import {
 	updateServiceReminder,
 	deleteServiceReminder
 } from './serviceReminders';
+import { getDataGeneration } from '$lib/utils/tabSync';
 
 beforeEach(async () => {
 	await db.delete();
@@ -183,6 +184,43 @@ describe('ServiceReminderRepository', () => {
 			expect(result.data).toBeNull();
 			expect(result.error?.code).toBe('NOT_FOUND');
 		});
+
+		it('S13/ADR-006 AD-WB-6: rejects clearing both intervals in the same patch', async () => {
+			const saved = await saveServiceReminder({ vehicleId: 1, title: 'Oil', intervalKm: 10000 });
+			const result = await updateServiceReminder(saved.data!.id, {
+				intervalKm: undefined,
+				intervalDays: undefined
+			});
+			expect(result.data).toBeNull();
+			expect(result.error?.code).toBe('VALIDATION_ERROR');
+			// The reminder must be untouched — a rejected update is not partially applied.
+			const stillThere = await getServiceReminderById(saved.data!.id);
+			expect(stillThere.data?.intervalKm).toBe(10000);
+		});
+
+		it('S13: rejects clearing the ONLY interval a reminder has, even when the other was never set', async () => {
+			// The general form of the bug: the existing record has ONLY intervalKm; a patch that
+			// touches only intervalKm (clearing it) would leave the record with zero intervals even
+			// though the patch itself never mentions intervalDays. This needs the merged-with-existing
+			// check (hasAtLeastOneInterval), not just a same-patch-both-undefined check.
+			const saved = await saveServiceReminder({ vehicleId: 1, title: 'Oil', intervalKm: 10000 });
+			const result = await updateServiceReminder(saved.data!.id, { intervalKm: undefined });
+			expect(result.data).toBeNull();
+			expect(result.error?.code).toBe('VALIDATION_ERROR');
+		});
+
+		it('allows clearing one interval when the other remains (km cleared, days set)', async () => {
+			const saved = await saveServiceReminder({
+				vehicleId: 1,
+				title: 'Oil',
+				intervalKm: 10000,
+				intervalDays: 365
+			});
+			const result = await updateServiceReminder(saved.data!.id, { intervalKm: undefined });
+			expect(result.error).toBeNull();
+			expect(result.data?.intervalKm).toBeUndefined();
+			expect(result.data?.intervalDays).toBe(365);
+		});
 	});
 
 	describe('updateServiceReminder', () => {
@@ -228,9 +266,26 @@ describe('ServiceReminderRepository', () => {
 			expect(fetched.error?.code).toBe('NOT_FOUND');
 		});
 
-		it('returns ok for a non-existent id (Dexie delete is idempotent)', async () => {
+		it('returns NOT_FOUND for a non-existent id (S17: no silent no-op)', async () => {
+			// ADR-006 AD-WB-6: a no-op delete must not report success or fire notifyDataChanged
+			// (which would bump the data generation and invalidate a pending Undo elsewhere for a
+			// mutation that never happened).
 			const result = await deleteServiceReminder(999);
-			expect(result.error).toBeNull();
+			expect(result.data).toBeNull();
+			expect(result.error?.code).toBe('NOT_FOUND');
+		});
+
+		it('a no-op delete does not bump the local data generation (S17)', async () => {
+			const generationBefore = getDataGeneration();
+			await deleteServiceReminder(999);
+			expect(getDataGeneration()).toBe(generationBefore);
+		});
+
+		it('a real delete DOES bump the local data generation', async () => {
+			const saved = await saveServiceReminder({ vehicleId: 1, title: 'Oil', intervalKm: 10000 });
+			const generationBefore = getDataGeneration();
+			await deleteServiceReminder(saved.data!.id);
+			expect(getDataGeneration()).toBe(generationBefore + 1);
 		});
 	});
 });

@@ -10,8 +10,7 @@ import type { VehiclesContext } from '$lib/utils/vehicleContext';
 vi.mock('$lib/db/repositories/fuelLogs', () => ({
 	getAllFuelLogs: vi.fn().mockResolvedValue({ data: [], error: null }),
 	saveFuelLog: vi.fn(),
-	updateFuelLog: vi.fn(),
-	updateFuelLogsAtomic: vi.fn()
+	updateFuelLogWithTimeline: vi.fn()
 }));
 
 const settings: AppSettings = { fuelUnit: 'L/100km', currency: '€', theme: 'system' };

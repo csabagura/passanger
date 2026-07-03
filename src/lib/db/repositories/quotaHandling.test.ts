@@ -1,7 +1,7 @@
 import 'fake-indexeddb/auto'; // MUST be first import — patches global IndexedDB
-import { describe, it, expect, afterEach, vi } from 'vitest';
+import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
 import { db } from '../db';
-import { saveFuelLog } from './fuelLogs';
+import { saveFuelLog, deleteFuelLog } from './fuelLogs';
 import { saveExpense } from './expenses';
 import { saveVehicle } from './vehicles';
 import type { NewFuelLog, NewExpense, NewVehicle } from '../schema';
@@ -29,6 +29,11 @@ const validExpense: NewExpense = {
 
 const validVehicle: NewVehicle = { name: 'Car', make: 'Honda', model: 'Civic' };
 
+beforeEach(async () => {
+	await db.delete();
+	await db.open();
+});
+
 afterEach(() => {
 	vi.restoreAllMocks();
 });
@@ -37,6 +42,13 @@ describe('repositories map storage-quota failures to QUOTA_EXCEEDED', () => {
 	it('saveFuelLog', async () => {
 		vi.spyOn(db.fuelLogs, 'add').mockRejectedValueOnce(quotaError);
 		const result = await saveFuelLog(validFuelLog);
+		expect(result.error?.code).toBe('QUOTA_EXCEEDED');
+	});
+
+	it('deleteFuelLog (S15/ADR-006 AD-WB-6 — previously the one wired write path that omitted quota mapping)', async () => {
+		const saved = await saveFuelLog(validFuelLog);
+		vi.spyOn(db.fuelLogs, 'delete').mockRejectedValueOnce(quotaError);
+		const result = await deleteFuelLog(saved.data!.id);
 		expect(result.error?.code).toBe('QUOTA_EXCEEDED');
 	});
 

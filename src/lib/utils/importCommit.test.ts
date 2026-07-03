@@ -545,3 +545,206 @@ describe('commitImportRows', () => {
 		expect(allExpenses).toHaveLength(1);
 	});
 });
+
+describe('commitImportRows — ADR-006 AD-WB-3 (write-boundary hardening)', () => {
+	beforeEach(async () => {
+		await db.delete();
+		await db.open();
+	});
+
+	it('H3: rejects an unpaired unit/distanceUnit row at commit — excluded from the DB, counted as skipped', async () => {
+		const vehicleId = await db.vehicles.add({
+			name: 'TestCar',
+			make: 'Honda',
+			model: 'Civic'
+		} as any);
+
+		// A UK-style Fuelly export detected as litres+miles — the invariant the repo validator
+		// enforces (validateNewFuelLog) and that import previously bypassed entirely (raw db.add).
+		const rows = [
+			makeFuelRow(1, { odometer: 10000, quantity: 40, unit: 'L', distanceUnit: 'mi' }),
+			makeFuelRow(2, { odometer: 10200, quantity: 41 }) // valid, same vehicle
+		];
+		const assignments = [makeExistingAssignment('TestCar', vehicleId as number, 2)];
+
+		const result = await commitImportRows(rows, assignments);
+		expect(result.error).toBeNull();
+		expect(result.data!.fuelCount).toBe(1);
+		expect(result.data!.skippedCount).toBe(1);
+		expect(result.data!.totalImported).toBe(1);
+
+		const logs = await db.fuelLogs.toArray();
+		expect(logs).toHaveLength(1);
+		expect(logs.some((l) => l.distanceUnit === 'mi')).toBe(false);
+	});
+
+	it('H3: rejects a non-positive odometer/quantity row at commit (repo-grade backstop beyond importValidation)', async () => {
+		const vehicleId = await db.vehicles.add({
+			name: 'TestCar',
+			make: 'Honda',
+			model: 'Civic'
+		} as any);
+
+		const rows = [
+			makeFuelRow(1, { odometer: 0 }),
+			makeFuelRow(2, { odometer: 10200, quantity: -5 }),
+			makeFuelRow(3, { odometer: 10400, quantity: 40 }) // valid
+		];
+		const assignments = [makeExistingAssignment('TestCar', vehicleId as number, 3)];
+
+		const result = await commitImportRows(rows, assignments);
+		expect(result.error).toBeNull();
+		expect(result.data!.fuelCount).toBe(1);
+		expect(result.data!.skippedCount).toBe(2);
+
+		const logs = await db.fuelLogs.toArray();
+		expect(logs).toHaveLength(1);
+		expect(logs[0].odometer).toBe(10400);
+		// The surviving row is the FIRST fuel log ever persisted for this vehicle — its consumption
+		// must be the honest first-ever-fill 0, not a number computed against the excluded rows'
+		// odometers. Before the pre-consumption filter, the two rejected rows still anchored the
+		// timeline engine's synthetic pass (row1's odo=0 became a bogus "first anchor", row2 then
+		// re-anchored to 10200 despite failing validation), so this row computed a poisoned 20
+		// L/100km — a rejected row was influencing a persisted row's data (ADR-006 AD-WB-3).
+		expect(logs[0].calculatedConsumption).toBe(0);
+	});
+
+	it('H3 (poisoning): a row rejected at commit does not become the anchor for a valid neighbor in the same batch', async () => {
+		const vehicleId = await db.vehicles.add({
+			name: 'TestCar',
+			make: 'Honda',
+			model: 'Civic'
+		} as any);
+
+		// Row 1 is rejected (quantity <= 0) but has an odometer BELOW row 2's — if it were left in the
+		// synthetic timeline pass, it would anchor row 2's span at a bogus low point. row2 (the only
+		// row that persists) must instead read as a first-ever fill: consumption 0.
+		const rows = [
+			makeFuelRow(1, { odometer: 9000, quantity: -1 }),
+			makeFuelRow(2, { odometer: 10400, quantity: 40 })
+		];
+		const assignments = [makeExistingAssignment('TestCar', vehicleId as number, 2)];
+
+		const result = await commitImportRows(rows, assignments);
+		expect(result.error).toBeNull();
+		expect(result.data!.fuelCount).toBe(1);
+		expect(result.data!.skippedCount).toBe(1);
+
+		const logs = await db.fuelLogs.toArray();
+		expect(logs).toHaveLength(1);
+		expect(logs[0].odometer).toBe(10400);
+		expect(logs[0].calculatedConsumption).toBe(0);
+	});
+
+	it('H3: rejects an invalid expense row at commit without blocking valid rows in the same batch', async () => {
+		const vehicleId = await db.vehicles.add({
+			name: 'TestCar',
+			make: 'Honda',
+			model: 'Civic'
+		} as any);
+
+		const rows = [
+			// odometer: '' || 'Imported' fallback means an empty maintenanceType can't reach the
+			// validator empty — use a negative odometer instead (odometer is truthy so no fallback).
+			makeMaintenanceRow(1, { odometer: -5 }), // negative odometer -> invalid
+			makeMaintenanceRow(2, { totalCost: -10 }) // negative cost -> invalid
+		];
+		const assignments = [makeExistingAssignment('TestCar', vehicleId as number, 2)];
+
+		const result = await commitImportRows(rows, assignments);
+		expect(result.error).toBeNull();
+		expect(result.data!.maintenanceCount).toBe(0);
+		expect(result.data!.skippedCount).toBe(2);
+
+		const expenses = await db.expenses.toArray();
+		expect(expenses).toHaveLength(0);
+	});
+
+	it('H6: a mid-commit failure leaves ZERO orphan vehicles, not just zero rows', async () => {
+		const rows = [
+			makeFuelRow(1, { sourceVehicleName: 'BrandNewCar' }),
+			makeFuelRow(2, { sourceVehicleName: 'BrandNewCar' })
+		];
+		const assignments = [makeNewAssignment('BrandNewCar')];
+
+		// Force the SECOND fuelLogs.add to throw, after the vehicle has already been created
+		// earlier in the SAME transaction — pre-ADR-006, the vehicle creation happened in an
+		// entirely separate, already-committed step and would have survived this failure.
+		let addCallCount = 0;
+		const originalAdd = db.fuelLogs.add.bind(db.fuelLogs);
+		vi.spyOn(db.fuelLogs, 'add').mockImplementation(
+			(...args: Parameters<typeof db.fuelLogs.add>) => {
+				addCallCount++;
+				if (addCallCount === 2) {
+					throw new Error('Simulated Dexie add failure');
+				}
+				return originalAdd(...args);
+			}
+		);
+
+		const result = await commitImportRows(rows, assignments);
+		expect(result.error).not.toBeNull();
+
+		// The vehicle created earlier in the SAME failed transaction must be rolled back too.
+		const vehicles = await db.vehicles.toArray();
+		expect(vehicles).toHaveLength(0);
+		const logs = await db.fuelLogs.toArray();
+		expect(logs).toHaveLength(0);
+	});
+
+	it('H6: a retry after a mid-commit failure creates the vehicle fresh — no duplicate', async () => {
+		const rows = [
+			makeFuelRow(1, { sourceVehicleName: 'BrandNewCar' }),
+			makeFuelRow(2, { sourceVehicleName: 'BrandNewCar' })
+		];
+		const assignments = [makeNewAssignment('BrandNewCar')];
+
+		let addCallCount = 0;
+		const originalAdd = db.fuelLogs.add.bind(db.fuelLogs);
+		const addSpy = vi
+			.spyOn(db.fuelLogs, 'add')
+			.mockImplementation((...args: Parameters<typeof db.fuelLogs.add>) => {
+				addCallCount++;
+				if (addCallCount === 2) {
+					throw new Error('Simulated Dexie add failure');
+				}
+				return originalAdd(...args);
+			});
+
+		const firstAttempt = await commitImportRows(rows, assignments);
+		expect(firstAttempt.error).not.toBeNull();
+		expect(await db.vehicles.count()).toBe(0);
+
+		addSpy.mockRestore();
+
+		// Retry with the SAME assignments (assignmentType still 'new') — the failed attempt's
+		// vehicle never persisted, so this creates it once, not a duplicate pair (H6).
+		const secondAttempt = await commitImportRows(rows, assignments);
+		expect(secondAttempt.error).toBeNull();
+		expect(secondAttempt.data!.vehiclesCreated).toEqual(['BrandNewCar']);
+
+		const vehicles = await db.vehicles.toArray();
+		expect(vehicles).toHaveLength(1);
+		const logs = await db.fuelLogs.toArray();
+		expect(logs).toHaveLength(2);
+	});
+
+	it('H6: an invalid new-vehicle assignment rolls back the whole commit — no partial vehicle, no rows', async () => {
+		const rows = [makeFuelRow(1, { sourceVehicleName: 'BadCar' })];
+		const assignments: VehicleAssignment[] = [
+			{
+				sourceVehicleName: 'BadCar',
+				rowCount: 1,
+				assignmentType: 'new',
+				newVehicle: { name: '', make: 'Honda', model: 'Civic' } // empty name -> invalid
+			}
+		];
+
+		const result = await commitImportRows(rows, assignments);
+		expect(result.error).not.toBeNull();
+		expect(result.error!.code).toBe('VEHICLE_CREATE_FAILED');
+
+		expect(await db.vehicles.count()).toBe(0);
+		expect(await db.fuelLogs.count()).toBe(0);
+	});
+});

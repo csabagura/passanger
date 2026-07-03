@@ -10,8 +10,7 @@ import type { AppSettings } from '$lib/utils/settings';
 // Mock fuel logs repository
 const mockGetAllFuelLogs = vi.fn();
 const mockSaveFuelLog = vi.fn();
-const mockUpdateFuelLog = vi.fn();
-const mockUpdateFuelLogsAtomic = vi.fn();
+const mockUpdateFuelLogWithTimeline = vi.fn();
 const mockSettings = vi.hoisted(() => ({
 	value: {
 		fuelUnit: 'L/100km',
@@ -30,8 +29,7 @@ const mockToast = vi.hoisted(() => ({
 vi.mock('$lib/db/repositories/fuelLogs', () => ({
 	getAllFuelLogs: (...args: unknown[]) => mockGetAllFuelLogs(...args),
 	saveFuelLog: (...args: unknown[]) => mockSaveFuelLog(...args),
-	updateFuelLog: (...args: unknown[]) => mockUpdateFuelLog(...args),
-	updateFuelLogsAtomic: (...args: unknown[]) => mockUpdateFuelLogsAtomic(...args)
+	updateFuelLogWithTimeline: (...args: unknown[]) => mockUpdateFuelLogWithTimeline(...args)
 }));
 
 function formatOdometerHint(odometer: number, unit: 'km' | 'mi' = 'km'): string {
@@ -260,7 +258,7 @@ describe('FuelEntryForm component — review fixes validation', () => {
 			};
 
 			mockGetAllFuelLogs.mockResolvedValue({ data: [existingLog], error: null });
-			mockUpdateFuelLogsAtomic.mockResolvedValue({ data: [existingLog], error: null });
+			mockUpdateFuelLogWithTimeline.mockResolvedValue({ data: [existingLog], error: null });
 
 			render(FuelEntryForm, {
 				props: {
@@ -1646,13 +1644,13 @@ describe('FuelEntryForm component — review fixes validation', () => {
 			await new Promise((r) => setTimeout(r, 100));
 			flushSync();
 
-			// Verify that the saved entry has matching distanceUnit (no mixed-unit scenario)
+			// Verify that the saved entry has matching distanceUnit (no mixed-unit scenario). ADR-006
+			// AD-WB-1: consumption is no longer client-computed — saveFuelLog computes it in-transaction
+			// from a fresh read, so there is nothing left to assert about the CALL ARGUMENT's value here.
 			const savedEntry = mockSaveFuelLog.mock.calls[0]?.[0];
 			if (savedEntry) {
 				expect(savedEntry.distanceUnit).toBe('km');
 				expect(savedEntry.unit).toBe('L');
-				// Consumption should be calculated (not 0) since units match
-				expect(savedEntry.calculatedConsumption).toBeGreaterThan(0);
 			}
 		});
 	});
@@ -1694,99 +1692,12 @@ describe('FuelEntryForm component — review fixes validation', () => {
 		});
 	});
 
-	// FIX #15.1: Same-session consecutive saves after mixed-unit recovery
-	describe('FIX #15.1: Same-session mixed-unit recovery', () => {
-		it('second save after unit switch calculates efficiency correctly (not 0)', async () => {
-			// Previous log was in miles (MPG mode)
-			const previousLog: FuelLog = {
-				id: 1,
-				vehicleId: 1,
-				date: new Date(Date.now() - 86400000),
-				odometer: 54000,
-				quantity: 12,
-				unit: 'gal',
-				distanceUnit: 'mi',
-				totalCost: 40,
-				calculatedConsumption: 36,
-				notes: ''
-			};
-
-			mockGetAllFuelLogs.mockResolvedValue({
-				data: [previousLog],
-				error: null
-			});
-
-			// First save: mixed-unit, should return consumption=0
-			const firstSavedLog: FuelLog = {
-				id: 2,
-				vehicleId: 1,
-				date: new Date(),
-				odometer: 87400,
-				quantity: 42,
-				unit: 'L',
-				distanceUnit: 'km',
-				totalCost: 78,
-				calculatedConsumption: 0,
-				notes: ''
-			};
-			// Second save: same-unit (both km now), should calculate
-			const secondSavedLog: FuelLog = {
-				id: 3,
-				vehicleId: 1,
-				date: new Date(),
-				odometer: 88000,
-				quantity: 42,
-				unit: 'L',
-				distanceUnit: 'km',
-				totalCost: 78,
-				calculatedConsumption: 7.0,
-				notes: ''
-			};
-			mockSaveFuelLog
-				.mockResolvedValueOnce({ data: firstSavedLog, error: null })
-				.mockResolvedValueOnce({ data: secondSavedLog, error: null });
-
-			render(FuelEntryForm, { props: { vehicleId: 1, onSave: onSaveSpy } });
-			await new Promise((r) => setTimeout(r, 100));
-			flushSync();
-
-			// First save — mixed-unit scenario
-			const odometerInput = screen.getByLabelText(/odometer/i) as HTMLInputElement;
-			const quantityInput = screen.getByLabelText(/quantity/i) as HTMLInputElement;
-			const costInput = screen.getByLabelText(/total cost/i) as HTMLInputElement;
-
-			await fireEvent.input(odometerInput, { target: { value: '87400' } });
-			await fireEvent.input(quantityInput, { target: { value: '42' } });
-			await fireEvent.input(costInput, { target: { value: '78' } });
-			flushSync();
-
-			await fireEvent.click(screen.getByRole('button', { name: /save/i }));
-			await new Promise((r) => setTimeout(r, 150));
-			flushSync();
-
-			// First save should have consumption=0 (mixed-unit)
-			const firstCallArgs = mockSaveFuelLog.mock.calls[0]?.[0];
-			expect(firstCallArgs?.calculatedConsumption).toBe(0);
-
-			// Second save — same-session, units now match (lastLogDistanceUnit updated to 'km')
-			const odometerInput2 = screen.getByLabelText(/odometer/i) as HTMLInputElement;
-			const quantityInput2 = screen.getByLabelText(/quantity/i) as HTMLInputElement;
-			const costInput2 = screen.getByLabelText(/total cost/i) as HTMLInputElement;
-
-			await fireEvent.input(odometerInput2, { target: { value: '88000' } });
-			await fireEvent.input(quantityInput2, { target: { value: '42' } });
-			await fireEvent.input(costInput2, { target: { value: '78' } });
-			flushSync();
-
-			await fireEvent.click(screen.getByRole('button', { name: /save/i }));
-			await new Promise((r) => setTimeout(r, 150));
-			flushSync();
-
-			// FIX #15.1: Second save should calculate correctly (not 0)
-			const secondCallArgs = mockSaveFuelLog.mock.calls[1]?.[0];
-			expect(secondCallArgs?.calculatedConsumption).toBeGreaterThan(0);
-		});
-	});
+	// FIX #15.1 tested that a SECOND same-session save after a mixed-unit first save computed a
+	// non-zero consumption client-side. ADR-006 AD-WB-1 moved consumption computation entirely
+	// server-side (saveFuelLog computes it in-transaction from a fresh read) — the form no longer
+	// varies what it sends based on unit-mismatch detection, so there is nothing left to test here at
+	// the component level. The engine's mixed-unit-break-computes-0 / same-unit-computes-real-value
+	// behavior is covered by fuelLogTimeline.test.ts and fuelLogs.test.ts.
 
 	// FIX #15.2: Comma-decimal inputs
 	describe('FIX #15.2: Comma-decimal input acceptance', () => {
@@ -1968,8 +1879,9 @@ describe('FuelEntryForm component — review fixes validation', () => {
 			await new Promise((resolve) => setTimeout(resolve, 0));
 			flushSync();
 
-			const savedEntry = mockSaveFuelLog.mock.calls[0]?.[0];
-			expect(savedEntry?.calculatedConsumption).toBeCloseTo(7, 5);
+			// ADR-006 AD-WB-1: calculatedConsumption is a placeholder in the call argument now
+			// (saveFuelLog computes the real value in-transaction) — nothing to assert on it here.
+			expect(mockSaveFuelLog).toHaveBeenCalledTimes(1);
 			expect(screen.getByText(/last: 87,400 km/i)).toBeTruthy();
 		});
 	});
@@ -2034,10 +1946,12 @@ describe('FuelEntryForm component — review fixes validation', () => {
 			await new Promise((resolve) => setTimeout(resolve, 0));
 			flushSync();
 
+			// ADR-006 AD-WB-1: calculatedConsumption is a placeholder in the call argument (saveFuelLog
+			// computes it in-transaction) — the displayed "36.0 MPG" below comes from the mocked RETURN
+			// value (savedLog.calculatedConsumption), which is what actually matters here.
 			const savedEntry = mockSaveFuelLog.mock.calls[0]?.[0];
 			expect(savedEntry?.unit).toBe('gal');
 			expect(savedEntry?.distanceUnit).toBe('mi');
-			expect(savedEntry?.calculatedConsumption).toBeCloseTo(36, 5);
 			expect(screen.getByRole('status').textContent).toContain('36.0 MPG');
 			expect(screen.getByRole('status').textContent).toContain('$40.00');
 		});
@@ -2087,7 +2001,7 @@ describe('FuelEntryForm component — review fixes validation', () => {
 				data: [predecessor, initialLog],
 				error: null
 			});
-			mockUpdateFuelLogsAtomic.mockResolvedValue({
+			mockUpdateFuelLogWithTimeline.mockResolvedValue({
 				data: [updatedLog],
 				error: null
 			});
@@ -2144,7 +2058,7 @@ describe('FuelEntryForm component — review fixes validation', () => {
 				data: [initialLog],
 				error: null
 			});
-			mockUpdateFuelLogsAtomic.mockResolvedValue({
+			mockUpdateFuelLogWithTimeline.mockResolvedValue({
 				data: [updatedLog],
 				error: null
 			});
@@ -2168,14 +2082,12 @@ describe('FuelEntryForm component — review fixes validation', () => {
 			flushSync();
 
 			expect(screen.queryByText(/enter odometer without commas/i)).toBeNull();
-			expect(mockUpdateFuelLogsAtomic).toHaveBeenCalledWith([
+			expect(mockUpdateFuelLogWithTimeline).toHaveBeenCalledWith(
 				expect.objectContaining({
 					id: 2,
-					changes: expect.objectContaining({
-						odometer: 12.34
-					})
+					odometer: 12.34
 				})
-			]);
+			);
 			expect(onSaveSpy).toHaveBeenCalledWith([updatedLog]);
 		});
 
@@ -2232,7 +2144,7 @@ describe('FuelEntryForm component — review fixes validation', () => {
 				data: [successor, predecessor, initialLog],
 				error: null
 			});
-			mockUpdateFuelLogsAtomic.mockResolvedValue({
+			mockUpdateFuelLogWithTimeline.mockResolvedValue({
 				data: [updatedLog, updatedSuccessor],
 				error: null
 			});
@@ -2269,26 +2181,20 @@ describe('FuelEntryForm component — review fixes validation', () => {
 			flushSync();
 
 			expect(mockSaveFuelLog).not.toHaveBeenCalled();
-			expect(mockUpdateFuelLogsAtomic).toHaveBeenCalledTimes(1);
-			expect(mockUpdateFuelLogsAtomic).toHaveBeenCalledWith([
+			expect(mockUpdateFuelLogWithTimeline).toHaveBeenCalledTimes(1);
+			// ADR-006 AD-WB-1: the form sends the intended row ONLY — updateFuelLogWithTimeline builds
+			// the plan (incl. any successor recompute) itself, fresh-read, inside the repo. The
+			// component no longer knows or asserts anything about the successor's patch shape.
+			expect(mockUpdateFuelLogWithTimeline).toHaveBeenCalledWith(
 				expect.objectContaining({
 					id: 2,
-					changes: expect.objectContaining({
-						odometer: 87600,
-						quantity: 40,
-						totalCost: 80,
-						unit: 'L',
-						distanceUnit: 'km',
-						calculatedConsumption: expect.closeTo(6.6666666667, 6)
-					})
-				}),
-				{
-					id: 3,
-					changes: {
-						calculatedConsumption: 20
-					}
-				}
-			]);
+					odometer: 87600,
+					quantity: 40,
+					totalCost: 80,
+					unit: 'L',
+					distanceUnit: 'km'
+				})
+			);
 			expect(onSaveSpy).toHaveBeenCalledWith([updatedLog, updatedSuccessor]);
 			expect(screen.getByRole('status').textContent).toContain('Updated');
 		});
@@ -2343,7 +2249,7 @@ describe('FuelEntryForm component — review fixes validation', () => {
 			flushSync();
 
 			expect(screen.getByText(/enter odometer without commas/i)).toBeTruthy();
-			expect(mockUpdateFuelLogsAtomic).not.toHaveBeenCalled();
+			expect(mockUpdateFuelLogWithTimeline).not.toHaveBeenCalled();
 			expect(onSaveSpy).not.toHaveBeenCalled();
 		});
 
@@ -2409,8 +2315,84 @@ describe('FuelEntryForm component — review fixes validation', () => {
 			flushSync();
 
 			expect(screen.getByText(/lower than the next logged value/i)).toBeTruthy();
-			expect(mockUpdateFuelLogsAtomic).not.toHaveBeenCalled();
+			expect(mockUpdateFuelLogWithTimeline).not.toHaveBeenCalled();
 			expect(onSaveSpy).not.toHaveBeenCalled();
+		});
+
+		it('ADR-006 AD-WB-5 (H4): a below-previous typo row is correctable to an in-range value in ONE edit, no deletion', async () => {
+			// The edit bounds are already TEMPORAL-neighbor-based (getFuelLogPredecessor/Successor sort
+			// by date, not by odometer position), so a correction that lands strictly between the
+			// predecessor's and successor's odometers has always been permitted by this mechanism — the
+			// actual H4 poisoning was entirely in the engine's anchor selection (fuelLogTimeline.ts),
+			// fixed by the anchor-trust rule above. This test locks the create-permits/edit-correctable
+			// requirement end-to-end at the form level, independent of the engine fix.
+			const predecessor: FuelLog = {
+				id: 1,
+				vehicleId: 1,
+				date: new Date('2026-03-08T10:00:00Z'),
+				odometer: 87000,
+				quantity: 40,
+				unit: 'L',
+				distanceUnit: 'km',
+				totalCost: 70,
+				calculatedConsumption: 0,
+				notes: ''
+			};
+			// The typo row: already stored with a below-previous odometer (the H4 scenario).
+			const initialLog: FuelLog = {
+				id: 2,
+				vehicleId: 1,
+				date: new Date('2026-03-09T10:00:00Z'),
+				odometer: 5000,
+				quantity: 42,
+				unit: 'L',
+				distanceUnit: 'km',
+				totalCost: 78,
+				calculatedConsumption: 0,
+				notes: ''
+			};
+			const successor: FuelLog = {
+				id: 3,
+				vehicleId: 1,
+				date: new Date('2026-03-10T10:00:00Z'),
+				odometer: 87800,
+				quantity: 40,
+				unit: 'L',
+				distanceUnit: 'km',
+				totalCost: 76,
+				calculatedConsumption: 10,
+				notes: ''
+			};
+
+			mockGetAllFuelLogs.mockResolvedValue({
+				data: [successor, predecessor, initialLog],
+				error: null
+			});
+			mockUpdateFuelLogWithTimeline.mockResolvedValue({
+				data: [{ ...initialLog, odometer: 87500 }],
+				error: null
+			});
+
+			render(FuelEntryForm, {
+				props: { vehicleId: 1, mode: 'edit', initialFuelLog: initialLog, onSave: onSaveSpy }
+			});
+			await new Promise((resolve) => setTimeout(resolve, 0));
+			flushSync();
+
+			// Correcting the typo to an in-range value (strictly between predecessor and successor) —
+			// a single edit, no delete+relog required.
+			await fireEvent.input(screen.getByLabelText(/odometer/i), {
+				target: { value: '87500' }
+			});
+			await fireEvent.click(screen.getByRole('button', { name: /save changes/i }));
+			await new Promise((resolve) => setTimeout(resolve, 0));
+			flushSync();
+
+			expect(mockUpdateFuelLogWithTimeline).toHaveBeenCalledWith(
+				expect.objectContaining({ id: 2, odometer: 87500 })
+			);
+			expect(onSaveSpy).toHaveBeenCalledTimes(1);
+			expect(screen.queryByText(/lower than|higher than/i)).toBeNull();
 		});
 
 		it('keeps the create draft untouched and skips repository writes when edit mode is cancelled', async () => {
@@ -2461,7 +2443,7 @@ describe('FuelEntryForm component — review fixes validation', () => {
 			flushSync();
 
 			expect(mockSaveFuelLog).not.toHaveBeenCalled();
-			expect(mockUpdateFuelLogsAtomic).not.toHaveBeenCalled();
+			expect(mockUpdateFuelLogWithTimeline).not.toHaveBeenCalled();
 			expect(onCancelSpy).toHaveBeenCalledTimes(1);
 			expect(fuelDraft['odometer']).toBe('99999');
 			expect(fuelDraft['quantity']).toBe('55');
@@ -2486,7 +2468,7 @@ describe('FuelEntryForm component — review fixes validation', () => {
 				data: [initialLog],
 				error: null
 			});
-			mockUpdateFuelLogsAtomic.mockResolvedValue({
+			mockUpdateFuelLogWithTimeline.mockResolvedValue({
 				data: null,
 				error: { code: 'UPDATE_FAILED', message: 'Dexie failed' }
 			});
@@ -2532,7 +2514,7 @@ describe('FuelEntryForm component — review fixes validation', () => {
 			};
 
 			mockGetAllFuelLogs.mockResolvedValue({ data: [initialLog], error: null });
-			mockUpdateFuelLogsAtomic.mockResolvedValue({
+			mockUpdateFuelLogWithTimeline.mockResolvedValue({
 				data: null,
 				error: { code: 'QUOTA_EXCEEDED', message: QUOTA_EXCEEDED_MESSAGE }
 			});
@@ -2832,7 +2814,7 @@ describe('FuelEntryForm component — review fixes validation', () => {
 				precededByMissedFill: false
 			};
 			mockGetAllFuelLogs.mockResolvedValue({ data: [initialLog], error: null });
-			mockUpdateFuelLogsAtomic.mockResolvedValue({ data: [initialLog], error: null });
+			mockUpdateFuelLogWithTimeline.mockResolvedValue({ data: [initialLog], error: null });
 
 			render(FuelEntryForm, {
 				props: { vehicleId: 1, mode: 'edit', initialFuelLog: initialLog, onSave: onSaveSpy }
@@ -2853,14 +2835,15 @@ describe('FuelEntryForm component — review fixes validation', () => {
 			await new Promise((r) => setTimeout(r, 50));
 			flushSync();
 
-			expect(mockUpdateFuelLogsAtomic).toHaveBeenCalledTimes(1);
-			const patches = mockUpdateFuelLogsAtomic.mock.calls[0][0] as Array<{
+			expect(mockUpdateFuelLogWithTimeline).toHaveBeenCalledTimes(1);
+			const updatedLog = mockUpdateFuelLogWithTimeline.mock.calls[0][0] as {
 				id: number;
-				changes: { isPartialFill?: boolean; precededByMissedFill?: boolean };
-			}>;
-			const updated = patches.find((p) => p.id === 2);
-			expect(updated?.changes.isPartialFill).toBe(false);
-			expect(updated?.changes.precededByMissedFill).toBe(true);
+				isPartialFill?: boolean;
+				precededByMissedFill?: boolean;
+			};
+			expect(updatedLog.id).toBe(2);
+			expect(updatedLog.isPartialFill).toBe(false);
+			expect(updatedLog.precededByMissedFill).toBe(true);
 		});
 	});
 });

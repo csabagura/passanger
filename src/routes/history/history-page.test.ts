@@ -10,7 +10,7 @@ const mockDeleteFuelLog = vi.fn();
 const mockDeleteExpense = vi.fn();
 const mockRestoreFuelLog = vi.fn();
 const mockRestoreExpense = vi.fn();
-const mockUpdateFuelLogsAtomic = vi.fn();
+const mockUpdateFuelLogWithTimeline = vi.fn();
 const mockUpdateExpense = vi.fn();
 const scrollToMock = vi.fn();
 const mockGetDataGeneration = vi.fn(() => 0);
@@ -18,7 +18,7 @@ const mockGetDataGeneration = vi.fn(() => 0);
 vi.mock('$lib/db/repositories/fuelLogs', () => ({
 	getAllFuelLogs: (...args: unknown[]) => mockGetAllFuelLogs(...args),
 	saveFuelLog: vi.fn(),
-	updateFuelLogsAtomic: (...args: unknown[]) => mockUpdateFuelLogsAtomic(...args),
+	updateFuelLogWithTimeline: (...args: unknown[]) => mockUpdateFuelLogWithTimeline(...args),
 	deleteFuelLog: (...args: unknown[]) => mockDeleteFuelLog(...args),
 	restoreFuelLog: (...args: unknown[]) => mockRestoreFuelLog(...args)
 }));
@@ -42,6 +42,13 @@ const mockToast = {
 	error: vi.fn(),
 	action: vi.fn()
 };
+
+// ADR-006 AD-WB-4 (H17c): the Undo guard also reads `tabSync` context's `dataRevision`, which
+// +layout.svelte bumps when a cross-tab restore lands. Mutable so a test can simulate that bump.
+let mockDataRevision = 0;
+// The load $effect must NOT reload while a restore is pending, even though dataRevision bumped —
+// that would silently swap this tab's intentionally-stale list before the user clicks Reload.
+let mockRestorePending = false;
 
 let mockSettingsFuelUnit: 'L/100km' | 'MPG' = 'L/100km';
 let mockActiveVehicle: {
@@ -70,6 +77,17 @@ vi.mock('svelte', async (importOriginal) => {
 
 			if (key === 'toast') {
 				return mockToast;
+			}
+
+			if (key === 'tabSync') {
+				return {
+					get dataRevision() {
+						return mockDataRevision;
+					},
+					get restorePending() {
+						return mockRestorePending;
+					}
+				};
 			}
 
 			if (key === 'vehicles') {
@@ -267,7 +285,9 @@ describe('History page', () => {
 		});
 		mockRestoreExpense.mockResolvedValue({ data: undefined, error: null });
 		mockGetDataGeneration.mockReturnValue(0);
-		mockUpdateFuelLogsAtomic.mockResolvedValue({ data: [], error: null });
+		mockDataRevision = 0;
+		mockRestorePending = false;
+		mockUpdateFuelLogWithTimeline.mockResolvedValue({ data: [], error: null });
 		mockUpdateExpense.mockResolvedValue({ data: undefined, error: null });
 		Object.defineProperty(globalThis, 'sessionStorage', {
 			value: sessionStorageMock,
@@ -471,6 +491,58 @@ describe('History page', () => {
 		expect(mockToast.error).toHaveBeenCalledWith(
 			"Couldn't undo — the timeline changed since you deleted."
 		);
+	});
+
+	it('Undo is disabled when a cross-tab restore bumps dataRevision during the window (ADR-006 AD-WB-4 / H17c)', async () => {
+		mockActiveVehicle = testVehicle;
+		mockGetAllFuelLogs.mockResolvedValue({ data: [testFuelEntry], error: null });
+		mockGetAllExpenses.mockResolvedValue({ data: [], error: null });
+
+		render(HistoryPage);
+		await settlePage();
+
+		const card = screen.getByRole('group', { name: /fuel entry, Mar 9, 2026/i });
+		await swipeLeft(card);
+		await fireEvent.click(
+			screen.getByRole('button', { name: /delete fuel entry from Mar 9, 2026/i })
+		);
+		await settlePage();
+
+		// Simulate another tab restoring a backup during the Undo window: +layout.svelte's 'restore'
+		// handler bumps dataRevision so this guard refuses — a pre-restore snapshot must never be
+		// written back into the freshly restored DB (local getDataGeneration is untouched: this is a
+		// cross-tab signal, not a local write).
+		mockDataRevision = 1;
+
+		const undo = mockToast.action.mock.calls[0][1].onClick as () => void;
+		undo();
+		await settlePage();
+
+		expect(mockRestoreFuelLog).not.toHaveBeenCalled();
+		expect(mockToast.error).toHaveBeenCalledWith(
+			"Couldn't undo — the timeline changed since you deleted."
+		);
+	});
+
+	it('does not reload the list while a cross-tab restore is pending, even though dataRevision bumps (ADR-006 AD-WB-4 / H17c — never silently swap data)', async () => {
+		mockActiveVehicle = testVehicle;
+		mockGetAllFuelLogs.mockResolvedValue({ data: [testFuelEntry], error: null });
+		mockGetAllExpenses.mockResolvedValue({ data: [], error: null });
+
+		render(HistoryPage);
+		await settlePage();
+
+		const loadsBeforeRestore = mockGetAllFuelLogs.mock.calls.length;
+
+		// A restore lands in another tab: +layout.svelte sets restorePending AND bumps dataRevision
+		// (to disarm this tab's Undo guard) — but the visible list must stay exactly as-is until the
+		// user explicitly reloads.
+		mockRestorePending = true;
+		mockDataRevision = 1;
+		await settlePage();
+
+		expect(mockGetAllFuelLogs.mock.calls.length).toBe(loadsBeforeRestore);
+		expect(screen.getByRole('group', { name: /fuel entry, Mar 9, 2026/i })).toBeTruthy();
 	});
 
 	it('stacked deletes: deleting a second entry blocks the first delete Undo (AC4)', async () => {
@@ -1174,7 +1246,7 @@ describe('History page', () => {
 		mockGetAllFuelLogs.mockResolvedValue({ data: [testFuelEntry], error: null });
 		mockGetAllExpenses.mockResolvedValue({ data: [], error: null });
 		const updatedEntry = { ...testFuelEntry, totalCost: 99, calculatedConsumption: 8 };
-		mockUpdateFuelLogsAtomic.mockResolvedValue({ data: [updatedEntry], error: null });
+		mockUpdateFuelLogWithTimeline.mockResolvedValue({ data: [updatedEntry], error: null });
 
 		render(HistoryPage);
 		await settlePage();
@@ -1195,7 +1267,7 @@ describe('History page', () => {
 		await Promise.resolve();
 		flushSync();
 
-		expect(mockUpdateFuelLogsAtomic).toHaveBeenCalledTimes(1);
+		expect(mockUpdateFuelLogWithTimeline).toHaveBeenCalledTimes(1);
 		// History list reflects the updated entry (handleEditedFuelSaved wired correctly)
 		expect(getHistoryCardKeys()).toContain('fuel-2');
 
@@ -1272,95 +1344,12 @@ describe('History page', () => {
 		expect(screen.queryByRole('group', { name: /fuel entry, Mar 9, 2026/i })).toBeTruthy();
 	});
 
-	it('refreshes the open fuel edit timeline after deleting a different fuel log', async () => {
-		mockActiveVehicle = testVehicle;
-		const firstLog = {
-			...testFuelEntry,
-			id: 1,
-			date: new Date(2026, 2, 8, 12, 0, 0, 0),
-			odometer: 100,
-			quantity: 10,
-			totalCost: 20,
-			calculatedConsumption: 0
-		};
-		const deletedLog = {
-			...testFuelEntry,
-			id: 2,
-			date: new Date(2026, 2, 9, 12, 0, 0, 0),
-			odometer: 200,
-			quantity: 10,
-			totalCost: 20,
-			calculatedConsumption: 10
-		};
-		const editedLog = {
-			...testFuelEntry,
-			id: 3,
-			date: new Date(2026, 2, 10, 12, 0, 0, 0),
-			odometer: 300,
-			quantity: 10,
-			totalCost: 20,
-			calculatedConsumption: 10
-		};
-		const refreshedEditedLog = { ...editedLog, calculatedConsumption: 5 };
-		const savedEditedLog = {
-			...refreshedEditedLog,
-			odometer: 150,
-			calculatedConsumption: 20
-		};
-		let currentFuelLogs = [editedLog, deletedLog, firstLog];
-
-		mockGetAllFuelLogs.mockImplementation(async () => ({
-			data: [...currentFuelLogs],
-			error: null
-		}));
-		mockGetAllExpenses.mockResolvedValue({ data: [], error: null });
-		mockDeleteFuelLog.mockImplementation(async (id: number) => {
-			expect(id).toBe(deletedLog.id);
-			currentFuelLogs = [refreshedEditedLog, firstLog];
-			return {
-				data: {
-					deletedLogId: deletedLog.id,
-					updatedLogs: [refreshedEditedLog]
-				},
-				error: null
-			};
-		});
-		mockUpdateFuelLogsAtomic.mockImplementation(async () => {
-			currentFuelLogs = [savedEditedLog, firstLog];
-			return {
-				data: [savedEditedLog],
-				error: null
-			};
-		});
-
-		render(HistoryPage);
-		await settlePage();
-
-		await swipeLeft(screen.getByRole('group', { name: /fuel entry, Mar 10, 2026/i }));
-		await fireEvent.click(
-			screen.getByRole('button', { name: /edit fuel entry from Mar 10, 2026/i })
-		);
-		await settlePage();
-
-		expect(screen.getByText('Last: 200 km')).toBeTruthy();
-
-		await swipeLeft(screen.getByRole('group', { name: /fuel entry, Mar 9, 2026/i }), 2);
-		await fireEvent.click(
-			screen.getByRole('button', { name: /delete fuel entry from Mar 9, 2026/i })
-		);
-		await settlePage();
-
-		expect(screen.getByText('Last: 100 km')).toBeTruthy();
-
-		await fireEvent.input(screen.getByLabelText(/odometer/i), {
-			target: { value: '150' }
-		});
-		await fireEvent.click(screen.getByRole('button', { name: /save changes/i }));
-		await settlePage();
-
-		expect(mockUpdateFuelLogsAtomic).toHaveBeenCalledTimes(1);
-		expect(screen.queryByText(/higher than the last logged value/i)).toBeNull();
-	});
+	// The fuelEditTimelineVersion cross-tab-staleness refresh mechanism this test exercised (a
+	// same-tab delete of a DIFFERENT fuel log re-reading the open edit form's "Last: X km" hint) is
+	// retired (ADR-006 AD-WB-1 / S12): the PERSISTED plan is now always fresh-read in-transaction by
+	// updateFuelLogWithTimeline at commit time, so the form's mount-time hint going briefly stale is
+	// no longer a correctness concern — only a UX nicety this narrow same-tab case isn't worth the
+	// machinery for. See fuelLogs.test.ts's concurrent-write edit test for the correctness guarantee.
 
 	it('moves focus to the next entry card after a successful delete', async () => {
 		mockActiveVehicle = testVehicle;

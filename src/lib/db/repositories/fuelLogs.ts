@@ -1,122 +1,62 @@
 import { db } from '../db';
 import { ok, err } from '$lib/utils/result';
 import type { Result } from '$lib/utils/result';
-import { notifyDataChanged } from '$lib/utils/tabSync';
 import type { FuelLog, NewFuelLog } from '../schema';
-import { buildFuelLogDeletionPlan, buildFuelLogUpdatePlan } from '$lib/utils/fuelLogTimeline';
-import { isQuotaExceededError, QUOTA_EXCEEDED_CODE, QUOTA_EXCEEDED_MESSAGE } from '../dbErrors';
+import {
+	buildFuelLogDeletionPlan,
+	buildFuelLogUpdatePlan,
+	recalculateFuelLogConsumptions
+} from '$lib/utils/fuelLogTimeline';
+import { validateNewFuelLog, validatePartialFuelLog } from '../validators/rowValidation';
+import { runWrite, encodeSentinel } from '../writeSkeleton';
 
-function validateNewFuelLog(entry: NewFuelLog): string | null {
-	if (!Number.isInteger(entry.vehicleId) || entry.vehicleId <= 0)
-		return 'vehicleId must be a positive integer';
-	if (!(entry.date instanceof Date) || isNaN(entry.date.getTime()))
-		return 'date must be a valid Date';
-	// FIX #3: Enforce odometer > 0 to match form validation (was >= 0)
-	if (typeof entry.odometer !== 'number' || !Number.isFinite(entry.odometer) || entry.odometer <= 0)
-		return 'odometer must be a positive finite number';
-	if (typeof entry.quantity !== 'number' || !Number.isFinite(entry.quantity) || entry.quantity <= 0)
-		return 'quantity must be a positive finite number';
-	if (entry.unit !== 'L' && entry.unit !== 'gal') return 'unit must be "L" or "gal"';
-	if (entry.distanceUnit !== 'km' && entry.distanceUnit !== 'mi')
-		return 'distanceUnit must be "km" or "mi"';
-	// FIX #3: Validate unit/distanceUnit consistency: L pairs with km, gal pairs with mi
-	if (
-		(entry.unit === 'L' && entry.distanceUnit !== 'km') ||
-		(entry.unit === 'gal' && entry.distanceUnit !== 'mi')
-	) {
-		return 'unit and distanceUnit must match: L with km, gal with mi';
-	}
-	if (
-		typeof entry.totalCost !== 'number' ||
-		!Number.isFinite(entry.totalCost) ||
-		entry.totalCost < 0
-	)
-		return 'totalCost must be a non-negative finite number';
-	if (
-		typeof entry.calculatedConsumption !== 'number' ||
-		!Number.isFinite(entry.calculatedConsumption) ||
-		entry.calculatedConsumption < 0
-	)
-		return 'calculatedConsumption must be a non-negative finite number';
-	return null;
-}
-
-function validatePartialFuelLog(changes: Partial<NewFuelLog>): string | null {
-	if (
-		'vehicleId' in changes &&
-		(!Number.isInteger(changes.vehicleId) || (changes.vehicleId as number) <= 0)
-	)
-		return 'vehicleId must be a positive integer';
-	if (
-		'date' in changes &&
-		(!(changes.date instanceof Date) || isNaN((changes.date as Date).getTime()))
-	)
-		return 'date must be a valid Date';
-	// FIX #3: Enforce odometer > 0 to match form validation (was >= 0)
-	if (
-		'odometer' in changes &&
-		(typeof changes.odometer !== 'number' ||
-			!Number.isFinite(changes.odometer as number) ||
-			(changes.odometer as number) <= 0)
-	)
-		return 'odometer must be a positive finite number';
-	if (
-		'quantity' in changes &&
-		(typeof changes.quantity !== 'number' ||
-			!Number.isFinite(changes.quantity as number) ||
-			(changes.quantity as number) <= 0)
-	)
-		return 'quantity must be a positive finite number';
-	if ('unit' in changes && changes.unit !== 'L' && changes.unit !== 'gal')
-		return 'unit must be "L" or "gal"';
-	if ('distanceUnit' in changes && changes.distanceUnit !== 'km' && changes.distanceUnit !== 'mi')
-		return 'distanceUnit must be "km" or "mi"';
-	// FIX #13 (Pass 13) - ISSUE 2: Prevent partial unit updates that could create inconsistent pairs
-	// If either unit or distanceUnit is being updated, both MUST be updated together
-	if ('unit' in changes !== 'distanceUnit' in changes) {
-		return 'unit and distanceUnit must be updated together to maintain consistency';
-	}
-	// FIX #11 (Pass 11) - ISSUE 3: Validate unit/distanceUnit consistency on partial updates
-	// If user updates unit without distanceUnit (or vice versa), ensure they still pair correctly
-	if ('unit' in changes && 'distanceUnit' in changes) {
-		if (
-			(changes.unit === 'L' && changes.distanceUnit !== 'km') ||
-			(changes.unit === 'gal' && changes.distanceUnit !== 'mi')
-		) {
-			return 'unit and distanceUnit must match: L with km, gal with mi';
-		}
-	}
-	if (
-		'totalCost' in changes &&
-		(typeof changes.totalCost !== 'number' ||
-			!Number.isFinite(changes.totalCost as number) ||
-			(changes.totalCost as number) < 0)
-	)
-		return 'totalCost must be a non-negative finite number';
-	if (
-		'calculatedConsumption' in changes &&
-		(typeof changes.calculatedConsumption !== 'number' ||
-			!Number.isFinite(changes.calculatedConsumption as number) ||
-			(changes.calculatedConsumption as number) < 0)
-	)
-		return 'calculatedConsumption must be a non-negative finite number';
-	return null;
-}
+// A synthetic id (never persisted) that lets the shared timeline engine slot a not-yet-inserted row
+// into the vehicle's sorted timeline to compute both its own consumption and any successor's, in one
+// pass. Number.MAX_SAFE_INTEGER can never collide with a real Dexie auto-increment id.
+const SYNTHETIC_NEW_ID = Number.MAX_SAFE_INTEGER;
 
 export class FuelLogRepository {
 	async saveFuelLog(entry: NewFuelLog): Promise<Result<FuelLog>> {
-		const validationError = validateNewFuelLog(entry);
-		if (validationError) return err('VALIDATION_ERROR', validationError);
-		try {
-			const id = await db.fuelLogs.add({ ...entry } as FuelLog);
-			const saved = await db.fuelLogs.get(id as number);
-			if (!saved) return err('SAVE_FAILED', 'Record not found after insert');
-			notifyDataChanged();
-			return ok(saved);
-		} catch (e) {
-			if (isQuotaExceededError(e)) return err(QUOTA_EXCEEDED_CODE, QUOTA_EXCEEDED_MESSAGE);
-			return err('SAVE_FAILED', String(e));
-		}
+		// ADR-006 AD-WB-1: consumption is computed IN-TRANSACTION from a fresh read, not trusted from
+		// the caller — closes the same staleness class as the edit-path TOCTOU (H14) for create. A
+		// backdated/interleaved insert's effect on a later fill's span is recomputed and persisted
+		// here too (the successor), even though only the new row is returned.
+		return runWrite(
+			() => validateNewFuelLog(entry),
+			() =>
+				db.transaction('rw', db.fuelLogs, async () => {
+					const priorLogs = await db.fuelLogs.where('vehicleId').equals(entry.vehicleId).toArray();
+
+					const candidate: FuelLog = { ...entry, id: SYNTHETIC_NEW_ID };
+					const recalculated = recalculateFuelLogConsumptions([...priorLogs, candidate]);
+					const ownConsumption =
+						recalculated.find((log) => log.id === SYNTHETIC_NEW_ID)?.calculatedConsumption ?? 0;
+
+					const id = await db.fuelLogs.add({
+						...entry,
+						calculatedConsumption: ownConsumption
+					} as FuelLog);
+					const saved = await db.fuelLogs.get(id as number);
+					if (!saved) throw encodeSentinel('SAVE_FAILED', 'Record not found after insert');
+
+					const priorById = new Map(priorLogs.map((log) => [log.id, log]));
+					for (const log of recalculated) {
+						if (log.id === SYNTHETIC_NEW_ID) continue;
+						const prior = priorById.get(log.id);
+						if (!prior || prior.calculatedConsumption === log.calculatedConsumption) continue;
+
+						const changes = { calculatedConsumption: log.calculatedConsumption };
+						const validationError = validatePartialFuelLog(changes);
+						if (validationError) throw encodeSentinel('VALIDATION_ERROR', validationError);
+
+						const count = await db.fuelLogs.update(log.id, changes);
+						if (count === 0) throw encodeSentinel('NOT_FOUND', `FuelLog ${log.id} not found`);
+					}
+
+					return saved;
+				}),
+			'SAVE_FAILED'
+		);
 	}
 
 	async getFuelLogById(id: number): Promise<Result<FuelLog>> {
@@ -141,120 +81,103 @@ export class FuelLogRepository {
 		}
 	}
 
-	async updateFuelLog(id: number, changes: Partial<NewFuelLog>): Promise<Result<FuelLog>> {
-		const validationError = validatePartialFuelLog(changes);
-		if (validationError) return err('VALIDATION_ERROR', validationError);
-		try {
-			const count = await db.fuelLogs.update(id, changes);
-			if (count === 0) return err('NOT_FOUND', `FuelLog ${id} not found`);
-			const updated = await db.fuelLogs.get(id);
-			if (!updated) return err('UPDATE_FAILED', 'Record not found after update');
-			notifyDataChanged();
-			return ok(updated);
-		} catch (e) {
-			if (isQuotaExceededError(e)) return err(QUOTA_EXCEEDED_CODE, QUOTA_EXCEEDED_MESSAGE);
-			return err('UPDATE_FAILED', String(e));
-		}
-	}
-
-	async updateFuelLogsAtomic(
-		patches: Array<{ id: number; changes: Partial<NewFuelLog> }>
-	): Promise<Result<FuelLog[]>> {
-		for (const patch of patches) {
-			const validationError = validatePartialFuelLog(patch.changes);
-			if (validationError) return err('VALIDATION_ERROR', validationError);
-		}
-
-		try {
-			const updatedLogs = await db.transaction('rw', db.fuelLogs, async () => {
-				for (const patch of patches) {
-					const count = await db.fuelLogs.update(patch.id, patch.changes);
-					if (count === 0) {
-						throw new Error(`NOT_FOUND:${patch.id}`);
+	// Repo-owned create/update timeline boundary (ADR-006 AD-WB-1, closes H14 + S12). Mirrors
+	// deleteFuelLog's shape exactly: fresh-read the vehicle's timeline INSIDE the transaction, build
+	// the plan from that fresh read (never a caller-supplied snapshot), apply it, re-validate every
+	// patch in-transaction. Supersedes the old updateFuelLog (single-row, timeline-blind bypass —
+	// removed, zero production callers) and updateFuelLogsAtomic (applied a UI-BUILT plan without
+	// re-reading — the exact TOCTOU this closes). `updatedLog` carries the caller's intended field
+	// values; its `calculatedConsumption` is ignored and recomputed here.
+	async updateFuelLogWithTimeline(updatedLog: FuelLog): Promise<Result<FuelLog[]>> {
+		return runWrite(
+			() => validateNewFuelLog(updatedLog),
+			() =>
+				db.transaction('rw', db.fuelLogs, async () => {
+					const existing = await db.fuelLogs.get(updatedLog.id);
+					if (!existing) throw encodeSentinel('NOT_FOUND', `FuelLog ${updatedLog.id} not found`);
+					// Moving a fuel log to a different vehicle isn't a supported operation (no caller does
+					// this; FuelEntryForm never edits vehicleId) — reject it explicitly rather than
+					// silently querying the NEW vehicle's timeline (which won't contain this row, since
+					// it's still stored under the OLD vehicleId) and dropping this row's own patch as a
+					// side effect of buildFuelLogUpdatePlan's "unknown row → no-op" fallback.
+					if (existing.vehicleId !== updatedLog.vehicleId) {
+						throw encodeSentinel(
+							'VALIDATION_ERROR',
+							"Changing a fuel log's vehicle is not supported"
+						);
 					}
-				}
 
-				const refreshedLogs = await db.fuelLogs.bulkGet(patches.map((patch) => patch.id));
-				if (refreshedLogs.some((log) => !log)) {
-					throw new Error('UPDATE_FAILED:Record not found after update');
-				}
+					const timelineLogs = await db.fuelLogs
+						.where('vehicleId')
+						.equals(updatedLog.vehicleId)
+						.toArray();
+					const updatePlan = buildFuelLogUpdatePlan(timelineLogs, updatedLog);
 
-				return refreshedLogs as FuelLog[];
-			});
+					for (const patch of updatePlan) {
+						const validationError = validatePartialFuelLog(patch.changes);
+						if (validationError) throw encodeSentinel('VALIDATION_ERROR', validationError);
 
-			notifyDataChanged();
-			return ok(updatedLogs);
-		} catch (error) {
-			const message = String(error);
-			if (message.startsWith('Error: NOT_FOUND:')) {
-				const missingId = message.replace('Error: NOT_FOUND:', '');
-				return err('NOT_FOUND', `FuelLog ${missingId} not found`);
-			}
+						const count = await db.fuelLogs.update(patch.id, patch.changes);
+						if (count === 0) throw encodeSentinel('NOT_FOUND', `FuelLog ${patch.id} not found`);
+					}
 
-			if (isQuotaExceededError(error)) return err(QUOTA_EXCEEDED_CODE, QUOTA_EXCEEDED_MESSAGE);
-			return err('UPDATE_FAILED', message);
-		}
+					const updatedLogs =
+						updatePlan.length === 0
+							? []
+							: await db.fuelLogs.bulkGet(updatePlan.map((patch) => patch.id));
+
+					if (updatedLogs.some((log) => !log))
+						throw encodeSentinel('UPDATE_FAILED', 'Record not found after update');
+
+					return updatedLogs as FuelLog[];
+				}),
+			'UPDATE_FAILED'
+		);
 	}
 
 	async deleteFuelLog(
 		id: number
 	): Promise<Result<{ deletedLogId: number; updatedLogs: FuelLog[] }>> {
-		try {
-			const deleteResult = await db.transaction('rw', db.fuelLogs, async () => {
-				const targetLog = await db.fuelLogs.get(id);
-				if (!targetLog) {
-					throw new Error(`NOT_FOUND:${id}`);
-				}
+		// S15: this now maps quota errors, via runWrite's shared envelope — previously the only
+		// wired write path that omitted it despite writing neighbor patches.
+		return runWrite(
+			() => null,
+			() =>
+				db.transaction('rw', db.fuelLogs, async () => {
+					const targetLog = await db.fuelLogs.get(id);
+					if (!targetLog) throw encodeSentinel('NOT_FOUND', `FuelLog ${id} not found`);
 
-				const timelineLogs = await db.fuelLogs
-					.where('vehicleId')
-					.equals(targetLog.vehicleId)
-					.toArray();
-				const deletionPlan = buildFuelLogDeletionPlan(timelineLogs, id);
+					const timelineLogs = await db.fuelLogs
+						.where('vehicleId')
+						.equals(targetLog.vehicleId)
+						.toArray();
+					const deletionPlan = buildFuelLogDeletionPlan(timelineLogs, id);
 
-				await db.fuelLogs.delete(id);
+					await db.fuelLogs.delete(id);
 
-				for (const patch of deletionPlan) {
-					const validationError = validatePartialFuelLog(patch.changes);
-					if (validationError) {
-						throw new Error(`VALIDATION_ERROR:${validationError}`);
+					for (const patch of deletionPlan) {
+						const validationError = validatePartialFuelLog(patch.changes);
+						if (validationError) throw encodeSentinel('VALIDATION_ERROR', validationError);
+
+						const count = await db.fuelLogs.update(patch.id, patch.changes);
+						if (count === 0) throw encodeSentinel('NOT_FOUND', `FuelLog ${patch.id} not found`);
 					}
 
-					const count = await db.fuelLogs.update(patch.id, patch.changes);
-					if (count === 0) {
-						throw new Error(`NOT_FOUND:${patch.id}`);
-					}
-				}
+					const updatedLogs =
+						deletionPlan.length === 0
+							? []
+							: await db.fuelLogs.bulkGet(deletionPlan.map((patch) => patch.id));
 
-				const updatedLogs =
-					deletionPlan.length === 0
-						? []
-						: await db.fuelLogs.bulkGet(deletionPlan.map((patch) => patch.id));
+					if (updatedLogs.some((log) => !log))
+						throw encodeSentinel('DELETE_FAILED', 'Record not found after update');
 
-				if (updatedLogs.some((log) => !log)) {
-					throw new Error('DELETE_FAILED:Record not found after update');
-				}
-
-				return {
-					deletedLogId: id,
-					updatedLogs: updatedLogs as FuelLog[]
-				};
-			});
-
-			notifyDataChanged();
-			return ok(deleteResult);
-		} catch (e) {
-			const message = String(e);
-			if (message.startsWith('Error: NOT_FOUND:')) {
-				const missingId = message.replace('Error: NOT_FOUND:', '');
-				return err('NOT_FOUND', `FuelLog ${missingId} not found`);
-			}
-			if (message.startsWith('Error: VALIDATION_ERROR:')) {
-				return err('VALIDATION_ERROR', message.replace('Error: VALIDATION_ERROR:', ''));
-			}
-
-			return err('DELETE_FAILED', message);
-		}
+					return {
+						deletedLogId: id,
+						updatedLogs: updatedLogs as FuelLog[]
+					};
+				}),
+			'DELETE_FAILED'
+		);
 	}
 
 	// Inverse of deleteFuelLog: re-insert a deleted log's snapshot at its ORIGINAL id (via put())
@@ -265,69 +188,49 @@ export class FuelLogRepository {
 	async restoreFuelLog(
 		snapshot: FuelLog
 	): Promise<Result<{ restoredLog: FuelLog; updatedLogs: FuelLog[] }>> {
-		try {
-			const restoreResult = await db.transaction('rw', db.fuelLogs, async () => {
-				// The id should be free (Dexie ++id never reissues a deleted id); guard defensively.
-				const existing = await db.fuelLogs.get(snapshot.id);
-				if (existing) {
-					throw new Error(`SAVE_FAILED:FuelLog ${snapshot.id} already present`);
-				}
+		return runWrite(
+			() => null,
+			() =>
+				db.transaction('rw', db.fuelLogs, async () => {
+					// The id should be free (Dexie ++id never reissues a deleted id); guard defensively.
+					const existing = await db.fuelLogs.get(snapshot.id);
+					if (existing)
+						throw encodeSentinel('SAVE_FAILED', `FuelLog ${snapshot.id} already present`);
 
-				// The post-delete set (WITHOUT the restored row). buildFuelLogUpdatePlan injects the
-				// snapshot, recomputes, then skips any id absent from this set — so the plan contains
-				// ONLY neighbor patches; the restored row itself is written directly via put().
-				const timelineLogs = await db.fuelLogs
-					.where('vehicleId')
-					.equals(snapshot.vehicleId)
-					.toArray();
-				const updatePlan = buildFuelLogUpdatePlan(timelineLogs, snapshot);
+					// The post-delete set (WITHOUT the restored row). buildFuelLogUpdatePlan injects the
+					// snapshot, recomputes, then skips any id absent from this set — so the plan contains
+					// ONLY neighbor patches; the restored row itself is written directly via put().
+					const timelineLogs = await db.fuelLogs
+						.where('vehicleId')
+						.equals(snapshot.vehicleId)
+						.toArray();
+					const updatePlan = buildFuelLogUpdatePlan(timelineLogs, snapshot);
 
-				await db.fuelLogs.put(snapshot);
+					await db.fuelLogs.put(snapshot);
 
-				for (const patch of updatePlan) {
-					const validationError = validatePartialFuelLog(patch.changes);
-					if (validationError) {
-						throw new Error(`VALIDATION_ERROR:${validationError}`);
+					for (const patch of updatePlan) {
+						const validationError = validatePartialFuelLog(patch.changes);
+						if (validationError) throw encodeSentinel('VALIDATION_ERROR', validationError);
+
+						const count = await db.fuelLogs.update(patch.id, patch.changes);
+						if (count === 0) throw encodeSentinel('NOT_FOUND', `FuelLog ${patch.id} not found`);
 					}
 
-					const count = await db.fuelLogs.update(patch.id, patch.changes);
-					if (count === 0) {
-						throw new Error(`NOT_FOUND:${patch.id}`);
-					}
-				}
+					const updatedLogs =
+						updatePlan.length === 0
+							? []
+							: await db.fuelLogs.bulkGet(updatePlan.map((patch) => patch.id));
 
-				const updatedLogs =
-					updatePlan.length === 0
-						? []
-						: await db.fuelLogs.bulkGet(updatePlan.map((patch) => patch.id));
+					if (updatedLogs.some((log) => !log))
+						throw encodeSentinel('SAVE_FAILED', 'Record not found after update');
 
-				if (updatedLogs.some((log) => !log)) {
-					throw new Error('SAVE_FAILED:Record not found after update');
-				}
-
-				return {
-					restoredLog: snapshot,
-					updatedLogs: updatedLogs as FuelLog[]
-				};
-			});
-
-			notifyDataChanged();
-			return ok(restoreResult);
-		} catch (e) {
-			const message = String(e);
-			if (message.startsWith('Error: NOT_FOUND:')) {
-				const missingId = message.replace('Error: NOT_FOUND:', '');
-				return err('NOT_FOUND', `FuelLog ${missingId} not found`);
-			}
-			if (message.startsWith('Error: VALIDATION_ERROR:')) {
-				return err('VALIDATION_ERROR', message.replace('Error: VALIDATION_ERROR:', ''));
-			}
-			if (message.startsWith('Error: SAVE_FAILED:')) {
-				return err('SAVE_FAILED', message.replace('Error: SAVE_FAILED:', ''));
-			}
-			if (isQuotaExceededError(e)) return err(QUOTA_EXCEEDED_CODE, QUOTA_EXCEEDED_MESSAGE);
-			return err('SAVE_FAILED', message);
-		}
+					return {
+						restoredLog: snapshot,
+						updatedLogs: updatedLogs as FuelLog[]
+					};
+				}),
+			'SAVE_FAILED'
+		);
 	}
 }
 
@@ -337,10 +240,7 @@ export const fuelLogRepository = new FuelLogRepository();
 export const saveFuelLog = (entry: NewFuelLog) => fuelLogRepository.saveFuelLog(entry);
 export const getFuelLogById = (id: number) => fuelLogRepository.getFuelLogById(id);
 export const getAllFuelLogs = (vehicleId?: number) => fuelLogRepository.getAllFuelLogs(vehicleId);
-export const updateFuelLog = (id: number, changes: Partial<NewFuelLog>) =>
-	fuelLogRepository.updateFuelLog(id, changes);
-export const updateFuelLogsAtomic = (
-	patches: Array<{ id: number; changes: Partial<NewFuelLog> }>
-) => fuelLogRepository.updateFuelLogsAtomic(patches);
+export const updateFuelLogWithTimeline = (updatedLog: FuelLog) =>
+	fuelLogRepository.updateFuelLogWithTimeline(updatedLog);
 export const deleteFuelLog = (id: number) => fuelLogRepository.deleteFuelLog(id);
 export const restoreFuelLog = (snapshot: FuelLog) => fuelLogRepository.restoreFuelLog(snapshot);

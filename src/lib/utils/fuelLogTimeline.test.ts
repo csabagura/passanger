@@ -545,3 +545,128 @@ describe('fuelLogTimeline — missed & partial fills (Story 7.1)', () => {
 		expect(consumptionsById(flagged)[2]).toBe(0); // excluded, not false-low
 	});
 });
+
+describe('fuelLogTimeline — anchor-trust rule (ADR-006 AD-WB-5, H4)', () => {
+	function consumptionsById(logs: FuelLog[]): Record<number, number> {
+		const out: Record<number, number> = {};
+		for (const log of recalculateFuelLogConsumptions(logs)) {
+			out[log.id] = Math.round(log.calculatedConsumption * 1000) / 1000;
+		}
+		return out;
+	}
+
+	it('the H4 scenario: a below-previous full fill is quarantined — it does not poison the next span', () => {
+		const logs = [
+			createFuelLog({ id: 1, date: new Date('2026-03-09'), odometer: 10000, quantity: 40 }),
+			// Odometer typo: below the anchor (10000). Pre-fix, this silently became the next anchor,
+			// inflating id3's span to 500.5 (from 10500-4999) instead of the true 500 (10500-10000).
+			createFuelLog({ id: 2, date: new Date('2026-03-10'), odometer: 5000, quantity: 30 }),
+			createFuelLog({ id: 3, date: new Date('2026-03-11'), odometer: 10500, quantity: 30 })
+		];
+		// id2 (regression) -> 0, quarantined. id3 measures from the TRUSTED anchor (10000), not the
+		// typo (5000): (30/500)*100 = 6, not the poisoned (30/5501)*100 ~= 0.545.
+		expect(consumptionsById(logs)).toEqual({ 1: 0, 2: 0, 3: 6 });
+	});
+
+	it('a regressing full fill does not carry its litres forward into the next trusted span', () => {
+		const logs = [
+			createFuelLog({ id: 1, date: new Date('2026-03-09'), odometer: 10000, quantity: 40 }),
+			createFuelLog({ id: 2, date: new Date('2026-03-10'), odometer: 5000, quantity: 999 }), // huge, must be dropped
+			createFuelLog({ id: 3, date: new Date('2026-03-11'), odometer: 10500, quantity: 30 })
+		];
+		// If id2's 999L were carried, id3 would compute (999+30)/500*100 = 205.8. It must not be.
+		expect(consumptionsById(logs)).toEqual({ 1: 0, 2: 0, 3: 6 });
+	});
+
+	it('a regressing PARTIAL fill does not carry its litres forward either (AD-WB-5 extended to partials)', () => {
+		const logs = [
+			createFuelLog({ id: 1, date: new Date('2026-03-09'), odometer: 10000, quantity: 40 }),
+			// Partial with a below-anchor odometer typo. Without the isRegression guard on the partial
+			// branch, isPartial short-circuits past isRegression and this 999L gets carried forward
+			// into id3's numerator anyway — the same over-attribution AD-WB-5 exists to prevent.
+			createFuelLog({
+				id: 2,
+				date: new Date('2026-03-10'),
+				odometer: 5000,
+				quantity: 999,
+				isPartialFill: true
+			}),
+			createFuelLog({ id: 3, date: new Date('2026-03-11'), odometer: 10500, quantity: 30 })
+		];
+		// id2 (partial regression) reports 0 (isPartial always reports 0) and its litres are dropped.
+		// id3 measures from the still-trusted anchor (10000): (30/500)*100 = 6, not (30+999)/500*100.
+		expect(consumptionsById(logs)).toEqual({ 1: 0, 2: 0, 3: 6 });
+	});
+
+	it('an odometer exactly equal to the anchor is also a regression (no positive span, not just negative)', () => {
+		const logs = [
+			createFuelLog({ id: 1, date: new Date('2026-03-09'), odometer: 10000, quantity: 40 }),
+			createFuelLog({ id: 2, date: new Date('2026-03-10'), odometer: 10000, quantity: 30 }),
+			createFuelLog({ id: 3, date: new Date('2026-03-11'), odometer: 10500, quantity: 30 })
+		];
+		expect(consumptionsById(logs)).toEqual({ 1: 0, 2: 0, 3: 6 });
+	});
+
+	it('two consecutive regressions are both judged against the SAME last-trusted anchor', () => {
+		const logs = [
+			createFuelLog({ id: 1, date: new Date('2026-03-09'), odometer: 10000, quantity: 40 }),
+			createFuelLog({ id: 2, date: new Date('2026-03-10'), odometer: 6000, quantity: 30 }),
+			createFuelLog({ id: 3, date: new Date('2026-03-11'), odometer: 5000, quantity: 30 }), // regresses vs id1, NOT vs id2
+			createFuelLog({ id: 4, date: new Date('2026-03-12'), odometer: 10500, quantity: 30 })
+		];
+		// id2 and id3 both quarantined (both <= the id1 anchor, 10000 — never updated by a regression).
+		// id4 measures from the still-trusted id1 anchor: (30/500)*100 = 6.
+		expect(consumptionsById(logs)).toEqual({ 1: 0, 2: 0, 3: 0, 4: 6 });
+	});
+
+	it('a genuine odometer advance still anchors normally (the monotonic case is untouched)', () => {
+		const logs = [
+			createFuelLog({ id: 1, date: new Date('2026-03-09'), odometer: 10000, quantity: 40 }),
+			createFuelLog({ id: 2, date: new Date('2026-03-10'), odometer: 10500, quantity: 30 }),
+			createFuelLog({ id: 3, date: new Date('2026-03-11'), odometer: 11000, quantity: 30 })
+		];
+		expect(consumptionsById(logs)).toEqual({ 1: 0, 2: 6, 3: 6 });
+	});
+
+	it('the first-ever fill still anchors regardless of its own odometer (no prior anchor to regress against)', () => {
+		const logs = [
+			createFuelLog({ id: 1, date: new Date('2026-03-09'), odometer: 5, quantity: 40 }), // implausibly low, but first-ever
+			createFuelLog({ id: 2, date: new Date('2026-03-10'), odometer: 505, quantity: 30 })
+		];
+		// id1 anchors at 5 (no prior anchor => isRegression is false regardless of the value).
+		expect(consumptionsById(logs)).toEqual({ 1: 0, 2: 6 });
+	});
+
+	it('a distance-unit change still always re-anchors, even into a numerically lower odometer', () => {
+		const logs = [
+			createFuelLog({
+				id: 1,
+				date: new Date('2026-03-09'),
+				odometer: 10000,
+				quantity: 40,
+				unit: 'L',
+				distanceUnit: 'km'
+			}),
+			// Numerically far below the km anchor, but a genuine unit switch (mi) — must re-anchor
+			// (spanBroken short-circuits isRegression to false), not be treated as a regression.
+			createFuelLog({
+				id: 2,
+				date: new Date('2026-03-10'),
+				odometer: 100,
+				quantity: 10,
+				unit: 'gal',
+				distanceUnit: 'mi'
+			}),
+			createFuelLog({
+				id: 3,
+				date: new Date('2026-03-11'),
+				odometer: 200,
+				quantity: 10,
+				unit: 'gal',
+				distanceUnit: 'mi'
+			})
+		];
+		// id2: spanBroken (unit change) -> 0, but DOES re-anchor at (100, mi). id3: (10/100)*100 = 10.
+		expect(consumptionsById(logs)).toEqual({ 1: 0, 2: 0, 3: 10 });
+	});
+});

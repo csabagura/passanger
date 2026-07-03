@@ -61,10 +61,15 @@ describe('HomeDashboard', () => {
 	});
 
 	it('AC6: renders the base cost stat once data loads (one fill with derivable distance)', async () => {
-		await saveFuelLog(makeLog({ totalCost: 60, quantity: 40, calculatedConsumption: 8 }));
+		// ADR-006 AD-WB-1: saveFuelLog computes calculatedConsumption in-transaction — a first-ever
+		// fill always anchors at 0 (no predecessor), so an earlier anchor fill is required to give the
+		// SECOND fill a real, derivable distance (a zero-consumption fill is excluded from the cost/km
+		// aggregate entirely, so its own small cost/distance do not skew the result below).
+		await saveFuelLog(makeLog({ odometer: 49000, quantity: 10, totalCost: 5 }));
+		await saveFuelLog(makeLog({ odometer: 49500, totalCost: 60, quantity: 40 }));
 		renderDashboard();
 
-		// 60 cost / ((40 / 8) * 100 = 500 km) = €0.12 per km.
+		// distance 500 (49000 -> 49500), 40L -> 8 L/100km; 60 cost / 500 km = €0.12 per km.
 		await waitFor(() => {
 			expect(screen.getByText(/per km/i)).toBeTruthy();
 		});
@@ -135,15 +140,27 @@ describe('HomeDashboard', () => {
 		// (HomeDashboard passes no `now`, so the engine reads it). Day 15 exists in every month, and the
 		// month-key filter ignores the day, so this is deterministic regardless of today's date.
 		const now = new Date();
+		const twoMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 2, 15);
 		const previousMonth = new Date(now.getFullYear(), now.getMonth() - 1, 15);
 		const currentMonth = new Date(now.getFullYear(), now.getMonth(), 15);
-		// Volume + cost held constant → spend and fuel-price stay flat; only consumption moves 8 → 10
-		// (+25%), so the single most-significant insight is deterministic.
+		// ADR-006 AD-WB-1: saveFuelLog computes calculatedConsumption in-transaction — it is no longer
+		// a pass-through field, so the target 8 -> 10 L/100km values are produced via a REAL anchored
+		// timeline, not asserted directly. A first-ever fill has no anchor (always 0), so an extra
+		// earlier anchor fill (a different, uncompared month) is required to make the two compared
+		// months' consumption non-zero. Quantity + cost held constant across the two compared months
+		// (40L / €60) → spend and fuel-price stay flat; only the ODOMETER delta between them changes,
+		// which is what drives consumption 8 -> 10 (+25%), keeping the single most-significant insight
+		// deterministic exactly as the original (caller-supplied-value) fixture intended.
 		await saveFuelLog(
-			makeLog({ date: previousMonth, quantity: 40, totalCost: 60, calculatedConsumption: 8 })
+			makeLog({ date: twoMonthsAgo, odometer: 49000, quantity: 10, totalCost: 15 })
 		);
+		// previousMonth: distance 500 (49000 -> 49500), 40L -> 40/500*100 = 8 L/100km.
 		await saveFuelLog(
-			makeLog({ date: currentMonth, quantity: 40, totalCost: 60, calculatedConsumption: 10 })
+			makeLog({ date: previousMonth, odometer: 49500, quantity: 40, totalCost: 60 })
+		);
+		// currentMonth: distance 400 (49500 -> 49900), 40L -> 40/400*100 = 10 L/100km.
+		await saveFuelLog(
+			makeLog({ date: currentMonth, odometer: 49900, quantity: 40, totalCost: 60 })
 		);
 		renderDashboard();
 
