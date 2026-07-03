@@ -104,6 +104,44 @@ describe('parseBackup — round-trip', () => {
 		expect(result.error).toBeNull();
 		expect(result.data?.data.serviceReminders[0].lastServiceDate).toBeUndefined();
 	});
+
+	// v6 (Story 8.5, ADR-007): a v5-shaped backup (no createdAt/distanceUnit/lastClosedByExpenseId)
+	// restores cleanly with the 3 new fields simply absent — no historical backfill on restore.
+	it('preserves a serviceReminder from a v5 backup with the v6 fields absent', () => {
+		const v5Shaped: BackupData = {
+			...data,
+			serviceReminders: [{ id: 32, vehicleId: 1, title: 'Oil change', intervalKm: 10000 }]
+		};
+		const result = parseBackup(serializeBackup(v5Shaped, settings));
+		expect(result.error).toBeNull();
+		const reminder = result.data?.data.serviceReminders[0];
+		expect(reminder?.createdAt).toBeUndefined();
+		expect(reminder?.distanceUnit).toBeUndefined();
+		expect(reminder?.lastClosedByExpenseId).toBeUndefined();
+	});
+
+	it('round-trips a serviceReminder carrying the v6 fields', () => {
+		const v6Shaped: BackupData = {
+			...data,
+			serviceReminders: [
+				{
+					id: 33,
+					vehicleId: 1,
+					title: 'Oil change',
+					intervalKm: 10000,
+					createdAt: 1_700_000_000_000,
+					distanceUnit: 'mi',
+					lastClosedByExpenseId: 42
+				}
+			]
+		};
+		const result = parseBackup(serializeBackup(v6Shaped, settings));
+		expect(result.error).toBeNull();
+		const reminder = result.data?.data.serviceReminders[0];
+		expect(reminder?.createdAt).toBe(1_700_000_000_000);
+		expect(reminder?.distanceUnit).toBe('mi');
+		expect(reminder?.lastClosedByExpenseId).toBe(42);
+	});
 });
 
 describe('parseBackup — rejections', () => {

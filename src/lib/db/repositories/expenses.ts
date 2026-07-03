@@ -4,6 +4,7 @@ import type { Result } from '$lib/utils/result';
 import type { Expense, NewExpense } from '../schema';
 import { validateNewExpense, validatePartialExpense } from '../validators/rowValidation';
 import { runWrite, encodeSentinel } from '../writeSkeleton';
+import { clearDismissal } from '$lib/utils/reminderDismissal';
 
 export class ExpenseRepository {
 	async saveExpense(entry: NewExpense): Promise<Result<Expense>> {
@@ -56,16 +57,44 @@ export class ExpenseRepository {
 	}
 
 	async deleteExpense(id: number): Promise<Result<void>> {
-		return runWrite(
+		// Story 8.5 / AD-RT-5 (H18): reverting a loop-close on delete — any reminder this expense
+		// closed (`lastClosedByExpenseId === id`) has its `lastServiceDate`/`lastServiceOdometer`/
+		// `lastClosedByExpenseId` cleared to unset, NOT restored to an unknowable prior value.
+		// AC2's anchor rule then honestly re-anchors it to `createdAt`. Run in the same transaction
+		// as the delete so a partial failure rolls back rather than leaving a stale provenance link.
+		const revertedReminderIds: number[] = [];
+		const result = await runWrite(
 			() => null,
 			() =>
-				db.transaction('rw', db.expenses, async () => {
+				db.transaction('rw', db.expenses, db.serviceReminders, async () => {
 					const existing = await db.expenses.get(id);
 					if (!existing) throw encodeSentinel('NOT_FOUND', `Expense ${id} not found`);
 					await db.expenses.delete(id);
+					const closedByThisExpense = await db.serviceReminders
+						.where('vehicleId')
+						.equals(existing.vehicleId)
+						.filter((reminder) => reminder.lastClosedByExpenseId === id)
+						.toArray();
+					for (const reminder of closedByThisExpense) {
+						await db.serviceReminders.update(reminder.id, {
+							lastServiceDate: undefined,
+							lastServiceOdometer: undefined,
+							lastClosedByExpenseId: undefined
+						});
+						revertedReminderIds.push(reminder.id);
+					}
 				}),
 			'DELETE_FAILED'
 		);
+		// Story 8.5 review patch: a revert changes the reminder's schedule baseline exactly like an
+		// edit does (AD-RT-4) — a dismissal marker recorded against the pre-revert due instance can no
+		// longer be trusted, so clear it too. Mirrors updateServiceReminder's clear-after-commit rule.
+		if (!result.error) {
+			for (const reminderId of revertedReminderIds) {
+				clearDismissal(reminderId);
+			}
+		}
+		return result;
 	}
 
 	// Inverse of deleteExpense: re-insert a deleted expense's snapshot at its ORIGINAL id (via

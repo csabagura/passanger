@@ -10,6 +10,7 @@ import type { Vehicle, FuelLog, Expense, ServiceReminder } from './schema';
 import { migrateV1ToV2 } from './migrations/v2';
 import { migrateV2ToV3 } from './migrations/v3';
 import { migrateV4ToV5 } from './migrations/v5';
+import { migrateV5ToV6 } from './migrations/v6';
 
 class PassangerDB extends Dexie {
 	vehicles!: EntityTable<Vehicle, 'id'>;
@@ -71,6 +72,18 @@ class PassangerDB extends Dexie {
 				serviceReminders: '++id, vehicleId'
 			})
 			.upgrade(migrateV4ToV5);
+
+		// Version 6 (Story 8.5, ADR-007) — add `createdAt` / `distanceUnit` / `lastClosedByExpenseId`
+		// to serviceReminders. None of the three is indexed, so the schema strings are re-declared
+		// verbatim; the upgrade backfills existing rows. See ADR-007 and migrations/v6.ts.
+		this.version(6)
+			.stores({
+				vehicles: '++id, name, make, model, year',
+				fuelLogs: '++id, vehicleId, date, odometer',
+				expenses: '++id, vehicleId, date, type, odometer',
+				serviceReminders: '++id, vehicleId'
+			})
+			.upgrade(migrateV5ToV6);
 	}
 }
 

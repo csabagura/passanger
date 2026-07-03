@@ -111,10 +111,15 @@ test('Up-Next card: an overdue reminder surfaces on Home and "Log this service" 
 	await expect(page.getByRole('tab', { name: 'Expense', selected: true })).toBeVisible();
 	await expect(page.getByLabel(/^Type$/)).toHaveValue('Oil change');
 
-	// Close the sheet, then dismiss the card — it disappears (and Home stays calm).
+	// Close the sheet, then dismiss the card. Story 8.5's due-instance dismissal model
+	// (AD-RT-4) makes this a deliberate no-op for an already-OVERDUE reminder: its due
+	// instance has, by definition, already passed, so the exact-expiry suppression check
+	// is immediately true and the dismissal marker never actually hides it — you cannot
+	// dismiss away an overdue fact (honest-signals ethos, mirrors H11a). The card stays.
 	await page.getByRole('button', { name: /close/i }).click();
 	await page.getByRole('button', { name: 'Dismiss Oil change reminder' }).click();
-	await expect(page.getByRole('region', { name: /up next/i })).toHaveCount(0);
+	await expect(upNext).toBeVisible();
+	await expect(upNext.getByText('Oil change')).toBeVisible();
 });
 
 test('Reminder loop-close (FR-12): saving a matching expense offers a reset; confirming clears the Up-Next card', async ({

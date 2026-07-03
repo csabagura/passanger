@@ -12,6 +12,7 @@
 	} from '$lib/utils/date';
 	import { parsePositiveNumeric } from '$lib/utils/numberInput';
 	import type { AppError } from '$lib/utils/result';
+	import { createWallClock } from '$lib/state/wallClock.svelte';
 	import { Button } from '$lib/components/ui/button';
 	import { Field } from '$lib/components/ui/field';
 	import { Label } from '$lib/components/ui/label';
@@ -65,7 +66,13 @@
 	let toastMessage = $state('');
 	let toastTimeout: ReturnType<typeof setTimeout> | null = null;
 
-	const todayValue = getTodayDateInputValue();
+	// Story 8.5 review patch: was a mount-frozen `getTodayDateInputValue()` call — the exact
+	// staleness class this story's shared wall-clock (S20/AD-RT-7) fixes on UpNextCard/
+	// MaintainDashboard. A form left open across local midnight now revalidates against the
+	// correct day instead of a frozen one.
+	const wallClock = createWallClock();
+	onDestroy(wallClock.destroy);
+	const todayValue = $derived(getTodayDateInputValue(wallClock.now));
 
 	const hasAnyInterval = $derived(intervalKmStr.trim() !== '' || intervalDaysStr.trim() !== '');
 	const isFormValid = $derived(
@@ -114,7 +121,13 @@
 			lastServiceDateError = '';
 			return;
 		}
-		lastServiceDateError = parseDateInputValue(trimmed) === null ? m.reminderform_error_date() : '';
+		if (parseDateInputValue(trimmed) === null) {
+			lastServiceDateError = m.reminderform_error_date();
+			return;
+		}
+		// Story 8.5 / S26: past-or-today only, matching the odometer form's not-in-the-future
+		// discipline elsewhere in the app. `YYYY-MM-DD` strings compare correctly lexicographically.
+		lastServiceDateError = trimmed > todayValue ? m.reminderform_error_date_future() : '';
 	}
 
 	function showToast(message: string) {

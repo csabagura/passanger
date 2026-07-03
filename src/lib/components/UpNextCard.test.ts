@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import type { FuelLog, ServiceReminder } from '$lib/db/schema';
-import { REMINDER_DISMISSED_STORAGE_KEY, REMINDER_DUE_SOON_KM } from '$lib/config';
+import { REMINDER_DISMISSED_STORAGE_KEY } from '$lib/config';
 import UpNextCard from './UpNextCard.svelte';
 
 const mockGetServiceRemindersForVehicle = vi.fn();
@@ -71,11 +71,12 @@ async function flushLoad() {
 	await Promise.resolve();
 }
 
-// Seed/read dismissal markers directly (same shape reminderDismissal.ts persists).
-function seedDismissal(id: number, status: 'due-soon' | 'overdue', odometer?: number) {
+// Seed/read dismissal markers directly (same shape reminderDismissal.ts persists — Story 8.5
+// due-instance model: dueAtOdometer/dueAtDate, not the pre-8.5 odometer offset).
+function seedDismissal(id: number, status: 'due-soon' | 'overdue', dueAtOdometer?: number) {
 	const raw = globalThis.localStorage.getItem(REMINDER_DISMISSED_STORAGE_KEY);
 	const map = raw ? JSON.parse(raw) : {};
-	map[id] = { status, odometer };
+	map[id] = { status, dueAtOdometer };
 	globalThis.localStorage.setItem(REMINDER_DISMISSED_STORAGE_KEY, JSON.stringify(map));
 }
 
@@ -167,21 +168,25 @@ describe('UpNextCard', () => {
 	});
 
 	it('dismissing hides the card and reveals the next-most-urgent', async () => {
+		// Both due-soon (not overdue — Story 8.5's exact-expiry model has no real "snooze until"
+		// point for an already-overdue reminder, since its due instance has already passed; a
+		// due-soon dismissal snoozes until the still-in-the-future due instance, which is what this
+		// interaction actually exercises).
 		mockGetServiceRemindersForVehicle.mockResolvedValue({
 			data: [
-				makeReminder({ id: 2, title: 'Oil change', intervalKm: 5000, lastServiceOdometer: 50000 }), // overdue
-				makeReminder({ id: 1, title: 'Air filter', intervalKm: 10300, lastServiceOdometer: 50000 }) // due-soon
+				makeReminder({ id: 2, title: 'Oil change', intervalKm: 10300, lastServiceOdometer: 50000 }), // due-soon, due 60300
+				makeReminder({ id: 1, title: 'Air filter', intervalKm: 10400, lastServiceOdometer: 50000 }) // due-soon, due 60400
 			],
 			error: null
 		});
 		renderCard();
 
-		// Most-urgent overdue shows first.
+		// Most-urgent (input order, both due-soon) shows first.
 		await screen.findByText('Oil change');
 		const dismiss = screen.getByRole('button', { name: 'Dismiss Oil change reminder' });
 		await fireEvent.click(dismiss);
 
-		// Now the next-most-urgent (due-soon Air filter) surfaces.
+		// Now the next-most-urgent (Air filter) surfaces.
 		await screen.findByText('Air filter');
 		expect(screen.queryByText('Oil change')).toBeNull();
 	});
@@ -189,7 +194,7 @@ describe('UpNextCard', () => {
 	it('keeps a dismissed reminder hidden across a reload while not worsened', async () => {
 		mockGetServiceRemindersForVehicle.mockResolvedValue({
 			data: [
-				makeReminder({ id: 2, title: 'Oil change', intervalKm: 5000, lastServiceOdometer: 50000 })
+				makeReminder({ id: 2, title: 'Oil change', intervalKm: 10300, lastServiceOdometer: 50000 }) // due-soon, due 60300
 			],
 			error: null
 		});
@@ -199,10 +204,29 @@ describe('UpNextCard', () => {
 		await waitFor(() => expect(screen.queryByText('Oil change')).toBeNull());
 
 		cleanup();
-		// Re-render (simulates a reload) with the same odometer → still suppressed.
+		// Re-render (simulates a reload) with the same odometer, still short of the due instance → still suppressed.
 		renderCard();
 		await flushLoad();
 		expect(screen.queryByText('Oil change')).toBeNull();
+	});
+
+	it('dismissing an OVERDUE reminder has no suppressive effect (its due instance already passed)', async () => {
+		// Story 8.5 / AD-RT-4: exact-expiry means an overdue reminder's due threshold has already
+		// been reached BY DEFINITION — there is no future instance left to snooze until, so the
+		// dismissal marker never suppresses it. Honest-signals ethos: you cannot dismiss away a fact
+		// that is already true (mirrors H11a's "no false 0-default").
+		mockGetServiceRemindersForVehicle.mockResolvedValue({
+			data: [
+				makeReminder({ id: 2, title: 'Oil change', intervalKm: 5000, lastServiceOdometer: 50000 }) // overdue, due 55000
+			],
+			error: null
+		});
+		renderCard();
+		await screen.findByText('Oil change');
+		await fireEvent.click(screen.getByRole('button', { name: 'Dismiss Oil change reminder' }));
+
+		// The card is still showing — dismissing an already-passed due instance is a no-op.
+		expect(await screen.findByText('Oil change')).toBeTruthy();
 	});
 
 	it('shows a predicted due date for a due-soon distance reminder with sufficient cadence (FR-10/12)', async () => {
@@ -271,7 +295,7 @@ describe('UpNextCard', () => {
 		// Marker 1 (this vehicle, no longer due) getting pruned proves the cleanup ran…
 		await waitFor(() => expect(readDismissalMap()[1]).toBeUndefined());
 		// …and the other vehicle's marker survived it.
-		expect(readDismissalMap()[99]).toEqual({ status: 'overdue', odometer: 12000 });
+		expect(readDismissalMap()[99]).toEqual({ status: 'overdue', dueAtOdometer: 12000 });
 	});
 
 	it('H10a: never prunes dismissals after a failed reminder read', async () => {
@@ -288,8 +312,8 @@ describe('UpNextCard', () => {
 		expect(screen.queryByText('Up next')).toBeNull();
 		// …and one transient read failure must not wipe ANY dismissal (it used to wipe all of them).
 		const map = readDismissalMap();
-		expect(map[2]).toEqual({ status: 'overdue', odometer: 60000 });
-		expect(map[99]).toEqual({ status: 'due-soon', odometer: 12000 });
+		expect(map[2]).toEqual({ status: 'overdue', dueAtOdometer: 60000 });
+		expect(map[99]).toEqual({ status: 'due-soon', dueAtOdometer: 12000 });
 	});
 
 	it("prunes this vehicle's marker once its reminder is no longer due (existing behavior)", async () => {
@@ -305,22 +329,29 @@ describe('UpNextCard', () => {
 		await waitFor(() => expect(readDismissalMap()[1]).toBeUndefined());
 	});
 
-	it('re-surfaces a dismissed reminder after driving a full due-soon window further', async () => {
-		const overdue = makeReminder({
+	it('re-surfaces a dismissed due-soon reminder EXACTLY at its due instance (Story 8.5, no more fuzz window)', async () => {
+		// due-soon: due at 55000, dismissed while at 54600 (400 remaining).
+		const dueSoon = makeReminder({
 			id: 2,
 			title: 'Oil change',
 			intervalKm: 5000,
 			lastServiceOdometer: 50000
 		});
-		mockGetServiceRemindersForVehicle.mockResolvedValue({ data: [overdue], error: null });
-		renderCard([fuelLogAt(60000)]);
+		mockGetServiceRemindersForVehicle.mockResolvedValue({ data: [dueSoon], error: null });
+		renderCard([fuelLogAt(54600)]);
 		await screen.findByText('Oil change');
 		await fireEvent.click(screen.getByRole('button', { name: 'Dismiss Oil change reminder' }));
 		await waitFor(() => expect(screen.queryByText('Oil change')).toBeNull());
 
 		cleanup();
-		// Driven another full due-soon window past the dismissal odometer → re-surface.
-		renderCard([fuelLogAt(60000 + REMINDER_DUE_SOON_KM)]);
+		// One km short of the exact due instance → still suppressed (no more +REMINDER_DUE_SOON_KM fuzz).
+		renderCard([fuelLogAt(54999)]);
+		await flushLoad();
+		expect(screen.queryByText('Oil change')).toBeNull();
+
+		cleanup();
+		// Reached the exact due instance (now overdue — status worsened) → re-surfaces.
+		renderCard([fuelLogAt(55000)]);
 		expect(await screen.findByText('Oil change')).toBeTruthy();
 	});
 });

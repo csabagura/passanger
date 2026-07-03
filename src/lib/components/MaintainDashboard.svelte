@@ -14,6 +14,7 @@
 	} from '$lib/utils/serviceReminder';
 	import { predictedDateView } from '$lib/utils/metrics/reminderPrediction';
 	import { isFiniteNumber } from '$lib/utils/calculations';
+	import { createWallClock } from '$lib/state/wallClock.svelte';
 	import ServiceReminderForm from '$lib/components/ServiceReminderForm.svelte';
 	import { Button } from '$lib/components/ui/button';
 	import { m } from '$lib/paraglide/messages';
@@ -25,11 +26,18 @@
 		// liveQuery.destroy) and mounts a fresh one (AD-4, mirrors Understand/Home).
 		vehicleId: number;
 		vehicleName?: string;
-		// Injectable reference date for status + prediction (deterministic tests); real clock in prod.
+		// Injectable reference date for status + prediction (deterministic tests); when absent, the
+		// shared reactive wall-clock is used instead of a mount-frozen `new Date()` (Story 8.5 / S20 /
+		// AD-RT-7 — a `$props()` default only evaluates once, so a reminder that becomes due purely by
+		// TIME passing would otherwise never re-evaluate here).
 		now?: Date;
 	}
 
-	let { vehicleId, vehicleName, now = new Date() }: Props = $props();
+	let { vehicleId, vehicleName, now }: Props = $props();
+
+	const wallClock = createWallClock();
+	onDestroy(wallClock.destroy);
+	const effectiveNow = $derived(now ?? wallClock.now);
 
 	// AD-4 reactive reads (mirror UnderstandDashboard): reminders AND fuel logs. Logging a fill-up
 	// elsewhere re-derives currentOdometer + cadence here for free; a reminder edit re-emits the list.
@@ -71,8 +79,8 @@
 		reminders
 			.map((reminder, index) => ({
 				reminder,
-				status: computeReminderStatus(reminder, currentOdometer, now),
-				dateView: predictedDateView(reminder, fuelLogs, currentOdometer, now),
+				status: computeReminderStatus(reminder, currentOdometer, effectiveNow, fuelLogs),
+				dateView: predictedDateView(reminder, fuelLogs, currentOdometer, effectiveNow),
 				index
 			}))
 			.sort(

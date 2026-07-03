@@ -21,6 +21,7 @@ import {
 } from '$lib/utils/reminderLoopClose';
 import type { ToastApi } from '$lib/state/toast';
 import type { Expense } from '$lib/db/schema';
+import { isFiniteNumber } from '$lib/utils/calculations';
 import { m } from '$lib/paraglide/messages';
 
 type OfferToast = Pick<ToastApi, 'action' | 'success' | 'error'>;
@@ -67,6 +68,7 @@ export async function offerReminderReset(
 	// One-shot fuel read for the current odometer (max finite log odometer — NOT expense.odometer,
 	// which is optional). Used to rank matches by urgency; the actual write re-derives it fresh below.
 	const fuelResult = await getAllFuelLogs(expense.vehicleId);
+	const fuelLogs = fuelResult.error ? [] : fuelResult.data;
 	const currentOdometer = fuelResult.error ? undefined : currentOdometerFromLogs(fuelResult.data);
 
 	// Array#sort is stable, so input order is preserved within a status tier.
@@ -74,7 +76,7 @@ export async function offerReminderReset(
 	const target = [...matches]
 		.map((reminder) => ({
 			reminder,
-			status: computeReminderStatus(reminder, currentOdometer, today).status
+			status: computeReminderStatus(reminder, currentOdometer, today, fuelLogs).status
 		}))
 		.sort(
 			(a, b) => REMINDER_STATUS_PRIORITY[a.status] - REMINDER_STATUS_PRIORITY[b.status]
@@ -93,12 +95,23 @@ export async function offerReminderReset(
 	});
 
 	async function applyReset(): Promise<void> {
-		// Re-derive the odometer at confirm time so a fuel log added during the toast window is
-		// reflected. The patch is built from plain primitives only (a Dexie Date + a number) — never a
-		// $state proxy or a reminder row — to respect the Dexie write boundary (Story 2.5/4.5).
-		const logs = await getAllFuelLogs(expense.vehicleId);
-		const odometer = logs.error ? undefined : currentOdometerFromLogs(logs.data);
-		const result = await updateServiceReminder(target.id, resetMarkerPatch(expense.date, odometer));
+		// Story 8.5 / H18 / AD-RT-5: prefer the expense's OWN odometer (more precise, event-scoped)
+		// when present and positive; fall back to the vehicle's current odometer from fuel logs (the
+		// sole pre-8.5 path) only when the expense has no usable odometer of its own. Re-derived at
+		// confirm time so a fuel log added during the toast window is still reflected in the fallback.
+		// The patch is built from plain primitives only (a Dexie Date + numbers) — never a $state
+		// proxy or a reminder row — to respect the Dexie write boundary (Story 2.5/4.5).
+		let odometer: number | undefined;
+		if (isFiniteNumber(expense.odometer) && expense.odometer > 0) {
+			odometer = expense.odometer;
+		} else {
+			const logs = await getAllFuelLogs(expense.vehicleId);
+			odometer = logs.error ? undefined : currentOdometerFromLogs(logs.data);
+		}
+		const result = await updateServiceReminder(
+			target.id,
+			resetMarkerPatch(expense.date, odometer, expense.id)
+		);
 		if (result.error) {
 			toast.error(m.reset_error());
 			resetInFlight = false;

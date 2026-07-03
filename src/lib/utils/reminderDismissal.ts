@@ -1,19 +1,24 @@
-// Up-Next reminder dismissal (Story 3.5 / DEC-8, AD-8). A dismissed Up-Next card is NOT silenced
-// forever — it re-surfaces "at the next threshold". We persist a small per-reminder marker in
-// localStorage (deliberately NOT IndexedDB, to avoid a Dexie migration — DB_VERSION stays 4) and
-// re-surface when the reminder's status worsens OR the vehicle has driven another due-soon window
-// past the odometer at which it was dismissed.
+// Up-Next reminder dismissal (Story 3.5 / DEC-8, AD-8; due-instance model Story 8.5 / AD-RT-4). A
+// dismissed Up-Next card is NOT silenced forever — it re-surfaces "at the next threshold". We
+// persist a small per-reminder marker in localStorage (deliberately NOT IndexedDB, to avoid a
+// Dexie migration — the dismissal shape is NOT schema-versioned) recording WHICH due instance was
+// dismissed (`dueAtOdometer` / `dueAtDate`), and re-surface exactly when that instance is reached
+// on either dimension, or when the reminder's status worsens.
 //
-// `isSuppressedByDismissal` is the pure, testable core: it takes the map in and touches no storage.
-// The read/write helpers mirror the safe-localStorage idiom of historyFilterStorage.ts: every access
-// is wrapped in try/catch so a blocked/quota-exceeded/malformed store degrades to a safe default
-// instead of crashing the dashboard.
+// `isSuppressedByDismissal` and `pruneDismissals` are pure, testable cores that touch no storage.
+// The read/write helpers mirror the safe-localStorage idiom of historyFilterStorage.ts: every
+// access is wrapped in try/catch so a blocked/quota-exceeded/malformed store degrades to a safe
+// default instead of crashing the dashboard.
 
-import { REMINDER_DISMISSED_STORAGE_KEY, REMINDER_DUE_SOON_KM } from '$lib/config';
+import { REMINDER_DISMISSED_STORAGE_KEY } from '$lib/config';
 import { isFiniteNumber } from '$lib/utils/calculations';
-import type { ReminderStatus } from '$lib/utils/serviceReminder';
+import { toDateOnlyString, type ReminderStatus } from '$lib/utils/serviceReminder';
 
-export type ReminderDismissal = { status: ReminderStatus; odometer?: number };
+export type ReminderDismissal = {
+	status: ReminderStatus;
+	dueAtOdometer?: number;
+	dueAtDate?: string;
+};
 export type ReminderDismissalMap = Record<number, ReminderDismissal>;
 
 // Severity ranking so "status worsened" is a simple numeric comparison.
@@ -23,10 +28,21 @@ function isReminderStatus(value: unknown): value is ReminderStatus {
 	return typeof value === 'string' && value in SEVERITY;
 }
 
+// Story 8.5 review patch: `dueAtDate` must be a real `YYYY-MM-DD` string, matching `toDateOnlyString`'s
+// output — a malformed value (e.g. corrupted localStorage) would otherwise never lexicographically
+// compare `>=` against `today`'s date-only string, permanently suppressing the reminder instead of
+// being dropped as an invalid marker.
+const DATE_ONLY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
+function isValidDateOnlyString(value: string): boolean {
+	return DATE_ONLY_PATTERN.test(value) && !Number.isNaN(new Date(value).getTime());
+}
+
 /**
- * PREP-1 (Story 4.1): validate one persisted marker before trusting it. A corrupt/legacy entry — an
- * unknown status, or a non-finite odometer — is dropped (returns null) rather than silently
- * suppressing a reminder forever. `odometer` stays optional; when present it must be finite.
+ * PREP-1 (Story 4.1) + Story 8.5 (AD-RT-4): validate one persisted marker before trusting it. The
+ * pre-8.5 shape was `{status, odometer?}` — that shape (and any marker recording neither due field)
+ * carries no due-instance and is treated as absent/expired here, never crash-inducing. A present
+ * `dueAtOdometer`/`dueAtDate` must be well-typed or the whole marker is dropped.
  */
 function sanitizeMarker(value: unknown): ReminderDismissal | null {
 	if (!value || typeof value !== 'object' || Array.isArray(value)) {
@@ -36,10 +52,26 @@ function sanitizeMarker(value: unknown): ReminderDismissal | null {
 	if (!isReminderStatus(marker.status)) {
 		return null;
 	}
-	if (marker.odometer !== undefined && !isFiniteNumber(marker.odometer)) {
+	const dueAtOdometer = marker.dueAtOdometer;
+	const dueAtDate = marker.dueAtDate;
+	if (dueAtOdometer !== undefined && !isFiniteNumber(dueAtOdometer)) {
 		return null;
 	}
-	return { status: marker.status, odometer: marker.odometer as number | undefined };
+	if (
+		dueAtDate !== undefined &&
+		(typeof dueAtDate !== 'string' || !isValidDateOnlyString(dueAtDate))
+	) {
+		return null;
+	}
+	if (dueAtOdometer === undefined && dueAtDate === undefined) {
+		// Old-shape marker (or a degenerate new-shape one) — no due instance recorded.
+		return null;
+	}
+	return {
+		status: marker.status,
+		dueAtOdometer: dueAtOdometer as number | undefined,
+		dueAtDate: dueAtDate as string | undefined
+	};
 }
 
 function getLocalStorage(): Storage | null {
@@ -100,10 +132,11 @@ export function writeDismissals(map: ReminderDismissalMap): void {
 export function dismissReminder(
 	id: number,
 	status: ReminderStatus,
-	currentOdometer: number | undefined
+	dueAtOdometer: number | undefined,
+	dueAtDate: string | undefined
 ): void {
 	const map = readDismissals();
-	map[id] = { status, odometer: currentOdometer };
+	map[id] = { status, dueAtOdometer, dueAtDate };
 	writeDismissals(map);
 }
 
@@ -117,13 +150,17 @@ export function clearDismissal(id: number): void {
 
 /**
  * Pure suppression rule (no storage access — pass the map in). A reminder is suppressed (hidden)
- * only while it has been dismissed and has neither worsened in status nor advanced a full due-soon
- * window past the dismissal odometer.
+ * only while it has been dismissed and has neither worsened in status nor reached the exact due
+ * instance that was dismissed, on either dimension the reminder tracks.
+ *
+ * Exact expiry (AD-RT-4): no `+ REMINDER_DUE_SOON_KM` fuzz — the due-soon window is a *display*
+ * concern (serviceReminder.ts), not a dismissal-expiry one.
  */
 export function isSuppressedByDismissal(
 	reminderId: number,
 	currentStatus: ReminderStatus,
 	currentOdometer: number | undefined,
+	today: Date,
 	map: ReminderDismissalMap
 ): boolean {
 	const marker = map[reminderId];
@@ -136,15 +173,39 @@ export function isSuppressedByDismissal(
 		return false;
 	}
 
-	// Drove another due-soon window further → re-surface (handles an already-overdue reminder that
-	// cannot worsen in status but keeps slipping — so it is "not permanently silenced").
 	if (
-		marker.odometer !== undefined &&
+		marker.dueAtOdometer !== undefined &&
 		currentOdometer !== undefined &&
-		currentOdometer >= marker.odometer + REMINDER_DUE_SOON_KM
+		currentOdometer >= marker.dueAtOdometer
 	) {
 		return false;
 	}
 
+	if (marker.dueAtDate !== undefined && toDateOnlyString(today) >= marker.dueAtDate) {
+		return false;
+	}
+
 	return true;
+}
+
+/**
+ * Pure prune decision (Story 8.5, AD-RT-4 — relocated out of `UpNextCard.svelte`'s `$effect`,
+ * NOT new logic). Returns the dismissal ids that are stale and should be cleared: a marker
+ * belongs to a reminder within `vehicleReminderIds` (the map is shared across ALL vehicles, H10a
+ * scoping) that is no longer in `dueReminderIds` (the reminder has returned to `ok`).
+ */
+export function pruneDismissals(
+	dismissals: ReminderDismissalMap,
+	vehicleReminderIds: ReadonlySet<number>,
+	dueReminderIds: ReadonlySet<number>
+): number[] {
+	const stale: number[] = [];
+	for (const key of Object.keys(dismissals)) {
+		const id = Number(key);
+		if (!vehicleReminderIds.has(id)) continue; // another vehicle's marker — not ours to judge
+		if (!dueReminderIds.has(id)) {
+			stale.push(id);
+		}
+	}
+	return stale;
 }

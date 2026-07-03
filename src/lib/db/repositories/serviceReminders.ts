@@ -8,13 +8,33 @@ import {
 	hasAtLeastOneInterval
 } from '../validators/rowValidation';
 import { runWrite, encodeSentinel } from '../writeSkeleton';
+import { clearDismissal } from '$lib/utils/reminderDismissal';
+
+// Story 8.5 / AD-RT-4: editing any of a reminder's schedule-bearing fields invalidates a stale
+// localStorage dismissal marker — it was recorded against the OLD due instance, and can no longer
+// be trusted to represent what the user actually dismissed.
+const SCHEDULE_FIELDS = [
+	'intervalKm',
+	'intervalDays',
+	'lastServiceOdometer',
+	'lastServiceDate'
+] as const;
+
+function touchesSchedule(changes: Partial<NewServiceReminder>): boolean {
+	return SCHEDULE_FIELDS.some((field) => field in changes);
+}
 
 export class ServiceReminderRepository {
 	async saveServiceReminder(reminder: NewServiceReminder): Promise<Result<ServiceReminder>> {
 		return runWrite(
 			() => validateNewServiceReminder(reminder),
 			async () => {
-				const id = await db.serviceReminders.add({ ...reminder } as ServiceReminder);
+				// Story 8.5 review patch: every new reminder needs a `createdAt` anchor (AD-RT-3) — the
+				// v6 migration only backfills PRE-EXISTING rows, so a reminder created after this ships
+				// must stamp its own, or it's permanently invisible on both dimensions when no explicit
+				// baseline is given.
+				const toInsert = { createdAt: Date.now(), ...reminder } as ServiceReminder;
+				const id = await db.serviceReminders.add(toInsert);
 				const saved = await db.serviceReminders.get(id as number);
 				if (!saved) throw encodeSentinel('SAVE_FAILED', 'Record not found after insert');
 				return saved;
@@ -46,7 +66,7 @@ export class ServiceReminderRepository {
 		id: number,
 		changes: Partial<NewServiceReminder>
 	): Promise<Result<ServiceReminder>> {
-		return runWrite(
+		const result = await runWrite(
 			() => validatePartialServiceReminder(changes),
 			() =>
 				db.transaction('rw', db.serviceReminders, async () => {
@@ -73,6 +93,12 @@ export class ServiceReminderRepository {
 				}),
 			'UPDATE_FAILED'
 		);
+		// Story 8.5 / AD-RT-4: a stale dismissal marker cannot survive a schedule edit — clear it
+		// AFTER the write commits (never on a failed/rejected write).
+		if (!result.error && touchesSchedule(changes)) {
+			clearDismissal(id);
+		}
+		return result;
 	}
 
 	async deleteServiceReminder(id: number): Promise<Result<void>> {

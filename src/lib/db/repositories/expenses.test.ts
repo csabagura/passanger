@@ -10,6 +10,7 @@ import {
 	deleteExpense,
 	restoreExpense
 } from './expenses';
+import { saveServiceReminder, getServiceReminderById } from './serviceReminders';
 import type { NewExpense } from '../schema';
 
 // Factory functions — Dexie v4 mutates the input object after add() to set the id.
@@ -236,6 +237,65 @@ describe('ExpenseRepository', () => {
 			const result = await deleteExpense(999);
 			expect(result.data).toBeNull();
 			expect(result.error?.code).toBe('NOT_FOUND');
+		});
+
+		// Story 8.5 / H18 / AD-RT-5: deleting the expense that closed a reminder loop reverts the
+		// provenance-linked fields to unset (not to an unknowable prior value).
+		describe('revert-on-delete (H18 / AD-RT-5)', () => {
+			it('clears lastServiceDate/lastServiceOdometer/lastClosedByExpenseId on the reminder this expense closed', async () => {
+				const expense = await saveExpense(makeExpense());
+				const reminder = await saveServiceReminder({
+					vehicleId: 1,
+					title: 'Oil change',
+					intervalKm: 10000,
+					lastServiceOdometer: 50000,
+					lastServiceDate: expense.data!.date,
+					lastClosedByExpenseId: expense.data!.id
+				});
+
+				expect((await deleteExpense(expense.data!.id)).error).toBeNull();
+
+				const after = await getServiceReminderById(reminder.data!.id);
+				expect(after.error).toBeNull();
+				expect(after.data!.lastServiceDate).toBeUndefined();
+				expect(after.data!.lastServiceOdometer).toBeUndefined();
+				expect(after.data!.lastClosedByExpenseId).toBeUndefined();
+			});
+
+			it('never touches a reminder closed by a DIFFERENT expense', async () => {
+				const closingExpense = await saveExpense(makeExpense());
+				const otherExpense = await saveExpense({ ...makeExpense(), type: 'Tyres' });
+				const reminder = await saveServiceReminder({
+					vehicleId: 1,
+					title: 'Oil change',
+					intervalKm: 10000,
+					lastServiceOdometer: 50000,
+					lastServiceDate: closingExpense.data!.date,
+					lastClosedByExpenseId: closingExpense.data!.id
+				});
+
+				// Deleting an UNRELATED expense must not touch the reminder's provenance link.
+				expect((await deleteExpense(otherExpense.data!.id)).error).toBeNull();
+
+				const after = await getServiceReminderById(reminder.data!.id);
+				expect(after.data!.lastClosedByExpenseId).toBe(closingExpense.data!.id);
+				expect(after.data!.lastServiceOdometer).toBe(50000);
+			});
+
+			it('leaves a reminder with no lastClosedByExpenseId untouched', async () => {
+				const expense = await saveExpense(makeExpense());
+				const reminder = await saveServiceReminder({
+					vehicleId: 1,
+					title: 'Tyres',
+					intervalKm: 40000,
+					lastServiceOdometer: 20000
+				});
+
+				expect((await deleteExpense(expense.data!.id)).error).toBeNull();
+
+				const after = await getServiceReminderById(reminder.data!.id);
+				expect(after.data!.lastServiceOdometer).toBe(20000);
+			});
 		});
 	});
 

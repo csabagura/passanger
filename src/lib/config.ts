@@ -41,12 +41,15 @@ export const ZERO_DECIMAL_CURRENCIES = new Set([
 export const SUFFIX_CURRENCIES = new Set(['FT', 'HUF', 'KR', 'ZŁ', 'KČ']);
 
 export const DB_NAME = 'passangerDB'; // Note: double-a brand name — NOT 'passengerDB'
-export const DB_VERSION = 5;
+export const DB_VERSION = 6;
 
 // Full-dataset JSON backup. `BACKUP_APP_ID` tags exported files so a restore can reject a
 // foreign file; the schemaVersion in a backup reuses DB_VERSION. On restore it is validated as an
 // integer within [4, DB_VERSION] (floor = the version the backup feature shipped at; ceiling
-// rejects backups from a newer app) — see backup.ts.
+// rejects backups from a newer app) — see backup.ts. v6 (Story 8.5): the range's ceiling tracks
+// DB_VERSION automatically; a v4/v5 backup forward-migrates via the same read-side coercion
+// precedent as v4→v5 (the 3 new ServiceReminder fields are simply absent, readers treat them as
+// unset — no historical backfill is possible or attempted on a restored row).
 export const BACKUP_APP_ID = 'passanger';
 export const BACKUP_FILENAME_PREFIX = 'passanger-backup';
 
@@ -55,6 +58,7 @@ export const MAX_VEHICLES = 5;
 // Service-reminder "due soon" thresholds — a reminder switches from ok → due-soon once
 // the remaining distance/time falls at or below these, and → overdue at/below zero.
 export const REMINDER_DUE_SOON_KM = 500;
+export const REMINDER_DUE_SOON_MI = 500; // Story 8.5 / S22 / AD-RT-6 — a distinct round number per unit, not a lossy km→mi conversion
 export const REMINDER_DUE_SOON_DAYS = 14;
 
 // Derived-metrics engine (Story 4.1 / FR-19, DEC-9). The cadence (km/day) estimator runs over a

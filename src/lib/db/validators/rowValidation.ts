@@ -259,6 +259,26 @@ export function validateNewServiceReminder(reminder: NewServiceReminder): string
 	)
 		return 'Last service date must be a valid Date';
 
+	// v6 (Story 8.5, ADR-007): 3 additive optional fields, no cross-field constraint beyond
+	// distanceUnit's own enum.
+	if (
+		reminder.createdAt !== undefined &&
+		(typeof reminder.createdAt !== 'number' || !Number.isFinite(reminder.createdAt))
+	)
+		return 'createdAt must be a finite number';
+	if (
+		reminder.distanceUnit !== undefined &&
+		reminder.distanceUnit !== 'km' &&
+		reminder.distanceUnit !== 'mi'
+	)
+		return 'distanceUnit must be "km" or "mi"';
+	if (
+		reminder.lastClosedByExpenseId !== undefined &&
+		(typeof reminder.lastClosedByExpenseId !== 'number' ||
+			!Number.isFinite(reminder.lastClosedByExpenseId))
+	)
+		return 'lastClosedByExpenseId must be a finite number';
+
 	return null;
 }
 
@@ -304,6 +324,28 @@ export function validatePartialServiceReminder(
 			Number.isNaN((changes.lastServiceDate as Date).getTime()))
 	)
 		return 'Last service date must be a valid Date';
+
+	// v6 (Story 8.5, ADR-007): same 3 additive optional fields as validateNewServiceReminder.
+	if (
+		'createdAt' in changes &&
+		changes.createdAt !== undefined &&
+		(typeof changes.createdAt !== 'number' || !Number.isFinite(changes.createdAt))
+	)
+		return 'createdAt must be a finite number';
+	if (
+		'distanceUnit' in changes &&
+		changes.distanceUnit !== undefined &&
+		changes.distanceUnit !== 'km' &&
+		changes.distanceUnit !== 'mi'
+	)
+		return 'distanceUnit must be "km" or "mi"';
+	if (
+		'lastClosedByExpenseId' in changes &&
+		changes.lastClosedByExpenseId !== undefined &&
+		(typeof changes.lastClosedByExpenseId !== 'number' ||
+			!Number.isFinite(changes.lastClosedByExpenseId))
+	)
+		return 'lastClosedByExpenseId must be a finite number';
 
 	return null;
 }

@@ -284,6 +284,52 @@ describe('validateNewServiceReminder / validatePartialServiceReminder', () => {
 			validatePartialServiceReminder({ intervalKm: undefined, intervalDays: undefined })
 		).toBeNull();
 	});
+
+	// v6 (Story 8.5, ADR-007): 3 additive optional fields.
+	it('accepts a reminder with the v6 fields present', () => {
+		expect(
+			validateNewServiceReminder({
+				...makeReminder(),
+				createdAt: Date.now(),
+				distanceUnit: 'mi',
+				lastClosedByExpenseId: 7
+			})
+		).toBeNull();
+	});
+
+	it('accepts a reminder with the v6 fields absent (back-compat)', () => {
+		expect(validateNewServiceReminder(makeReminder())).toBeNull();
+	});
+
+	it('rejects a non-finite createdAt', () => {
+		expect(validateNewServiceReminder({ ...makeReminder(), createdAt: NaN })).not.toBeNull();
+		expect(validatePartialServiceReminder({ createdAt: Infinity })).not.toBeNull();
+	});
+
+	it('rejects a distanceUnit outside "km"/"mi"', () => {
+		expect(
+			validateNewServiceReminder({
+				...makeReminder(),
+				distanceUnit: 'furlongs' as unknown as 'km'
+			})
+		).not.toBeNull();
+		expect(
+			validatePartialServiceReminder({ distanceUnit: 'furlongs' as unknown as 'km' })
+		).not.toBeNull();
+	});
+
+	it('rejects a non-finite lastClosedByExpenseId', () => {
+		expect(
+			validateNewServiceReminder({ ...makeReminder(), lastClosedByExpenseId: NaN })
+		).not.toBeNull();
+		expect(validatePartialServiceReminder({ lastClosedByExpenseId: Infinity })).not.toBeNull();
+	});
+
+	it('partial: an explicit undefined v6 field is a no-op clear', () => {
+		expect(validatePartialServiceReminder({ createdAt: undefined })).toBeNull();
+		expect(validatePartialServiceReminder({ distanceUnit: undefined })).toBeNull();
+		expect(validatePartialServiceReminder({ lastClosedByExpenseId: undefined })).toBeNull();
+	});
 });
 
 describe('hasAtLeastOneInterval (S13 cross-field invariant)', () => {
