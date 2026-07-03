@@ -84,18 +84,18 @@
 		)
 	);
 
-	// --- Monthly spend (home-currency series) ---
+	// --- Monthly spend (home-currency series) --- S27: monthlySpendByCurrency is now engine-owned
+	// zero-filled across its own data range, so a real zero-spend month renders as a zero-value bar
+	// rather than being dropped — no `value > 0` filter here.
 	const monthlyPoints = $derived<ChartDatum[]>(
-		monthlySpendByCurrency(entries, homeCurrency)
-			.map((bucket) => {
-				const value = bucket.byCurrency[homeCurrency] ?? 0;
-				return {
-					label: bucket.label,
-					value,
-					valueText: formatCurrency(value, homeCurrency)
-				};
-			})
-			.filter((point) => point.value > 0)
+		monthlySpendByCurrency(entries, homeCurrency).map((bucket) => {
+			const value = bucket.byCurrency[homeCurrency] ?? 0;
+			return {
+				label: bucket.label,
+				value,
+				valueText: formatCurrency(value, homeCurrency)
+			};
+		})
 	);
 
 	// --- Consumption trend — each point is 1:1 with a fuel log, so it links back to /history (no
@@ -112,18 +112,17 @@
 	);
 
 	// --- Maintenance cost trend (NET-NEW, FR-14) — home-currency monthly Expense totals. Aggregate
-	// bars sum many entries → no single-entry link. ---
+	// bars sum many entries → no single-entry link. S27: zero-filled across its own data range — no
+	// `value > 0` filter (a real zero-spend month renders as a zero-value bar, not a gap). ---
 	const maintenancePoints = $derived<ChartDatum[]>(
-		maintenanceCostTrend(expenses, homeCurrency)
-			.map((bucket) => {
-				const value = bucket.byCurrency[homeCurrency] ?? 0;
-				return {
-					label: bucket.label,
-					value,
-					valueText: formatCurrency(value, homeCurrency)
-				};
-			})
-			.filter((point) => point.value > 0)
+		maintenanceCostTrend(expenses, homeCurrency).map((bucket) => {
+			const value = bucket.byCurrency[homeCurrency] ?? 0;
+			return {
+				label: bucket.label,
+				value,
+				valueText: formatCurrency(value, homeCurrency)
+			};
+		})
 	);
 
 	// --- Fuel vs maintenance split (keep the existing accessible stacked-bar + legend; add a view-as-

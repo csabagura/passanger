@@ -406,13 +406,49 @@ describe('historyEntries', () => {
 		);
 	});
 
-	it('keeps year-to-date bounded by the reference date while current-month follows the calendar month', () => {
+	it('S2: current-month and year-to-date share the same future-date exclusion (parity)', () => {
+		// A future-dated entry (within the current calendar month) used to appear in "this month"
+		// while being excluded from "year to date" for the same data — the narrower view showing MORE
+		// than the wider one. Both must now exclude it identically.
 		const referenceDate = new Date(2026, 2, 15, 10, 0, 0, 0);
 		const entries = mergeHistoryEntries(
 			[
 				createFuelEntry({
 					id: 18,
 					date: new Date(2026, 2, 20, 12, 0, 0, 0),
+					quantity: 20,
+					totalCost: 30,
+					calculatedConsumption: 5
+				})
+			],
+			[]
+		);
+
+		expect(
+			summarizeHistoryEntriesForTimePeriod(entries, 'current-month', 'L/100km', referenceDate)
+		).toMatchObject({
+			timePeriod: 'current-month',
+			totalSpend: 0,
+			totalFuelVolume: 0,
+			averageConsumption: null
+		});
+		expect(
+			summarizeHistoryEntriesForTimePeriod(entries, 'year-to-date', 'L/100km', referenceDate)
+		).toMatchObject({
+			timePeriod: 'year-to-date',
+			totalSpend: 0,
+			totalFuelVolume: 0,
+			averageConsumption: null
+		});
+	});
+
+	it('S2: a same-day (not strictly future) entry is still included in both current-month and year-to-date', () => {
+		const referenceDate = new Date(2026, 2, 15, 10, 0, 0, 0);
+		const entries = mergeHistoryEntries(
+			[
+				createFuelEntry({
+					id: 18,
+					date: new Date(2026, 2, 15, 8, 0, 0, 0), // same day, earlier time
 					quantity: 20,
 					totalCost: 30,
 					calculatedConsumption: 5
@@ -432,9 +468,40 @@ describe('historyEntries', () => {
 			summarizeHistoryEntriesForTimePeriod(entries, 'year-to-date', 'L/100km', referenceDate)
 		).toMatchObject({
 			timePeriod: 'year-to-date',
+			totalSpend: 30,
+			totalFuelVolume: 20
+		});
+	});
+
+	it("S2: year-to-date's existing behavior is unchanged (past-month entry still excluded from current-month, included in year-to-date)", () => {
+		const referenceDate = new Date(2026, 2, 15, 10, 0, 0, 0);
+		const entries = mergeHistoryEntries(
+			[
+				createFuelEntry({
+					id: 18,
+					date: new Date(2026, 1, 10, 12, 0, 0, 0), // February — past month, same year
+					quantity: 20,
+					totalCost: 30,
+					calculatedConsumption: 5
+				})
+			],
+			[]
+		);
+
+		expect(
+			summarizeHistoryEntriesForTimePeriod(entries, 'current-month', 'L/100km', referenceDate)
+		).toMatchObject({
+			timePeriod: 'current-month',
 			totalSpend: 0,
 			totalFuelVolume: 0,
 			averageConsumption: null
+		});
+		expect(
+			summarizeHistoryEntriesForTimePeriod(entries, 'year-to-date', 'L/100km', referenceDate)
+		).toMatchObject({
+			timePeriod: 'year-to-date',
+			totalSpend: 30,
+			totalFuelVolume: 20
 		});
 	});
 
