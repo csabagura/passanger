@@ -484,6 +484,19 @@
 	"import_mapping_price_note": "A teljes költség ár × mennyiség alapján számolva",
 	"import_mapping_data_preview": "Adatok előnézete",
 	"import_mapping_row_label": "{row}. sor:",
+	"import_duplicate_check_title": "Lehetséges duplikátumok találhatók",
+	"import_duplicate_check_body": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} sor megegyezik egy már meglévő bejegyzéssel.",
+				"countPlural=other": "{count} sor megegyezik már meglévő bejegyzésekkel."
+			}
+		}
+	],
+	"import_duplicate_check_keep": "Importálás mégis",
+	"import_duplicate_check_skip": "Duplikátumok kihagyása",
 	"import_confirm_will_import": [
 		{
 			"declarations": ["input count", "local countPlural = count: plural"],
@@ -560,6 +573,7 @@
 	"import_review_issue_count": "{count} probléma",
 	"import_review_row_label": "{row}. sor",
 	"import_review_badge_corrected": "Javítva",
+	"import_review_badge_accepted": "Elfogadva",
 	"import_review_badge_skipped": "Kihagyva",
 	"import_review_undo_aria": "A(z) {row}. sor kihagyásának visszavonása",
 	"import_review_edit_aria": "{row}. sor szerkesztése: {summary}, {issues}",
@@ -570,6 +584,7 @@
 	"import_review_save_corrections": "Javítások mentése",
 	"import_review_skip_row": "Sor kihagyása",
 	"import_review_skip_all": "Az összes hátralévő megjelölt sor kihagyása",
+	"import_review_accept_all_warnings": "Az összes hátralévő figyelmeztetés importálása változatlanul",
 	"import_review_assign_vehicles": "Járművek hozzárendelése",
 	"import_review_needs_attention": [
 		{

@@ -3,6 +3,7 @@ import 'fake-indexeddb/auto';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { db } from '$lib/db/db';
 import { commitImportRows } from '$lib/utils/importCommit';
+import { findDuplicateRows } from '$lib/utils/importDuplicates';
 import type { ImportRow, VehicleAssignment } from '$lib/utils/importTypes';
 import { MAX_VEHICLES, DEFAULT_CURRENCY } from '$lib/config';
 
@@ -746,5 +747,76 @@ describe('commitImportRows — ADR-006 AD-WB-3 (write-boundary hardening)', () =
 
 		expect(await db.vehicles.count()).toBe(0);
 		expect(await db.fuelLogs.count()).toBe(0);
+	});
+
+	it('Story 8.3 AC1/AC2: externalSkippedCount (Review/duplicate skips) folds into the final skippedCount', async () => {
+		const vehicleId = await db.vehicles.add({
+			name: 'TestCar',
+			make: 'Honda',
+			model: 'Civic'
+		} as any);
+
+		const rows = [makeFuelRow(1, { odometer: 10000 })];
+		const assignments = [makeExistingAssignment('TestCar', vehicleId as number, 1)];
+
+		const result = await commitImportRows(rows, assignments, undefined, 2);
+		expect(result.error).toBeNull();
+		expect(result.data!.fuelCount).toBe(1);
+		expect(result.data!.skippedCount).toBe(2);
+	});
+
+	it('Story 8.3 AC11: end-to-end reconciliation — 1 Review-skip + 1 duplicate-skip + 1 commit-rejected all land in the one final skippedCount', async () => {
+		const vehicleId = await db.vehicles.add({
+			name: 'TestCar',
+			make: 'Honda',
+			model: 'Civic'
+		} as any);
+
+		// Pre-existing fuel log — row 2 below will duplicate this exactly.
+		await db.fuelLogs.add({
+			vehicleId,
+			date: new Date(2026, 0, 5),
+			odometer: 20000,
+			quantity: 30,
+			unit: 'L',
+			distanceUnit: 'km',
+			totalCost: 45,
+			calculatedConsumption: 0
+		} as any);
+
+		// Row 1 is the "Review-skip" — simulated by never including it in the array handed to
+		// commitImportRows at all (buildFinalRows already stripped it in the real wizard flow), and
+		// its count folded into externalSkippedCount below (reviewSkippedCount = 1).
+		// Row 2 duplicates the seeded log exactly — found via findDuplicateRows, then excluded.
+		// Row 3 has a non-positive quantity — passes importValidation as a warning but is rejected by
+		// the repo-grade validator at commit time (commitRejectedCount).
+		// Row 4 is a normal valid row.
+		const rows = [
+			makeFuelRow(2, { odometer: 20000, date: new Date(2026, 0, 5) }),
+			makeFuelRow(3, { odometer: 20400, quantity: -5 }),
+			makeFuelRow(4, { odometer: 20600 })
+		];
+		const assignments = [makeExistingAssignment('TestCar', vehicleId as number, 4)];
+
+		const dupResult = await findDuplicateRows(rows, assignments);
+		expect(dupResult.error).toBeNull();
+		expect(dupResult.data!.duplicateRowNumbers.has(2)).toBe(true);
+
+		const rowsAfterDuplicateSkip = rows.filter(
+			(r) => !dupResult.data!.duplicateRowNumbers.has(r.rowNumber)
+		);
+		const reviewSkippedCount = 1; // row 1, never in `rows` at all
+		const duplicateSkippedCount = dupResult.data!.duplicateRowNumbers.size; // 1 (row 2)
+
+		const result = await commitImportRows(
+			rowsAfterDuplicateSkip,
+			assignments,
+			undefined,
+			reviewSkippedCount + duplicateSkippedCount
+		);
+
+		expect(result.error).toBeNull();
+		expect(result.data!.fuelCount).toBe(1); // only row 4 persists
+		expect(result.data!.skippedCount).toBe(3); // 1 review + 1 duplicate + 1 commit-rejected (row 3)
 	});
 });

@@ -4,14 +4,19 @@
 import { ok, err } from '$lib/utils/result';
 import type { Result } from '$lib/utils/result';
 import type {
-	ImportRow,
 	NormalizedImportEntry,
 	ImportParseResult,
 	DetectedUnits,
 	ColumnMappingEntry
 } from '$lib/utils/importTypes';
-import { validateImportRow, buildDryRunSummary } from '$lib/utils/importValidation';
+import { buildDryRunSummary } from '$lib/utils/importValidation';
 import { splitCSVSections } from '$lib/utils/importSections';
+import {
+	normalizeDecimal,
+	hasFatalParseErrors,
+	sortValidateResort,
+	type ParsedEntry
+} from '$lib/utils/importParserShared';
 
 /**
  * Parse Drivvo date: "D/M/YYYY" format (day-first!).
@@ -31,25 +36,6 @@ function parseDrivvoDate(dateStr: string): Date | null {
 	const date = new Date(year, month - 1, day);
 	if (date.getMonth() !== month - 1 || date.getDate() !== day) return null;
 	return date;
-}
-
-/**
- * Normalize a numeric string that may use comma as decimal separator.
- * "1.234,56" → 1234.56 (European thousands + decimal comma)
- * "1234.56" → 1234.56 (US format, no change)
- * "1234,56" → 1234.56 (European decimal comma, no thousands)
- */
-function normalizeDecimal(value: string): number {
-	const cleaned = value.trim();
-	if (!cleaned) return NaN;
-	const lastComma = cleaned.lastIndexOf(',');
-	const lastDot = cleaned.lastIndexOf('.');
-	if (lastComma > lastDot) {
-		// Comma is decimal separator: remove dots (thousands), replace comma with dot
-		return parseFloat(cleaned.replace(/\./g, '').replace(',', '.'));
-	}
-	// Dot is decimal separator (or no separator): remove commas (thousands)
-	return parseFloat(cleaned.replace(/,/g, ''));
 }
 
 /**
@@ -97,7 +83,7 @@ export async function parseDrivvoCSV(
 		}
 
 		let rowNumber = 0;
-		const allEntries: { data: Partial<NormalizedImportEntry>; rowNumber: number }[] = [];
+		const allEntries: ParsedEntry[] = [];
 
 		// Parse Refuelling section
 		if (hasRefuelling) {
@@ -108,16 +94,11 @@ export async function parseDrivvoCSV(
 			});
 
 			// Check for fatal parse errors
-			if (refuelResult.errors && refuelResult.errors.length > 0) {
-				const fatalErrors = refuelResult.errors.filter(
-					(e: { type: string }) => e.type === 'Delimiter' || e.type === 'Quotes'
+			if (hasFatalParseErrors(refuelResult.errors)) {
+				return err(
+					'PARSE_FAILED',
+					'The CSV file appears to be malformed. Check for broken quoting or formatting issues.'
 				);
-				if (fatalErrors.length > 0) {
-					return err(
-						'PARSE_FAILED',
-						'The CSV file appears to be malformed. Check for broken quoting or formatting issues.'
-					);
-				}
 			}
 
 			const rows = refuelResult.data as string[][];
@@ -228,34 +209,13 @@ export async function parseDrivvoCSV(
 			);
 		}
 
-		// Sort by date for odometer decrease detection
-		const sorted = [...allEntries].sort((a, b) => {
-			const dateA = a.data.date instanceof Date ? a.data.date.getTime() : 0;
-			const dateB = b.data.date instanceof Date ? b.data.date.getTime() : 0;
-			return dateA - dateB;
-		});
-
-		// Validate rows
-		const validatedRows: ImportRow[] = [];
-		let prevOdometer: number | undefined;
-
-		for (const entry of sorted) {
-			const isMaintenance = entry.data.type === 'maintenance';
-			const validated = validateImportRow(
-				entry.data,
-				entry.rowNumber,
-				prevOdometer,
-				isMaintenance ? { skipQuantityValidation: true } : undefined
-			);
-			validatedRows.push(validated);
-
-			if (entry.data.odometer != null && !isNaN(entry.data.odometer)) {
-				prevOdometer = entry.data.odometer;
-			}
-		}
-
-		// Re-sort by rowNumber for display order
-		validatedRows.sort((a, b) => a.rowNumber - b.rowNumber);
+		// Sort by date, validate (odometer-decrease chain), then re-sort by rowNumber for display.
+		// Drivvo is single-vehicle-per-file, so the decrease chain uses one constant group.
+		const validatedRows = sortValidateResort(
+			allEntries,
+			() => '',
+			(entry) => (entry.data.type === 'maintenance' ? { skipQuantityValidation: true } : undefined)
+		);
 
 		const summary = buildDryRunSummary(validatedRows);
 

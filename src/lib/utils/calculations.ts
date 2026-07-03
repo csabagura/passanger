@@ -1,7 +1,8 @@
 import type { FuelUnit } from '$lib/config';
 import { ZERO_DECIMAL_CURRENCIES, SUFFIX_CURRENCIES } from '$lib/config';
 
-export const LITERS_PER_GALLON = 3.785411784;
+export const LITERS_PER_GALLON = 3.785411784; // US gallon
+export const LITERS_PER_UK_GALLON = 4.54609; // Story 8.3 AC7 — aCar UK-gallon parse-time conversion
 export const KILOMETERS_PER_MILE = 1.609344;
 
 /**

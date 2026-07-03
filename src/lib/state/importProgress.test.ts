@@ -68,14 +68,18 @@ function makeStep4State(): ImportWizardState {
 	};
 }
 
-const noSatellites: ImportProgressSatellites = { step4AutoSkipped: false, reviewEntries: null };
+const noSatellites: ImportProgressSatellites = {
+	step4AutoSkipped: false,
+	reviewEntries: null,
+	fileIdentity: null
+};
 
 // ---------------------------------------------------------------------------
 // Round-trip & projection (AC1, AC2, AC3)
 // ---------------------------------------------------------------------------
 
 describe('saveImportProgress / loadImportProgress round-trip', () => {
-	it('restores step, source, format, rawCSV, rowCount, and assignments', () => {
+	it('restores step, source, format, rowCount, and assignments (rawCSV dropped once parsedRows exists — B4/AC10)', () => {
 		const state = makeStep4State();
 		state.vehicleAssignments = [
 			{
@@ -93,7 +97,8 @@ describe('saveImportProgress / loadImportProgress round-trip', () => {
 		expect(restored!.state.step).toBe(4);
 		expect(restored!.state.selectedSource).toBe('fuelly');
 		expect(restored!.state.confirmedFormat).toBe('fuelly');
-		expect(restored!.state.rawCSV).toBe(state.rawCSV);
+		// makeStep4State has non-empty parsedRows — the raw CSV text is no longer persisted (B4).
+		expect(restored!.state.rawCSV).toBeNull();
 		expect(restored!.state.rowCount).toBe(1);
 		expect(restored!.state.vehicleAssignments).toEqual(state.vehicleAssignments);
 	});
@@ -152,7 +157,8 @@ describe('Date revival', () => {
 		};
 		const satellites: ImportProgressSatellites = {
 			step4AutoSkipped: true,
-			reviewEntries: [[1, review]]
+			reviewEntries: [[1, review]],
+			fileIdentity: 'export.csv|1234|abc'
 		};
 
 		saveImportProgress(makeStep4State(), satellites);
@@ -165,6 +171,31 @@ describe('Date revival', () => {
 		expect((restored!.reviewEntries![0][1].correctedData.date as Date).getTime()).toBe(
 			new Date(2024, 5, 10).getTime()
 		);
+	});
+
+	it('Story 8.3 AC5/AC10 — round-trips the fileIdentity satellite', () => {
+		const satellites: ImportProgressSatellites = {
+			step4AutoSkipped: false,
+			reviewEntries: null,
+			fileIdentity: 'export.csv|1234|abc'
+		};
+
+		saveImportProgress(makeStep4State(), satellites);
+		const restored = loadImportProgress();
+
+		expect(restored!.fileIdentity).toBe('export.csv|1234|abc');
+	});
+
+	it('defaults fileIdentity to null for a payload written before this field existed', () => {
+		saveImportProgress(makeStep4State(), noSatellites);
+
+		// Simulate an older payload shape missing `fileIdentity` entirely.
+		const raw = JSON.parse(localStorage.getItem(IMPORT_PROGRESS_STORAGE_KEY)!);
+		delete raw.fileIdentity;
+		localStorage.setItem(IMPORT_PROGRESS_STORAGE_KEY, JSON.stringify(raw));
+
+		const restored = loadImportProgress();
+		expect(restored!.fileIdentity).toBeNull();
 	});
 });
 
@@ -277,5 +308,62 @@ describe('clear and quota', () => {
 		expect(localStorage.getItem(IMPORT_PROGRESS_STORAGE_KEY)).toBeNull();
 		expect(loadImportProgress()).toBeNull();
 		spy.mockRestore();
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Resumable payload correctness (Story 8.3 AC10 — B4/S32)
+// ---------------------------------------------------------------------------
+
+describe('resumable payload correctness (Story 8.3 AC10)', () => {
+	it('persists rawCSV at Step 3 (before parsedRows exists)', () => {
+		const state: ImportWizardState = {
+			...makeStep4State(),
+			step: 3,
+			parsedRows: []
+		};
+		saveImportProgress(state, noSatellites);
+
+		const raw = JSON.parse(localStorage.getItem(IMPORT_PROGRESS_STORAGE_KEY)!);
+		expect(raw.state.rawCSV).toBe(state.rawCSV);
+	});
+
+	it('does not persist rawCSV once parsedRows exists — serialized size no longer scales with source size (B4)', () => {
+		const hugeCSV = 'fuelup_date,odometer\n' + '2024-01-01,10000\n'.repeat(50_000);
+		const state: ImportWizardState = {
+			...makeStep4State(),
+			rawCSV: hugeCSV
+		};
+		saveImportProgress(state, noSatellites);
+
+		const raw = JSON.parse(localStorage.getItem(IMPORT_PROGRESS_STORAGE_KEY)!);
+		expect(raw.state.rawCSV).toBeNull();
+		expect(localStorage.getItem(IMPORT_PROGRESS_STORAGE_KEY)!.length).toBeLessThan(hugeCSV.length);
+	});
+
+	it('a payload stamped with a foreign/old PAYLOAD_VERSION is discarded on load (S32)', () => {
+		saveImportProgress(makeStep4State(), noSatellites);
+
+		const raw = JSON.parse(localStorage.getItem(IMPORT_PROGRESS_STORAGE_KEY)!);
+		raw.version = 999;
+		localStorage.setItem(IMPORT_PROGRESS_STORAGE_KEY, JSON.stringify(raw));
+
+		expect(loadImportProgress()).toBeNull();
+		expect(localStorage.getItem(IMPORT_PROGRESS_STORAGE_KEY)).toBeNull();
+	});
+
+	it('a payload with a missing version field is discarded on load (mirrors the staleness-discard pattern)', () => {
+		saveImportProgress(makeStep4State(), noSatellites);
+
+		const raw = JSON.parse(localStorage.getItem(IMPORT_PROGRESS_STORAGE_KEY)!);
+		delete raw.version;
+		localStorage.setItem(IMPORT_PROGRESS_STORAGE_KEY, JSON.stringify(raw));
+
+		expect(loadImportProgress()).toBeNull();
+	});
+
+	it('a payload with the current PAYLOAD_VERSION loads normally', () => {
+		saveImportProgress(makeStep4State(), noSatellites);
+		expect(loadImportProgress()).not.toBeNull();
 	});
 });

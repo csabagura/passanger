@@ -3,6 +3,7 @@
 	import { resolve } from '$app/paths';
 	import { goto } from '$app/navigation';
 	import { commitImportRows } from '$lib/utils/importCommit';
+	import { findDuplicateRows } from '$lib/utils/importDuplicates';
 	import { formatImportDateRange } from '$lib/utils/importSummary';
 	import type {
 		ImportRow,
@@ -24,12 +25,21 @@
 		rows: ImportRow[];
 		summary: ImportDryRunSummary;
 		assignments: VehicleAssignment[];
+		// Story 8.3 AC2 (H9) — rows the Review step already skipped (buildFinalRows removed them from
+		// `rows` before this component ever saw them); folded into externalSkippedCount below.
+		reviewSkippedCount: number;
 		onImportComplete: (result: ImportCommitResult) => void;
 		onImportReset: () => void;
 	}
 
-	let { rows, summary, assignments, onImportComplete, onImportReset }: ImportStepConfirmProps =
-		$props();
+	let {
+		rows,
+		summary,
+		assignments,
+		reviewSkippedCount,
+		onImportComplete,
+		onImportReset
+	}: ImportStepConfirmProps = $props();
 
 	const vehiclesContext = getContext<VehiclesContext>('vehicles');
 
@@ -37,11 +47,39 @@
 	let progressCurrent = $state(0);
 	let progressTotal = $state(0);
 
-	const importableRows = $derived(
-		rows.filter((r) => r.status === 'valid' || r.status === 'warning')
+	// Story 8.3 AC1 (H7) — rows destined for an EXISTING vehicle are checked against that vehicle's
+	// already-persisted fuelLogs before the final commit trigger. 'checking' while the async DB read
+	// runs, 'none' when nothing matched (or the check itself failed — fail open rather than block
+	// import on an advisory check), 'pending' while awaiting the user's keep/skip choice, 'keep'/'skip'
+	// once decided. Rows assigned to a NEW vehicle are never included (checked inside findDuplicateRows).
+	let duplicateState = $state<'checking' | 'none' | 'pending' | 'keep' | 'skip'>('checking');
+	let duplicateRowNumbers = $state<Set<number>>(new Set());
+
+	(async () => {
+		const result = await findDuplicateRows(rows, assignments);
+		if (result.error || result.data.duplicateRowNumbers.size === 0) {
+			duplicateState = 'none';
+			return;
+		}
+		duplicateRowNumbers = result.data.duplicateRowNumbers;
+		duplicateState = 'pending';
+	})();
+
+	// The rows actually offered to commit — excludes duplicate-skipped rows once the user chooses
+	// to skip them. AC2's final skippedCount reconciliation is fed via externalSkippedCount below,
+	// not by a second parallel skip-counting mechanism.
+	const effectiveRows = $derived(
+		duplicateState === 'skip' ? rows.filter((r) => !duplicateRowNumbers.has(r.rowNumber)) : rows
 	);
-	const skippedRows = $derived(rows.filter((r) => r.status === 'error'));
-	const correctedCount = $derived(rows.filter((r) => r.status === 'warning').length);
+	const externalSkippedCount = $derived(
+		(duplicateState === 'skip' ? duplicateRowNumbers.size : 0) + reviewSkippedCount
+	);
+
+	const importableRows = $derived(
+		effectiveRows.filter((r) => r.status === 'valid' || r.status === 'warning')
+	);
+	const skippedRows = $derived(effectiveRows.filter((r) => r.status === 'error'));
+	const correctedCount = $derived(effectiveRows.filter((r) => r.status === 'warning').length);
 	let showSkipped = $state(false);
 
 	const newVehicleAssignments = $derived(assignments.filter((a) => a.assignmentType === 'new'));
@@ -72,10 +110,15 @@
 		progressCurrent = 0;
 		progressTotal = importableRows.length;
 
-		const result = await commitImportRows(rows, assignments, (current, total) => {
-			progressCurrent = current;
-			progressTotal = total;
-		});
+		const result = await commitImportRows(
+			effectiveRows,
+			assignments,
+			(current, total) => {
+				progressCurrent = current;
+				progressTotal = total;
+			},
+			externalSkippedCount
+		);
 
 		if (result.error) {
 			commitState = { status: 'error', error: result.error };
@@ -116,7 +159,33 @@
 </script>
 
 <div class="space-y-4">
-	{#if commitState.status === 'idle' || commitState.status === 'loading'}
+	{#if duplicateState === 'pending'}
+		<!-- Story 8.3 AC1 (H7) — surfaced before the final commit trigger, aggregate keep/skip choice -->
+		<div class="rounded-lg border border-amber-500/30 bg-amber-50 p-4 dark:bg-amber-950/20">
+			<p class="text-sm font-semibold text-foreground">{m.import_duplicate_check_title()}</p>
+			<p class="mt-1 text-sm text-muted-foreground">
+				{m.import_duplicate_check_body({ count: duplicateRowNumbers.size })}
+			</p>
+			<div class="mt-3 flex gap-3">
+				<button
+					type="button"
+					class="min-h-11 flex-1 rounded-xl border border-border bg-card px-4 py-2 text-sm font-semibold text-foreground"
+					data-testid="duplicate-keep-btn"
+					onclick={() => (duplicateState = 'keep')}
+				>
+					{m.import_duplicate_check_keep()}
+				</button>
+				<button
+					type="button"
+					class="min-h-11 flex-1 rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-accent-foreground"
+					data-testid="duplicate-skip-btn"
+					onclick={() => (duplicateState = 'skip')}
+				>
+					{m.import_duplicate_check_skip()}
+				</button>
+			</div>
+		</div>
+	{:else if commitState.status === 'idle' || commitState.status === 'loading'}
 		<!-- Pre-commit / committing view -->
 		<div class="rounded-lg border border-border p-4 space-y-2">
 			<div class="flex items-center gap-2">
@@ -126,11 +195,11 @@
 				</span>
 			</div>
 
-			{#if skippedRows.length > 0}
+			{#if skippedRows.length + externalSkippedCount > 0}
 				<div class="flex items-center gap-2">
 					<span class="inline-block h-2.5 w-2.5 rounded-full bg-muted-foreground"></span>
 					<span class="text-sm text-muted-foreground">
-						{m.import_confirm_skipped({ count: skippedRows.length })}
+						{m.import_confirm_skipped({ count: skippedRows.length + externalSkippedCount })}
 					</span>
 					<button
 						type="button"
@@ -222,9 +291,11 @@
 		<!-- Import button -->
 		<button
 			type="button"
-			disabled={commitState.status === 'loading'}
+			disabled={commitState.status === 'loading' || duplicateState === 'checking'}
 			aria-busy={commitState.status === 'loading' ? 'true' : undefined}
-			aria-disabled={commitState.status === 'loading' ? 'true' : undefined}
+			aria-disabled={commitState.status === 'loading' || duplicateState === 'checking'
+				? 'true'
+				: undefined}
 			class="inline-flex min-h-11 w-full items-center justify-center rounded-xl bg-accent px-5 py-3 text-sm font-semibold text-accent-foreground disabled:cursor-not-allowed disabled:opacity-70"
 			data-testid="import-btn"
 			onclick={handleImport}

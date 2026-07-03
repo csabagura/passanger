@@ -484,6 +484,19 @@
 	"import_mapping_price_note": "Total cost calculated as price × quantity",
 	"import_mapping_data_preview": "Data preview",
 	"import_mapping_row_label": "Row {row}:",
+	"import_duplicate_check_title": "Possible duplicates found",
+	"import_duplicate_check_body": [
+		{
+			"declarations": ["input count", "local countPlural = count: plural"],
+			"selectors": ["countPlural"],
+			"match": {
+				"countPlural=one": "{count} row matches an entry already in your data.",
+				"countPlural=other": "{count} rows match entries already in your data."
+			}
+		}
+	],
+	"import_duplicate_check_keep": "Import anyway",
+	"import_duplicate_check_skip": "Skip duplicates",
 	"import_confirm_will_import": [
 		{
 			"declarations": ["input count", "local countPlural = count: plural"],
@@ -560,6 +573,7 @@
 	"import_review_issue_count": "{count} issues",
 	"import_review_row_label": "Row {row}",
 	"import_review_badge_corrected": "Corrected",
+	"import_review_badge_accepted": "Accepted",
 	"import_review_badge_skipped": "Skipped",
 	"import_review_undo_aria": "Undo skip for Row {row}",
 	"import_review_edit_aria": "Edit Row {row}: {summary}, {issues}",
@@ -570,6 +584,7 @@
 	"import_review_save_corrections": "Save Corrections",
 	"import_review_skip_row": "Skip This Row",
 	"import_review_skip_all": "Skip all remaining flagged rows",
+	"import_review_accept_all_warnings": "Import all remaining warnings as-is",
 	"import_review_assign_vehicles": "Assign Vehicles",
 	"import_review_needs_attention": [
 		{

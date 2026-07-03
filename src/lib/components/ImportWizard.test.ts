@@ -313,14 +313,14 @@ describe('ImportWizard', () => {
 		expect(screen.getByText('Step 1 of 6: Source')).toBeTruthy();
 	});
 
-	it('renders four source cards on step 1', () => {
+	it('renders three source cards on step 1 (Story 8.3 AC8 — "Generic CSV" removed)', () => {
 		renderWizard();
 
 		const buttons = screen.getAllByRole('button');
 		const sourceButtons = buttons.filter((btn) =>
 			btn.getAttribute('aria-label')?.startsWith('Import from')
 		);
-		expect(sourceButtons).toHaveLength(4);
+		expect(sourceButtons).toHaveLength(3);
 	});
 
 	it('renders instruction text on step 1', () => {
@@ -406,65 +406,17 @@ describe('ImportWizard', () => {
 	});
 
 	describe('Step 3: generic / unsupported format fallback', () => {
-		it('shows an honest unsupported-format fallback (not "Coming soon") for a generic file', async () => {
-			// Generic source + generic detection → confirmedFormat resolves to 'generic'.
-			mockDetectCSVFormat.mockReturnValue({ data: 'generic', error: null });
+		// Story 8.3 AC8 (S4) — "Generic CSV" is no longer a selectable Step-1 source, and
+		// ImportStepUpload's `confirmedFormat = detectedFormat !== 'generic' ? detectedFormat :
+		// selectedSource` always substitutes the user's (now brand-only) Step-1 selection when
+		// detection can't recognize the file — so `confirmedFormat` can no longer resolve to
+		// 'generic' via the UI at all. ImportWizard's fallback branch is kept as inert
+		// defense-in-depth (per the story's Task 4 recommendation) but is no longer reachable
+		// through normal navigation, so the two tests that drove it via a "Generic CSV" Step-1
+		// selection were removed rather than rewritten to a flow the app no longer offers.
+		it('Step 1 no longer offers a "Generic CSV" source card', () => {
 			renderWizard();
-
-			// Step 1: Select the Generic CSV source.
-			await fireEvent.click(screen.getByRole('button', { name: /import from generic csv/i }));
-
-			// Step 2: Upload a file whose format is unrecognized.
-			const csv = 'foo,bar,baz\n1,2,3\n4,5,6';
-			const file = new File([csv], 'unknown.csv', { type: 'text/csv' });
-			const input = document.querySelector('input[type="file"]') as HTMLInputElement;
-			await fireEvent.change(input, { target: { files: [file] } });
-
-			await waitFor(() => {
-				const continueBtn = screen.getByRole('button', { name: /continue/i });
-				expect(continueBtn.hasAttribute('disabled')).toBe(false);
-			});
-
-			await fireEvent.click(screen.getByRole('button', { name: /continue/i }));
-
-			await waitFor(() => {
-				expect(screen.getByText('Step 3 of 6: Preview')).toBeTruthy();
-			});
-
-			// Honest fallback copy — names the supported sources, no "Coming soon".
-			expect(screen.getByTestId('unsupported-format')).toBeTruthy();
-			expect(screen.getByText(/couldn't recognize this format/i)).toBeTruthy();
-			expect(screen.getByText(/fuelly/i)).toBeTruthy();
-			expect(screen.getByText(/drivvo/i)).toBeTruthy();
-			expect(screen.queryByText(/coming soon/i)).toBeNull();
-		});
-
-		it('"Choose a different format" returns to Step 1', async () => {
-			mockDetectCSVFormat.mockReturnValue({ data: 'generic', error: null });
-			renderWizard();
-
-			await fireEvent.click(screen.getByRole('button', { name: /import from generic csv/i }));
-			const csv = 'foo,bar,baz\n1,2,3';
-			const file = new File([csv], 'unknown.csv', { type: 'text/csv' });
-			const input = document.querySelector('input[type="file"]') as HTMLInputElement;
-			await fireEvent.change(input, { target: { files: [file] } });
-
-			await waitFor(() => {
-				expect(screen.getByRole('button', { name: /continue/i }).hasAttribute('disabled')).toBe(
-					false
-				);
-			});
-			await fireEvent.click(screen.getByRole('button', { name: /continue/i }));
-
-			await waitFor(() => {
-				expect(screen.getByText('Step 3 of 6: Preview')).toBeTruthy();
-			});
-
-			await fireEvent.click(screen.getByRole('button', { name: /choose a different format/i }));
-
-			await waitFor(() => {
-				expect(screen.getByText('Step 1 of 6: Source')).toBeTruthy();
-			});
+			expect(screen.queryByRole('button', { name: /generic csv/i })).toBeNull();
 		});
 	});
 
@@ -658,6 +610,106 @@ describe('ImportWizard', () => {
 				expect(screen.getByTestId('review-card-1')).toBeTruthy();
 			});
 		});
+
+		it("Story 8.3 AC5 (S5): a second, different file does not inherit the first file's Review corrections", async () => {
+			const { parseFuellyCSV } = await import('$lib/utils/importParseFuelly');
+			const mockedParse = vi.mocked(parseFuellyCSV);
+
+			function flaggedResult() {
+				return Promise.resolve({
+					data: {
+						rows: [
+							{
+								rowNumber: 1,
+								status: 'error' as const,
+								data: {
+									date: new Date(2024, 0, 1),
+									odometer: undefined,
+									quantity: 40,
+									unit: 'L' as const,
+									distanceUnit: 'km' as const,
+									totalCost: 60,
+									notes: '',
+									type: 'fuel' as const,
+									sourceVehicleName: 'TestCar'
+								},
+								issues: ['Missing odometer reading']
+							}
+						],
+						summary: {
+							totalRows: 1,
+							validCount: 0,
+							warningCount: 0,
+							errorCount: 1,
+							detectedVehicleNames: ['TestCar'],
+							dateRange: { start: new Date(2024, 0, 1), end: new Date(2024, 0, 1) }
+						},
+						detectedUnits: { fuel: 'L' as const, distance: 'km' as const },
+						columnMapping: [
+							{ sourceColumn: 'fuelup_date', targetField: 'Date', status: 'mapped' as const }
+						]
+					},
+					error: null
+				});
+			}
+
+			mockedParse.mockResolvedValueOnce(await flaggedResult());
+
+			renderWizard();
+
+			// File A
+			await fireEvent.click(screen.getByRole('button', { name: /fuelly/i }));
+			const fileA = new File(['fuelup_date,gallons\n2024-01-01,10'], 'a.csv', {
+				type: 'text/csv'
+			});
+			const inputA = document.querySelector('input[type="file"]') as HTMLInputElement;
+			await fireEvent.change(inputA, { target: { files: [fileA] } });
+			await waitFor(() =>
+				expect(screen.getByRole('button', { name: /continue/i }).hasAttribute('disabled')).toBe(
+					false
+				)
+			);
+			await fireEvent.click(screen.getByRole('button', { name: /continue/i }));
+			await waitFor(() => expect(screen.getByText("Here's how we'll map your data")).toBeTruthy());
+			await fireEvent.click(screen.getByRole('button', { name: /continue/i }));
+
+			await waitFor(() => expect(screen.getByTestId('review-card-1')).toBeTruthy());
+
+			// Skip row 1 in file A's review (this is what gets cached)
+			await fireEvent.click(screen.getByRole('button', { name: /edit row 1/i }));
+			await fireEvent.click(screen.getByRole('button', { name: /skip this row/i }));
+			await waitFor(() => {
+				expect(screen.getByTestId('review-card-1').textContent).toContain('Skipped');
+			});
+
+			// Navigate back to Step 2 (Back x2) WITHOUT an explicit reset
+			await fireEvent.click(screen.getByRole('button', { name: /back/i })); // -> Step 3
+			await waitFor(() => expect(screen.getByText('Step 3 of 6: Preview')).toBeTruthy());
+			await fireEvent.click(screen.getByRole('button', { name: /back/i })); // -> Step 2
+			await waitFor(() => expect(screen.getByText('Step 2 of 6: Upload')).toBeTruthy());
+
+			// File B — different content, same row number 1, also flagged
+			mockedParse.mockResolvedValueOnce(await flaggedResult());
+			const fileB = new File(['fuelup_date,gallons\n2024-02-01,20'], 'b.csv', {
+				type: 'text/csv'
+			});
+			const inputB = document.querySelector('input[type="file"]') as HTMLInputElement;
+			await fireEvent.change(inputB, { target: { files: [fileB] } });
+			await waitFor(() =>
+				expect(screen.getByRole('button', { name: /continue/i }).hasAttribute('disabled')).toBe(
+					false
+				)
+			);
+			await fireEvent.click(screen.getByRole('button', { name: /continue/i }));
+			await waitFor(() => expect(screen.getByText("Here's how we'll map your data")).toBeTruthy());
+			await fireEvent.click(screen.getByRole('button', { name: /continue/i }));
+
+			// File B's row 1 must show up pending (fresh), NOT inheriting file A's "Skipped" state.
+			await waitFor(() => {
+				const card = screen.getByTestId('review-card-1');
+				expect(card.textContent).not.toContain('Skipped');
+			});
+		});
 	});
 
 	describe('Step 5-6: Vehicle Assignment & Confirm', () => {
@@ -795,9 +847,13 @@ describe('ImportWizard', () => {
 			satellites: {
 				step4AutoSkipped: boolean;
 				reviewEntries: [number, ReviewRowState][] | null;
+				fileIdentity?: string | null;
 			} = { step4AutoSkipped: false, reviewEntries: null }
 		) {
-			saveImportProgress({ ...createInitialWizardState(), ...partial }, satellites);
+			saveImportProgress(
+				{ ...createInitialWizardState(), ...partial },
+				{ fileIdentity: null, ...satellites }
+			);
 		}
 
 		it('resumes on Step 4 (Review) with restored rows instead of Step 1', async () => {

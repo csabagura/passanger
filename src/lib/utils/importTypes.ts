@@ -64,7 +64,11 @@ export interface VehicleGroup {
 }
 
 export interface ReviewRowState {
-	status: 'pending' | 'corrected' | 'skipped';
+	// Story 8.3 AC2 (H9) — 'accepted' is set by the Review step's bulk "Import N as warnings" action:
+	// a still-`pending` warning-severity row is accepted as-is (no re-validation, no data change) in
+	// one action, distinct from an individual per-row 'corrected' edit. Only `error`-status rows are
+	// still required to reach 'corrected'/'skipped' before the wizard can advance past Review.
+	status: 'pending' | 'corrected' | 'skipped' | 'accepted';
 	correctedData: Partial<NormalizedImportEntry>;
 	correctedIssues: string[];
 	correctedStatus: ImportRowStatus;
@@ -83,6 +87,11 @@ export interface ImportWizardState {
 	vehicleId: number | null;
 	commitResult: ImportCommitResult | null;
 	vehicleAssignments: VehicleAssignment[];
+	// Story 8.3 AC2 (H9) — count of rows the Review step skipped (per-row skip + "skip all
+	// remaining"), which `buildFinalRows` removes from `parsedRows` before this point. Carried
+	// forward so the final Confirm-step skippedCount stays honest about every row that never
+	// reached the database, not just the last stage that touched it.
+	reviewSkippedCount: number;
 }
 
 // Shared by all parsers — moved from importParseFuelly.ts in Story 8.3
@@ -136,6 +145,7 @@ export function createInitialWizardState(): ImportWizardState {
 		dryRunSummary: null,
 		vehicleId: null,
 		commitResult: null,
-		vehicleAssignments: []
+		vehicleAssignments: [],
+		reviewSkippedCount: 0
 	};
 }

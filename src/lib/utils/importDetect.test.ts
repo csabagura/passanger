@@ -84,4 +84,28 @@ describe('detectCSVFormat', () => {
 		expect(result.error).toBeNull();
 		expect(result.data).toBe('fuelly');
 	});
+
+	// Story 8.3 S3 — BOM stripped BEFORE detection (not just before section splitting).
+	describe('BOM-prefixed exports (Story 8.3 S3)', () => {
+		it('detects a BOM-prefixed aCar export (does not fall through to generic)', () => {
+			const csv = '﻿## Vehicle: Honda Civic\nDate,Odometer,Litres\n2024-01-01,10000,45';
+			const result = detectCSVFormat(csv);
+			expect(result.error).toBeNull();
+			expect(result.data).toBe('acar');
+		});
+
+		it('detects a BOM-prefixed Drivvo export (does not fall through to generic)', () => {
+			const csv = '﻿##Refuelling\nDate,Odometer,Quantity\n2024-01-01,10000,45';
+			const result = detectCSVFormat(csv);
+			expect(result.error).toBeNull();
+			expect(result.data).toBe('drivvo');
+		});
+
+		it('detects a BOM-prefixed Fuelly export (does not fall through to generic)', () => {
+			const csv = '﻿fuelup_date,gallons,price,mpg\n2024-01-01,10.5,35.00,28.5';
+			const result = detectCSVFormat(csv);
+			expect(result.error).toBeNull();
+			expect(result.data).toBe('fuelly');
+		});
+	});
 });

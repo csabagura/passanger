@@ -18,6 +18,11 @@ Renegade,Jeep,15.82,187205,319.016,50.441,1.319,50,06/12/2021 0:00,06/12/2021,,,
 const MISSING_FIELDS_CSV = `car_name,model,l/100km,odometer,km,litres,price,city_percentage,fuelup_date,date_added,tags,notes,missed_fuelup,partial_fuelup,latitude,longitude,brand
 Renegade,Jeep,18.71,,306.998,57.432,1.269,50,,06/06/2021,,,0,0,,,`;
 
+// Story 8.3 AC3 regression — a comma-decimal cell must parse via the shared normalizeDecimal, not
+// silently truncate through bare parseFloat("45,2") -> 45.
+const COMMA_DECIMAL_FUELLY_CSV = `car_name,model,l/100km,odometer,km,litres,price,city_percentage,fuelup_date,date_added,tags,notes,missed_fuelup,partial_fuelup,latitude,longitude,brand
+Renegade,Jeep,18.71,"186886,5",306.998,"45,2","1,25",50,06/06/2021 0:00,06/06/2021,,,0,0,,,`;
+
 describe('parseFuellyCSV', () => {
 	beforeEach(() => {
 		vi.useFakeTimers();
@@ -55,6 +60,15 @@ describe('parseFuellyCSV', () => {
 		expect(rows[0].data.totalCost).toBeCloseTo(72.881208, 4);
 		// 50.441 * 1.319 ≈ 66.53168
 		expect(rows[1].data.totalCost).toBeCloseTo(50.441 * 1.319, 4);
+	});
+
+	it('parses comma-decimal odometer/quantity/price cells via shared normalizeDecimal (AC3)', async () => {
+		const result = await parseFuellyCSV(COMMA_DECIMAL_FUELLY_CSV);
+		expect(result.error).toBeNull();
+		const row = result.data!.rows[0];
+		expect(row.data.odometer).toBeCloseTo(186886.5);
+		expect(row.data.quantity).toBeCloseTo(45.2);
+		expect(row.data.quantity).not.toBe(45);
 	});
 
 	it('detects metric units from column headers (litres → L, km → km)', async () => {
@@ -231,6 +245,26 @@ MyCar,Make,10,49000,300,40,1.5,50,01/15/2022 0:00,01/15/2022,,,0,0,,,`;
 		const rows = result.data!.rows;
 		const secondRow = rows.find((r) => r.rowNumber === 2)!;
 		expect(secondRow.issues).toContain('Odometer is lower than the previous entry');
+	});
+
+	it("an unparseable-date row does not seed or poison another row's decrease chain (S7)", async () => {
+		// Row 1 (missing fuelup_date) has a huge odometer; if it seeded the chain via the old
+		// date.getTime()->0 epoch fallback, row 2's much-lower-but-still-first-real odometer would
+		// falsely read as a decrease. Row 3 increases normally and must also stay clean.
+		const csv = `car_name,model,l/100km,odometer,km,litres,price,city_percentage,fuelup_date,date_added,tags,notes,missed_fuelup,partial_fuelup,latitude,longitude,brand
+MyCar,Make,10,999999,300,40,1.5,50,,01/01/2022,,,0,0,,,
+MyCar,Make,10,50000,300,40,1.5,50,01/05/2022 0:00,01/05/2022,,,0,0,,,
+MyCar,Make,10,50500,300,40,1.5,50,01/10/2022 0:00,01/10/2022,,,0,0,,,`;
+
+		const result = await parseFuellyCSV(csv);
+		const rows = result.data!.rows;
+		const row1 = rows.find((r) => r.rowNumber === 1)!;
+		const row2 = rows.find((r) => r.rowNumber === 2)!;
+		const row3 = rows.find((r) => r.rowNumber === 3)!;
+
+		expect(row1.issues).toContain('Missing date');
+		expect(row2.issues).not.toContain('Odometer is lower than the previous entry');
+		expect(row3.issues).not.toContain('Odometer is lower than the previous entry');
 	});
 
 	it('maps the missed_fuelup / partial_fuelup columns into the fill-quality flags (Story 7.1)', async () => {

@@ -21,6 +21,7 @@
 		saveImportProgress,
 		clearImportProgress
 	} from '$lib/state/importProgress';
+	import { computeFileIdentity } from '$lib/utils/importFileIdentity';
 	import { m } from '$lib/paraglide/messages';
 
 	const STEP_LABELS = [
@@ -57,6 +58,16 @@
 		confirmedFormat: ImportSource;
 		rowCount: number;
 	}) {
+		// Story 8.3 AC5 (S5) — a new file's identity invalidates any cached Review corrections
+		// automatically, so a second, different file processed without an explicit "start new
+		// import" (handleImportReset) can never inherit file A's row-N correction/skip state. The
+		// same fingerprint doubles as the resume-payload identity for AC10 (Task 8).
+		const newFileIdentity = computeFileIdentity(data.file.name, data.file.size, data.rawCSV);
+		if (fileIdentity !== null && newFileIdentity !== fileIdentity) {
+			cachedReviewEntries = null;
+		}
+		fileIdentity = newFileIdentity;
+
 		wizardState.file = data.file;
 		wizardState.rawCSV = data.rawCSV;
 		wizardState.confirmedFormat = data.confirmedFormat;
@@ -70,9 +81,16 @@
 		wizardState.step = 4;
 	}
 
-	function handleReviewConfirmed(data: { rows: ImportRow[]; summary: ImportDryRunSummary }) {
+	function handleReviewConfirmed(data: {
+		rows: ImportRow[];
+		summary: ImportDryRunSummary;
+		skippedCount: number;
+	}) {
 		wizardState.parsedRows = data.rows;
 		wizardState.dryRunSummary = data.summary;
+		// Story 8.3 AC2 (H9) — carried forward to Confirm so the final skippedCount stays honest
+		// about rows Review skipped (buildFinalRows already removed them from `data.rows`).
+		wizardState.reviewSkippedCount = data.skippedCount;
 		wizardState.step = 5;
 	}
 
@@ -92,6 +110,7 @@
 		wizardState = createInitialWizardState();
 		step4AutoSkipped = false;
 		cachedReviewEntries = null;
+		fileIdentity = null;
 		// Starting a fresh import after success — drop the persisted progress too (5.4 AC5).
 		clearImportProgress();
 	}
@@ -108,6 +127,11 @@
 		restored?.reviewEntries ?? null
 	);
 
+	// Story 8.3 AC5 (S5) — the uploaded file's identity fingerprint, threaded alongside
+	// `cachedReviewEntries` so a second, different file can never inherit the first file's cache.
+	// Seeded from the resumed payload so a resumed session keeps recognizing "the same file".
+	let fileIdentity = $state<string | null>(restored?.fileIdentity ?? null);
+
 	// Story 5.4: write the in-progress state through to localStorage on each meaningful change so a
 	// tab-close / reload resumes here. Single $effect (can't forget a handler). Snapshots the $state
 	// proxy first ($state.snapshot — proxies aren't structured-clone-safe). Best-effort: the persist
@@ -120,7 +144,8 @@
 		if (wizardState.step === 1 && wizardState.rawCSV === null) return;
 		saveImportProgress($state.snapshot(wizardState), {
 			step4AutoSkipped,
-			reviewEntries: cachedReviewEntries
+			reviewEntries: cachedReviewEntries,
+			fileIdentity
 		});
 	});
 
@@ -278,6 +303,7 @@
 			rows={wizardState.parsedRows}
 			summary={wizardState.dryRunSummary}
 			assignments={wizardState.vehicleAssignments}
+			reviewSkippedCount={wizardState.reviewSkippedCount}
 			onImportComplete={handleImportComplete}
 			onImportReset={handleImportReset}
 		/>

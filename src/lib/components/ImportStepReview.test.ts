@@ -84,12 +84,16 @@ function createSummary(rows: ImportRow[]): ImportDryRunSummary {
 
 describe('ImportStepReview', () => {
 	let onReviewConfirmed: ReturnType<
-		typeof vi.fn<(data: { rows: ImportRow[]; summary: ImportDryRunSummary }) => void>
+		typeof vi.fn<
+			(data: { rows: ImportRow[]; summary: ImportDryRunSummary; skippedCount: number }) => void
+		>
 	>;
 
 	beforeEach(() => {
 		onReviewConfirmed =
-			vi.fn<(data: { rows: ImportRow[]; summary: ImportDryRunSummary }) => void>();
+			vi.fn<
+				(data: { rows: ImportRow[]; summary: ImportDryRunSummary; skippedCount: number }) => void
+			>();
 	});
 
 	afterEach(() => {
@@ -384,6 +388,126 @@ describe('ImportStepReview', () => {
 				expect(screen.getByTestId('review-card-2').textContent).toContain('Skipped');
 				expect(screen.getByTestId('review-card-3').textContent).toContain('Skipped');
 			});
+		});
+	});
+
+	describe('Bulk accept-warnings (Story 8.3 AC2/H9)', () => {
+		it('a still-pending warning row blocks Assign Vehicles, unlike before this story', () => {
+			const rows = [createWarningRow(3)];
+			const summary = createSummary(rows);
+
+			render(ImportStepReview, {
+				props: { rows, summary, onReviewConfirmed }
+			});
+
+			const btn = screen.getByTestId('assign-vehicles-btn');
+			expect(btn.hasAttribute('disabled')).toBe(true);
+		});
+
+		it('"Import all remaining warnings" accepts every pending warning row in one action', async () => {
+			const rows = [createWarningRow(3), createWarningRow(4)];
+			const summary = createSummary(rows);
+
+			render(ImportStepReview, {
+				props: { rows, summary, onReviewConfirmed }
+			});
+
+			await fireEvent.click(screen.getByTestId('accept-all-warnings-btn'));
+
+			await waitFor(() => {
+				expect(screen.getByTestId('review-card-3').textContent).toContain('Accepted');
+				expect(screen.getByTestId('review-card-4').textContent).toContain('Accepted');
+				const btn = screen.getByTestId('assign-vehicles-btn');
+				expect(btn.hasAttribute('disabled')).toBe(false);
+			});
+		});
+
+		it('does not re-run validation or change data on bulk-accepted rows', async () => {
+			const rows = [createWarningRow(3)];
+			const summary = createSummary(rows);
+
+			render(ImportStepReview, {
+				props: { rows, summary, onReviewConfirmed }
+			});
+
+			await fireEvent.click(screen.getByTestId('accept-all-warnings-btn'));
+			await waitFor(() => screen.getByTestId('assign-vehicles-btn'));
+			await fireEvent.click(screen.getByTestId('assign-vehicles-btn'));
+
+			const call = onReviewConfirmed.mock.calls[0][0];
+			expect(call.rows).toHaveLength(1);
+			expect(call.rows[0].status).toBe('warning');
+			expect(call.rows[0].data.totalCost).toBe(0); // unchanged
+		});
+
+		it('bulk-accept only touches warning rows, never error rows', () => {
+			const rows = [createErrorRow(2), createWarningRow(3)];
+			const summary = createSummary(rows);
+
+			render(ImportStepReview, {
+				props: { rows, summary, onReviewConfirmed }
+			});
+
+			expect(screen.getByTestId('accept-all-warnings-btn')).toBeTruthy();
+			fireEvent.click(screen.getByTestId('accept-all-warnings-btn'));
+
+			// The error row must still block — Assign Vehicles stays disabled
+			const btn = screen.getByTestId('assign-vehicles-btn');
+			expect(btn.hasAttribute('disabled')).toBe(true);
+		});
+
+		it('the button is absent once there are no pending warnings left', () => {
+			const rows = [createErrorRow(2)];
+			const summary = createSummary(rows);
+
+			render(ImportStepReview, {
+				props: { rows, summary, onReviewConfirmed }
+			});
+
+			expect(screen.queryByTestId('accept-all-warnings-btn')).toBeNull();
+		});
+	});
+
+	describe('Honest skip-count reconciliation (Story 8.3 AC2/AC11)', () => {
+		it('onReviewConfirmed reports skippedCount 0 when nothing was skipped', async () => {
+			const rows = [createWarningRow(3)];
+			const summary = createSummary(rows);
+
+			render(ImportStepReview, {
+				props: { rows, summary, onReviewConfirmed }
+			});
+
+			await fireEvent.click(screen.getByTestId('accept-all-warnings-btn'));
+			await waitFor(() => screen.getByTestId('assign-vehicles-btn'));
+			await fireEvent.click(screen.getByTestId('assign-vehicles-btn'));
+
+			expect(onReviewConfirmed.mock.calls[0][0].skippedCount).toBe(0);
+		});
+
+		it('onReviewConfirmed reports the exact count of per-row + skip-all skipped rows', async () => {
+			const rows = [createErrorRow(2), createWarningRow(3), createWarningRow(4)];
+			const summary = createSummary(rows);
+
+			render(ImportStepReview, {
+				props: { rows, summary, onReviewConfirmed }
+			});
+
+			// Skip row 2 individually
+			await fireEvent.click(screen.getByRole('button', { name: /edit row 2/i }));
+			await fireEvent.click(screen.getByRole('button', { name: /skip this row/i }));
+
+			// Skip all remaining (rows 3, 4)
+			await fireEvent.click(screen.getByRole('button', { name: /skip all remaining/i }));
+
+			await waitFor(() => {
+				const btn = screen.getByTestId('assign-vehicles-btn');
+				expect(btn.hasAttribute('disabled')).toBe(false);
+			});
+			await fireEvent.click(screen.getByTestId('assign-vehicles-btn'));
+
+			const call = onReviewConfirmed.mock.calls[0][0];
+			expect(call.skippedCount).toBe(3);
+			expect(call.rows).toHaveLength(0);
 		});
 	});
 
@@ -882,5 +1006,82 @@ describe('ImportStepReview', () => {
 				expect(entry[1].status).toBe('skipped');
 			});
 		});
+	});
+});
+
+// ---------------------------------------------------------------------------
+// S9 regression lock (Story 8.3 Task 10) — the audit's "all-error vehicle group forces an
+// assignment" finding does NOT reproduce: Review's allReviewed gate already refuses to let ANY
+// error-status row (regardless of which vehicle it belongs to) leave Review uncorrected/unskipped,
+// so an entire vehicle group that is 100% error-status can never reach ImportStepVehicles requiring
+// an assignment. Locked here so a future change cannot silently reopen it.
+// ---------------------------------------------------------------------------
+
+describe('S9 regression lock — an all-error vehicle group cannot reach Vehicles unresolved', () => {
+	function createErrorRowForVehicle(rowNumber: number, vehicleName: string): ImportRow {
+		return {
+			rowNumber,
+			status: 'error',
+			data: {
+				date: new Date(2024, 2, 15),
+				odometer: undefined,
+				quantity: 42.5,
+				unit: 'L',
+				distanceUnit: 'km',
+				totalCost: 62.3,
+				notes: '',
+				type: 'fuel',
+				sourceVehicleName: vehicleName
+			},
+			issues: ['Missing odometer reading']
+		};
+	}
+
+	it('Assign Vehicles stays disabled while every row of a vehicle group is still error/pending', () => {
+		const rows = [
+			createErrorRowForVehicle(1, 'AllErrorCar'),
+			createErrorRowForVehicle(2, 'AllErrorCar')
+		];
+		const summary = createSummary(rows);
+		const onReviewConfirmed = vi.fn();
+
+		render(ImportStepReview, { props: { rows, summary, onReviewConfirmed } });
+
+		expect(screen.getByTestId('assign-vehicles-btn').hasAttribute('disabled')).toBe(true);
+	});
+
+	it('the all-error group can only reach onReviewConfirmed once every one of its rows is corrected/skipped', async () => {
+		const rows = [
+			createErrorRowForVehicle(1, 'AllErrorCar'),
+			createErrorRowForVehicle(2, 'AllErrorCar')
+		];
+		const summary = createSummary(rows);
+		const onReviewConfirmed = vi.fn();
+
+		render(ImportStepReview, { props: { rows, summary, onReviewConfirmed } });
+
+		// Skip row 1 only — the group still has an unresolved error row (row 2).
+		await fireEvent.click(screen.getByRole('button', { name: /edit row 1/i }));
+		await fireEvent.click(screen.getByRole('button', { name: /skip this row/i }));
+
+		expect(screen.getByTestId('assign-vehicles-btn').hasAttribute('disabled')).toBe(true);
+
+		// Skip row 2 too — now the whole group is resolved (both skipped).
+		await fireEvent.click(screen.getByRole('button', { name: /edit row 2/i }));
+		await fireEvent.click(screen.getByRole('button', { name: /skip this row/i }));
+
+		await waitFor(() => {
+			expect(screen.getByTestId('assign-vehicles-btn').hasAttribute('disabled')).toBe(false);
+		});
+
+		await fireEvent.click(screen.getByTestId('assign-vehicles-btn'));
+
+		// The group reaching onReviewConfirmed is fully resolved — zero unresolved rows for it, so
+		// ImportStepVehicles's groupRowsByVehicle can never see an all-error/all-unassignable group.
+		const call = onReviewConfirmed.mock.calls[0][0];
+		const groupRows = call.rows.filter(
+			(r: ImportRow) => r.data.sourceVehicleName === 'AllErrorCar'
+		);
+		expect(groupRows).toHaveLength(0); // both skipped -> buildFinalRows removed them entirely
 	});
 });

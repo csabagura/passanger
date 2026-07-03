@@ -4,14 +4,21 @@
 import { ok, err } from '$lib/utils/result';
 import type { Result } from '$lib/utils/result';
 import type {
-	ImportRow,
 	NormalizedImportEntry,
 	ImportParseResult,
 	DetectedUnits,
 	ColumnMappingEntry
 } from '$lib/utils/importTypes';
-import { validateImportRow, buildDryRunSummary } from '$lib/utils/importValidation';
+import { buildDryRunSummary } from '$lib/utils/importValidation';
 import { splitCSVSections } from '$lib/utils/importSections';
+import {
+	normalizeDecimal,
+	getColumn,
+	hasFatalParseErrors,
+	sortValidateResort,
+	type ParsedEntry
+} from '$lib/utils/importParserShared';
+import { LITERS_PER_UK_GALLON } from '$lib/utils/calculations';
 
 /**
  * Parse aCar date: "YYYY-MM-DD" format.
@@ -32,37 +39,52 @@ function parseACarDate(dateStr: string): Date | null {
 	return date;
 }
 
+// A unit-detection signal that also flags whether the 'gal' resolution specifically means UK
+// (not US) gallons — AC7 (S11) needs to know this to convert the parsed quantity at parse time.
+interface UnitSignal extends DetectedUnits {
+	fuelIsUKGallons: boolean;
+}
+
 /**
  * Detect units from Vehicle section codes.
  * DistUnit: 0=km, 1=miles
  * FuelUnit: 0=litres, 1=US gallons, 2=UK gallons
  */
-function detectUnitsFromVehicleCodes(vehicleRow: Record<string, string>): DetectedUnits {
+function detectUnitsFromVehicleCodes(vehicleRow: Record<string, string>): UnitSignal {
 	const distUnitCode = parseInt(getColumn(vehicleRow, 'DistUnit'), 10);
 	const fuelUnitCode = parseInt(getColumn(vehicleRow, 'FuelUnit'), 10);
 	return {
 		distance: distUnitCode === 1 ? 'mi' : 'km',
-		fuel: fuelUnitCode === 1 || fuelUnitCode === 2 ? 'gal' : 'L'
+		fuel: fuelUnitCode === 1 || fuelUnitCode === 2 ? 'gal' : 'L',
+		fuelIsUKGallons: fuelUnitCode === 2
 	};
 }
 
+// Story 8.3 AC6 (S8) — a header dimension with NO recognized unit suffix (e.g. a bare "Odo" with
+// no "(km)"/"(mi)" hint) must report `null`, distinct from matching-and-resolving-to-a-default, so
+// the caller can fall back to the Vehicle-section codes instead of silently defaulting to km/L.
+interface HeaderUnitSignal {
+	distance: 'km' | 'mi' | null;
+	fuel: 'L' | 'gal' | null;
+	fuelIsUKGallons: boolean;
+}
+
 /**
- * Detect units from Log column headers (e.g., "Odo (km)" vs "Odo (mi)").
+ * Detect units from Log column headers (e.g., "Odo (km)" vs "Odo (mi)"). Returns `null` for a
+ * dimension the headers give no signal for at all.
  */
-function detectUnitsFromHeaders(fields: string[]): DetectedUnits {
+function detectUnitsFromHeaders(fields: string[]): HeaderUnitSignal {
 	const lower = fields.map((f) => f.toLowerCase().trim());
+	const hasMi = lower.some((f) => f.includes('(mi)'));
+	const hasKm = lower.some((f) => f.includes('(km)'));
+	const hasUKGallons = lower.some((f) => f.includes('(uk gallons)'));
+	const hasUSGallons = lower.some((f) => f.includes('(us gallons)'));
+	const hasLitres = lower.some((f) => f.includes('(litres)') || f.includes('(liters)'));
 	return {
-		distance: lower.some((f) => f.includes('(mi)')) ? 'mi' : 'km',
-		fuel: lower.some((f) => f.includes('(us gallons)') || f.includes('(uk gallons)')) ? 'gal' : 'L'
+		distance: hasMi ? 'mi' : hasKm ? 'km' : null,
+		fuel: hasUSGallons || hasUKGallons ? 'gal' : hasLitres ? 'L' : null,
+		fuelIsUKGallons: hasUKGallons
 	};
-}
-
-/**
- * Find a column value case-insensitively from a row object.
- */
-function getColumn(row: Record<string, string>, columnName: string): string {
-	const key = Object.keys(row).find((k) => k.toLowerCase().trim() === columnName.toLowerCase());
-	return key ? (row[key] ?? '') : '';
 }
 
 /**
@@ -184,7 +206,7 @@ export async function parseACarCSV(rawCSV: string): Promise<Result<ImportParseRe
 
 		const vehicleRow = vehicleRows[0];
 		const vehicleName = getColumn(vehicleRow, 'Name').replace(/^"|"$/g, '');
-		const _vehicleUnits = detectUnitsFromVehicleCodes(vehicleRow);
+		const vehicleUnits = detectUnitsFromVehicleCodes(vehicleRow);
 
 		// Parse Log section
 		const logResult = Papa.parse(sections.get('log')!, {
@@ -195,16 +217,11 @@ export async function parseACarCSV(rawCSV: string): Promise<Result<ImportParseRe
 		});
 
 		// Check for fatal parse errors
-		if (logResult.errors && logResult.errors.length > 0) {
-			const fatalErrors = logResult.errors.filter(
-				(e: { type: string }) => e.type === 'Delimiter' || e.type === 'Quotes'
+		if (hasFatalParseErrors(logResult.errors)) {
+			return err(
+				'PARSE_FAILED',
+				'The CSV file appears to be malformed. Check for broken quoting or formatting issues.'
 			);
-			if (fatalErrors.length > 0) {
-				return err(
-					'PARSE_FAILED',
-					'The CSV file appears to be malformed. Check for broken quoting or formatting issues.'
-				);
-			}
 		}
 
 		if (
@@ -218,10 +235,18 @@ export async function parseACarCSV(rawCSV: string): Promise<Result<ImportParseRe
 		const fields = logResult.meta.fields;
 		const headerUnits = detectUnitsFromHeaders(fields);
 
-		// Cross-validate: prefer header detection, fall back to Vehicle codes
+		// Story 8.3 AC6 (S8) — headers win when they carry a real signal; the Vehicle-section codes
+		// are a genuine fallback (not dead code) for a dimension the headers give NO signal for at
+		// all (e.g. a bare "Odo" header with no unit suffix), instead of silently defaulting to km/L.
+		// AC7 (S11) — which source resolved 'gal' determines whether it means UK or US gallons; a UK
+		// signal is reported as 'L' here too (the quantity is converted to litres below), so the
+		// returned `detectedUnits` (used for the wizard's column-mapping display) matches what every
+		// row actually carries — never a stale 'gal' label once the numbers are already litres.
+		const fuelIsUKGallons =
+			headerUnits.fuel != null ? headerUnits.fuelIsUKGallons : vehicleUnits.fuelIsUKGallons;
 		const detectedUnits: DetectedUnits = {
-			fuel: headerUnits.fuel,
-			distance: headerUnits.distance
+			distance: headerUnits.distance ?? vehicleUnits.distance,
+			fuel: fuelIsUKGallons ? 'L' : (headerUnits.fuel ?? vehicleUnits.fuel)
 		};
 
 		const data = logResult.data as Record<string, string>[];
@@ -231,7 +256,7 @@ export async function parseACarCSV(rawCSV: string): Promise<Result<ImportParseRe
 		const fuelColName = fields.find((f) => f.toLowerCase().startsWith('fuel (')) ?? 'Fuel (litres)';
 
 		// Map rows to normalized entries
-		const mappedEntries: { data: Partial<NormalizedImportEntry>; rowNumber: number }[] = [];
+		const mappedEntries: ParsedEntry[] = [];
 
 		for (let i = 0; i < data.length; i++) {
 			const row = data[i];
@@ -245,9 +270,15 @@ export async function parseACarCSV(rawCSV: string): Promise<Result<ImportParseRe
 			const precededByMissedFill = isACarFlagSet(getColumn(row, 'Missed'));
 
 			const date = parseACarDate(dateStr);
-			const odometer = parseFloat(odometerStr);
-			const quantity = parseFloat(quantityStr);
-			const totalCost = parseFloat(priceStr); // aCar Price IS total cost — NOT per-unit
+			const odometer = normalizeDecimal(odometerStr);
+			const rawQuantity = normalizeDecimal(quantityStr);
+			const totalCost = normalizeDecimal(priceStr); // aCar Price IS total cost — NOT per-unit
+
+			// Story 8.3 AC7 (S11) — a UK-gallon signal converts the parsed quantity to litres at parse
+			// time (1 UK gal = 4.54609 L) and reports 'L', rather than importing the raw UK-gallon
+			// number under the 'gal' (US-gallon-shaped) label — a ~20% consumption/MPG skew otherwise.
+			const quantity =
+				fuelIsUKGallons && !isNaN(rawQuantity) ? rawQuantity * LITERS_PER_UK_GALLON : rawQuantity;
 
 			const entry: Partial<NormalizedImportEntry> = {
 				date: date ?? undefined,
@@ -266,28 +297,9 @@ export async function parseACarCSV(rawCSV: string): Promise<Result<ImportParseRe
 			mappedEntries.push({ data: entry, rowNumber: i + 1 });
 		}
 
-		// Sort by date for odometer decrease detection (single vehicle, no need to group)
-		const sorted = [...mappedEntries].sort((a, b) => {
-			const dateA = a.data.date instanceof Date ? a.data.date.getTime() : 0;
-			const dateB = b.data.date instanceof Date ? b.data.date.getTime() : 0;
-			return dateA - dateB;
-		});
-
-		// Validate rows with odometer decrease detection
-		const validatedRows: ImportRow[] = [];
-		let prevOdometer: number | undefined;
-
-		for (const entry of sorted) {
-			const validated = validateImportRow(entry.data, entry.rowNumber, prevOdometer);
-			validatedRows.push(validated);
-
-			if (entry.data.odometer != null && !isNaN(entry.data.odometer)) {
-				prevOdometer = entry.data.odometer;
-			}
-		}
-
-		// Re-sort by rowNumber for display order
-		validatedRows.sort((a, b) => a.rowNumber - b.rowNumber);
+		// Sort by date, validate (odometer-decrease chain), then re-sort by rowNumber for display.
+		// aCar is single-vehicle-per-file, so the decrease chain uses one constant group.
+		const validatedRows = sortValidateResort(mappedEntries, () => '');
 
 		const summary = buildDryRunSummary(validatedRows);
 		const columnMapping = buildACarColumnMapping(fields);

@@ -9,7 +9,14 @@ import type {
 	NormalizedImportEntry,
 	ColumnMappingEntry
 } from '$lib/utils/importTypes';
-import { validateImportRow, buildDryRunSummary } from '$lib/utils/importValidation';
+import { buildDryRunSummary } from '$lib/utils/importValidation';
+import {
+	normalizeDecimal,
+	getColumn,
+	hasFatalParseErrors,
+	sortValidateResort,
+	type ParsedEntry
+} from '$lib/utils/importParserShared';
 
 export interface FuellyDetectedUnits {
 	fuel: 'L' | 'gal';
@@ -57,14 +64,6 @@ function detectFuellyUnits(fields: string[]): FuellyDetectedUnits {
 		fuel: lower.some((f) => f === 'gallons') ? 'gal' : 'L',
 		distance: lower.some((f) => f === 'miles') ? 'mi' : 'km'
 	};
-}
-
-/**
- * Find a column value case-insensitively from a row object.
- */
-function getColumn(row: Record<string, string>, columnName: string): string {
-	const key = Object.keys(row).find((k) => k.toLowerCase().trim() === columnName.toLowerCase());
-	return key ? (row[key] ?? '') : '';
 }
 
 /**
@@ -156,16 +155,11 @@ export async function parseFuellyCSV(rawCSV: string): Promise<Result<FuellyParse
 		});
 
 		// Check for parse-level errors (malformed CSV, broken quoting, etc.)
-		if (result.errors && result.errors.length > 0) {
-			const fatalErrors = result.errors.filter(
-				(e: { type: string }) => e.type === 'Delimiter' || e.type === 'Quotes'
+		if (hasFatalParseErrors(result.errors)) {
+			return err(
+				'PARSE_FAILED',
+				'The CSV file appears to be malformed. Check for broken quoting or formatting issues.'
 			);
-			if (fatalErrors.length > 0) {
-				return err(
-					'PARSE_FAILED',
-					'The CSV file appears to be malformed. Check for broken quoting or formatting issues.'
-				);
-			}
 		}
 
 		if (!result.meta.fields || result.meta.fields.length === 0 || result.data.length === 0) {
@@ -178,7 +172,7 @@ export async function parseFuellyCSV(rawCSV: string): Promise<Result<FuellyParse
 		const data = result.data as Record<string, string>[];
 
 		// Map rows to normalized entries
-		const mappedEntries: { data: Partial<NormalizedImportEntry>; rowNumber: number }[] = [];
+		const mappedEntries: ParsedEntry[] = [];
 
 		for (let i = 0; i < data.length; i++) {
 			const row = data[i];
@@ -193,9 +187,9 @@ export async function parseFuellyCSV(rawCSV: string): Promise<Result<FuellyParse
 			const precededByMissedFill = isFuellyFlagSet(getColumn(row, 'missed_fuelup'));
 
 			const date = parseFuellyDate(dateStr);
-			const odometer = parseFloat(odometerStr);
-			const quantity = parseFloat(quantityStr);
-			const price = parseFloat(priceStr);
+			const odometer = normalizeDecimal(odometerStr);
+			const quantity = normalizeDecimal(quantityStr);
+			const price = normalizeDecimal(priceStr);
 			const totalCost = !isNaN(price) && !isNaN(quantity) ? price * quantity : NaN;
 
 			const entry: Partial<NormalizedImportEntry> = {
@@ -215,34 +209,12 @@ export async function parseFuellyCSV(rawCSV: string): Promise<Result<FuellyParse
 			mappedEntries.push({ data: entry, rowNumber: i + 1 });
 		}
 
-		// Sort by vehicle name then date for odometer decrease detection
-		const sorted = [...mappedEntries].sort((a, b) => {
-			const nameA = a.data.sourceVehicleName ?? '';
-			const nameB = b.data.sourceVehicleName ?? '';
-			if (nameA !== nameB) return nameA.localeCompare(nameB);
-			const dateA = a.data.date instanceof Date ? a.data.date.getTime() : 0;
-			const dateB = b.data.date instanceof Date ? b.data.date.getTime() : 0;
-			return dateA - dateB;
-		});
-
-		// Validate rows with odometer decrease detection per vehicle
-		const validatedRows: ImportRow[] = [];
-		const prevOdometerByVehicle = new Map<string, number>();
-
-		for (const entry of sorted) {
-			const vehicleName = entry.data.sourceVehicleName ?? '';
-			const prevOdometer = prevOdometerByVehicle.get(vehicleName);
-			const validated = validateImportRow(entry.data, entry.rowNumber, prevOdometer);
-			validatedRows.push(validated);
-
-			// Update prev odometer for this vehicle (only if valid number)
-			if (entry.data.odometer != null && !isNaN(entry.data.odometer)) {
-				prevOdometerByVehicle.set(vehicleName, entry.data.odometer);
-			}
-		}
-
-		// Re-sort by rowNumber for display order
-		validatedRows.sort((a, b) => a.rowNumber - b.rowNumber);
+		// Sort by vehicle name then date, validate (odometer-decrease chain per vehicle), then
+		// re-sort by rowNumber for display order.
+		const validatedRows = sortValidateResort(
+			mappedEntries,
+			(entry) => entry.data.sourceVehicleName ?? ''
+		);
 
 		const summary = buildDryRunSummary(validatedRows);
 		const columnMapping = buildColumnMapping(fields, units);
