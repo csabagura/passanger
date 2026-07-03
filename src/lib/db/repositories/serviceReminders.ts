@@ -29,7 +29,12 @@ export class ServiceReminderRepository {
 		return runWrite(
 			() => validateNewServiceReminder(reminder),
 			async () => {
-				const id = await db.serviceReminders.add({ ...reminder } as ServiceReminder);
+				// Story 8.5 review patch: every new reminder needs a `createdAt` anchor (AD-RT-3) — the
+				// v6 migration only backfills PRE-EXISTING rows, so a reminder created after this ships
+				// must stamp its own, or it's permanently invisible on both dimensions when no explicit
+				// baseline is given.
+				const toInsert = { createdAt: Date.now(), ...reminder } as ServiceReminder;
+				const id = await db.serviceReminders.add(toInsert);
 				const saved = await db.serviceReminders.get(id as number);
 				if (!saved) throw encodeSentinel('SAVE_FAILED', 'Record not found after insert');
 				return saved;

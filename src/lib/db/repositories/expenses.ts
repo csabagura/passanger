@@ -4,6 +4,7 @@ import type { Result } from '$lib/utils/result';
 import type { Expense, NewExpense } from '../schema';
 import { validateNewExpense, validatePartialExpense } from '../validators/rowValidation';
 import { runWrite, encodeSentinel } from '../writeSkeleton';
+import { clearDismissal } from '$lib/utils/reminderDismissal';
 
 export class ExpenseRepository {
 	async saveExpense(entry: NewExpense): Promise<Result<Expense>> {
@@ -61,7 +62,8 @@ export class ExpenseRepository {
 		// `lastClosedByExpenseId` cleared to unset, NOT restored to an unknowable prior value.
 		// AC2's anchor rule then honestly re-anchors it to `createdAt`. Run in the same transaction
 		// as the delete so a partial failure rolls back rather than leaving a stale provenance link.
-		return runWrite(
+		const revertedReminderIds: number[] = [];
+		const result = await runWrite(
 			() => null,
 			() =>
 				db.transaction('rw', db.expenses, db.serviceReminders, async () => {
@@ -79,10 +81,20 @@ export class ExpenseRepository {
 							lastServiceOdometer: undefined,
 							lastClosedByExpenseId: undefined
 						});
+						revertedReminderIds.push(reminder.id);
 					}
 				}),
 			'DELETE_FAILED'
 		);
+		// Story 8.5 review patch: a revert changes the reminder's schedule baseline exactly like an
+		// edit does (AD-RT-4) — a dismissal marker recorded against the pre-revert due instance can no
+		// longer be trusted, so clear it too. Mirrors updateServiceReminder's clear-after-commit rule.
+		if (!result.error) {
+			for (const reminderId of revertedReminderIds) {
+				clearDismissal(reminderId);
+			}
+		}
+		return result;
 	}
 
 	// Inverse of deleteExpense: re-insert a deleted expense's snapshot at its ORIGINAL id (via

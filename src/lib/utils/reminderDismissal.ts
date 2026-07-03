@@ -28,6 +28,16 @@ function isReminderStatus(value: unknown): value is ReminderStatus {
 	return typeof value === 'string' && value in SEVERITY;
 }
 
+// Story 8.5 review patch: `dueAtDate` must be a real `YYYY-MM-DD` string, matching `toDateOnlyString`'s
+// output — a malformed value (e.g. corrupted localStorage) would otherwise never lexicographically
+// compare `>=` against `today`'s date-only string, permanently suppressing the reminder instead of
+// being dropped as an invalid marker.
+const DATE_ONLY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
+function isValidDateOnlyString(value: string): boolean {
+	return DATE_ONLY_PATTERN.test(value) && !Number.isNaN(new Date(value).getTime());
+}
+
 /**
  * PREP-1 (Story 4.1) + Story 8.5 (AD-RT-4): validate one persisted marker before trusting it. The
  * pre-8.5 shape was `{status, odometer?}` — that shape (and any marker recording neither due field)
@@ -47,7 +57,10 @@ function sanitizeMarker(value: unknown): ReminderDismissal | null {
 	if (dueAtOdometer !== undefined && !isFiniteNumber(dueAtOdometer)) {
 		return null;
 	}
-	if (dueAtDate !== undefined && typeof dueAtDate !== 'string') {
+	if (
+		dueAtDate !== undefined &&
+		(typeof dueAtDate !== 'string' || !isValidDateOnlyString(dueAtDate))
+	) {
 		return null;
 	}
 	if (dueAtOdometer === undefined && dueAtDate === undefined) {
