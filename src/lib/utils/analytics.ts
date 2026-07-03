@@ -5,6 +5,7 @@ import type { Expense, FuelLog } from '$lib/db/schema';
 import {
 	convertConsumptionUnit,
 	getDistanceUnitForFuelUnit,
+	getMonthKey,
 	getVolumeUnitForFuelUnit,
 	isFiniteNumber,
 	KILOMETERS_PER_MILE,
@@ -62,10 +63,6 @@ function getHistoryEntryCost(entry: HistoryEntry): number {
 	return entry.kind === 'fuel' ? entry.entry.totalCost : entry.entry.cost;
 }
 
-function getMonthKey(date: Date): string {
-	return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-}
-
 function formatMonthLabel(date: Date, locale: Intl.LocalesArgument = undefined): string {
 	return new Intl.DateTimeFormat(locale ?? getLocale(), { month: 'long', year: 'numeric' }).format(
 		date
@@ -121,11 +118,48 @@ function convertVolumeToUnit(volume: number, fromUnit: 'L' | 'gal', toUnit: 'L' 
 }
 
 /**
+ * S27 — fills any month with no entries between the earliest and latest bucket (inclusive) with an
+ * empty (`byCurrency: {}`) bucket, so a data-free interior month doesn't silently vanish from the
+ * series (previously only months with actual entries got a bucket at all, so the chart looked
+ * falsely contiguous around a real gap). Does NOT extend the range to "now" — a user who stopped
+ * logging months ago should not see an indefinitely growing trailing tail of zero-value months.
+ * `buckets` must already be sorted oldest → newest; returns `[]` unchanged for an empty input (no
+ * range to fill).
+ */
+function fillMissingMonths(
+	buckets: MonthlySpendBucket[],
+	locale: Intl.LocalesArgument
+): MonthlySpendBucket[] {
+	if (buckets.length === 0) {
+		return buckets;
+	}
+
+	const byKey = new Map(buckets.map((bucket) => [bucket.monthKey, bucket]));
+	const [firstYear, firstMonth] = buckets[0].monthKey.split('-').map(Number);
+	const [lastYear, lastMonth] = buckets[buckets.length - 1].monthKey.split('-').map(Number);
+	const end = new Date(lastYear, lastMonth - 1, 1);
+
+	const filled: MonthlySpendBucket[] = [];
+	for (
+		let cursor = new Date(firstYear, firstMonth - 1, 1);
+		cursor.getTime() <= end.getTime();
+		cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1)
+	) {
+		const monthKey = getMonthKey(cursor);
+		const existing = byKey.get(monthKey);
+		filled.push(existing ?? { monthKey, label: formatMonthLabel(cursor, locale), byCurrency: {} });
+	}
+	return filled;
+}
+
+/**
  * Spend per calendar month, grouped by currency. Ordered OLDEST → NEWEST so the
  * series reads left-to-right as a timeline bar chart. Legacy entries with no
  * currency are attributed to `homeCurrency`. Non-finite `cost` rows are skipped
  * (PREP-1 convention — `NaN <= 0 → false` would otherwise leak `€NaN` into the bar,
- * the asymmetry the guarded `maintenanceCostTrend` already avoids).
+ * the asymmetry the guarded `maintenanceCostTrend` already avoids). A calendar month with no
+ * entries anywhere within the data's own earliest→latest range still emits a bucket (S27) — see
+ * `fillMissingMonths`.
  */
 export function monthlySpendByCurrency(
 	entries: HistoryEntry[],
@@ -151,9 +185,10 @@ export function monthlySpendByCurrency(
 		bucket.byCurrency[currency] = (bucket.byCurrency[currency] ?? 0) + cost;
 	}
 
-	return [...bucketsByKey.values()].sort((left, right) =>
+	const sorted = [...bucketsByKey.values()].sort((left, right) =>
 		left.monthKey < right.monthKey ? -1 : left.monthKey > right.monthKey ? 1 : 0
 	);
+	return fillMissingMonths(sorted, locale);
 }
 
 /**
@@ -161,7 +196,9 @@ export function monthlySpendByCurrency(
  * `monthlySpendByCurrency`'s `MonthlySpendBucket[]` shape + OLDEST → NEWEST ordering, but draws from
  * Expenses only (fuel is excluded by construction — this takes `Expense[]`). Currencies are NEVER
  * summed; legacy entries with no currency map to `homeCurrency`; non-finite `cost` rows are skipped
- * (PREP-1 convention — `NaN <= 0 → false` would otherwise leak `€NaN`).
+ * (PREP-1 convention — `NaN <= 0 → false` would otherwise leak `€NaN`). Zero-filled independently
+ * over its own (Expense-only) date range (S27) — see `fillMissingMonths`; this is NOT aligned to
+ * `monthlySpendByCurrency`'s range (no current caller needs matching x-axes).
  */
 export function maintenanceCostTrend(
 	expenses: Expense[],
@@ -186,9 +223,10 @@ export function maintenanceCostTrend(
 		bucket.byCurrency[currency] = (bucket.byCurrency[currency] ?? 0) + expense.cost;
 	}
 
-	return [...bucketsByKey.values()].sort((left, right) =>
+	const sorted = [...bucketsByKey.values()].sort((left, right) =>
 		left.monthKey < right.monthKey ? -1 : left.monthKey > right.monthKey ? 1 : 0
 	);
+	return fillMissingMonths(sorted, locale);
 }
 
 /**

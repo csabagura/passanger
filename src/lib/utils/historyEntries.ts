@@ -1,7 +1,12 @@
 import type { FuelUnit } from '$lib/config';
 import { DEFAULT_CURRENCY } from '$lib/config';
 import type { Expense, FuelLog } from '$lib/db/schema';
-import { isFiniteNumber } from '$lib/utils/calculations';
+import {
+	getMonthKey,
+	isFiniteNumber,
+	LITERS_PER_GALLON,
+	KILOMETERS_PER_MILE
+} from '$lib/utils/calculations';
 import { m } from '$lib/paraglide/messages';
 
 export type HistoryEntryFilter = 'all' | 'fuel' | 'maintenance';
@@ -46,8 +51,6 @@ export interface CurrentMonthHistorySummary extends HistoryTimePeriodSummary {
 	monthKey: string;
 	calendarLabel: string;
 }
-
-import { LITERS_PER_GALLON, KILOMETERS_PER_MILE } from '$lib/utils/calculations';
 
 export const historyTimePeriodOptions = [
 	{
@@ -189,10 +192,6 @@ export function convertHistorySpendToHome(
 	return { total, unconvertedEntries, convertibleEntries, ratedEntries };
 }
 
-function getHistoryMonthKey(date: Date): string {
-	return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-}
-
 export function getHistoryTimePeriodOption(period: HistoryTimePeriod): HistoryTimePeriodOption {
 	const option = historyTimePeriodOptionsByValue.get(period);
 	if (!option) {
@@ -258,7 +257,11 @@ function isHistoryEntryInTimePeriod(
 ): boolean {
 	switch (period) {
 		case 'current-month':
+			// S2: mirrors 'year-to-date's future-date exclusion below — without it, a future-dated
+			// entry could appear in the (logically narrower) "this month" view while being excluded
+			// from the (logically wider) "year to date" view for the same data.
 			return (
+				entryDate.getTime() <= referenceDate.getTime() &&
 				entryDate.getFullYear() === referenceDate.getFullYear() &&
 				entryDate.getMonth() === referenceDate.getMonth()
 			);
@@ -298,7 +301,7 @@ export function groupHistoryEntriesByMonth(
 	const monthGroups: HistoryMonthGroup[] = [];
 
 	for (const entry of entries) {
-		const monthKey = getHistoryMonthKey(entry.entry.date);
+		const monthKey = getMonthKey(entry.entry.date);
 		// Keep the row visible but exclude a non-finite cost from the subtotal (PREP-1): the
 		// entry still groups into the month; only `€NaN` is kept out of the displayed total,
 		// staying in lockstep with the `totalSpend` guard below so the two never diverge.
@@ -424,7 +427,7 @@ export function summarizeCurrentMonthHistoryEntries(
 	);
 
 	return {
-		monthKey: getHistoryMonthKey(referenceDate),
+		monthKey: getMonthKey(referenceDate),
 		calendarLabel: formatHistoryMonthLabel(referenceDate, locale),
 		...currentMonthSummary
 	};

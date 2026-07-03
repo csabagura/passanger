@@ -1,6 +1,6 @@
 import 'fake-indexeddb/auto'; // MUST be first — patches global IndexedDB so liveQuery has a backing db
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { cleanup, render, screen, waitFor } from '@testing-library/svelte';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
 import type { Expense, FuelLog } from '$lib/db/schema';
 import { ok } from '$lib/utils/result';
 import { m } from '$lib/paraglide/messages';
@@ -220,22 +220,39 @@ describe('UnderstandDashboard', () => {
 
 	it('renders the plain-language insight line when a notable change warrants it', async () => {
 		// Consumption 8 → 10 (+25%) between the previous and current calendar month (now pinned).
+		// 2 fill-ups per month (H19b sample-size gate) — split in half preserves the ratio.
 		const now = new Date(2026, 5, 15);
 		mockGetAllFuelLogs.mockResolvedValue(
 			ok([
 				createFuelEntry({
 					id: 1,
 					date: new Date(2026, 4, 15),
-					quantity: 40,
-					totalCost: 60,
+					quantity: 20,
+					totalCost: 30,
 					calculatedConsumption: 8,
 					currency: '€'
 				}),
 				createFuelEntry({
 					id: 2,
+					date: new Date(2026, 4, 15),
+					quantity: 20,
+					totalCost: 30,
+					calculatedConsumption: 8,
+					currency: '€'
+				}),
+				createFuelEntry({
+					id: 3,
 					date: new Date(2026, 5, 15),
-					quantity: 40,
-					totalCost: 60,
+					quantity: 20,
+					totalCost: 30,
+					calculatedConsumption: 10,
+					currency: '€'
+				}),
+				createFuelEntry({
+					id: 4,
+					date: new Date(2026, 5, 15),
+					quantity: 20,
+					totalCost: 30,
 					calculatedConsumption: 10,
 					currency: '€'
 				})
@@ -247,6 +264,35 @@ describe('UnderstandDashboard', () => {
 		await waitFor(() => {
 			expect(screen.getByText('Consumption is up about 25% this month.')).toBeTruthy();
 		});
+	});
+
+	it('S27: a zero-spend interior month is not silently dropped from the monthly-spend chart', async () => {
+		// Entries in January and March only — February is data-free. The old `.filter((point) =>
+		// point.value > 0)` combined with the engine only bucketing months with actual entries meant
+		// February never appeared at all. Now the engine zero-fills it and the UI no longer filters it
+		// out — the table view (the mandated screen-reader-navigable representation, FR-17) must show
+		// a "0" row for February between January and March.
+		mockGetAllFuelLogs.mockResolvedValue(
+			ok([
+				createFuelEntry({ id: 1, date: new Date(2026, 0, 10), totalCost: 50, currency: '€' }),
+				createFuelEntry({ id: 2, date: new Date(2026, 2, 10), totalCost: 30, currency: '€' })
+			])
+		);
+		mockGetAllExpenses.mockResolvedValue(ok([]));
+		renderDashboard();
+
+		const heading = await screen.findByRole('heading', { name: m.chart_monthly_spend_title() });
+		const section = heading.closest('section');
+		expect(section).toBeTruthy();
+		if (!section) return;
+
+		const toggle = within(section).getByRole('button', { name: m.chart_view_as_table() });
+		await fireEvent.click(toggle);
+
+		const rows = within(section).getAllByRole('row');
+		// Row 0 is the header; data rows follow in chronological order: Jan, Feb (zero), Mar.
+		expect(rows).toHaveLength(4);
+		expect(within(rows[2]).getByText('€0.00')).toBeTruthy();
 	});
 
 	it('renders no insight line for a single-month cold-start', async () => {

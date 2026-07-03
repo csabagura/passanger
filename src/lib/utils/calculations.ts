@@ -103,6 +103,11 @@ export function formatCurrency(value: number, currency: string): string {
 	return `${currency}${amount}`;
 }
 
+/** Calendar `YYYY-MM` key for `date`, shared by the analytics/insight/metrics call sites (Story 8.4). */
+export function getMonthKey(date: Date): string {
+	return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+}
+
 export function getVolumeUnitForFuelUnit(fuelUnit: FuelUnit): 'L' | 'gal' {
 	return fuelUnit === 'MPG' ? 'gal' : 'L';
 }

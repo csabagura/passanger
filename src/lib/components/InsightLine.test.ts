@@ -42,10 +42,13 @@ afterEach(() => {
 
 describe('InsightLine', () => {
 	it('renders the most-significant insight text verbatim for a notable dataset', () => {
-		// May consumption 8 → June 9 = +12.5% (rounds to 13); spend + price flat.
+		// May consumption 8 → June 9 = +12.5% (rounds to 13); spend + price flat. 2 fill-ups per
+		// month (H19b sample-size gate) — split in half preserves the ratio.
 		const fuelLogs = [
-			makeLog({ id: 1, date: MAY, calculatedConsumption: 8, totalCost: 60 }),
-			makeLog({ id: 2, date: JUNE, calculatedConsumption: 9, totalCost: 60 })
+			makeLog({ id: 1, date: MAY, quantity: 20, calculatedConsumption: 8, totalCost: 30 }),
+			makeLog({ id: 2, date: MAY, quantity: 20, calculatedConsumption: 8, totalCost: 30 }),
+			makeLog({ id: 3, date: JUNE, quantity: 20, calculatedConsumption: 9, totalCost: 30 }),
+			makeLog({ id: 4, date: JUNE, quantity: 20, calculatedConsumption: 9, totalCost: 30 })
 		];
 		renderInsight(fuelLogs, [], NOW);
 		expect(screen.getByText('Consumption is up about 13% this month.')).toBeTruthy();
@@ -53,8 +56,10 @@ describe('InsightLine', () => {
 
 	it('renders the calm baseline when data is sufficient but nothing is notable', () => {
 		const fuelLogs = [
-			makeLog({ id: 1, date: MAY, calculatedConsumption: 8, totalCost: 60 }),
-			makeLog({ id: 2, date: JUNE, calculatedConsumption: 8, totalCost: 60 })
+			makeLog({ id: 1, date: MAY, quantity: 20, calculatedConsumption: 8, totalCost: 30 }),
+			makeLog({ id: 2, date: MAY, quantity: 20, calculatedConsumption: 8, totalCost: 30 }),
+			makeLog({ id: 3, date: JUNE, quantity: 20, calculatedConsumption: 8, totalCost: 30 }),
+			makeLog({ id: 4, date: JUNE, quantity: 20, calculatedConsumption: 8, totalCost: 30 })
 		];
 		renderInsight(fuelLogs, [], NOW);
 		expect(screen.getByText('Running about average this month.')).toBeTruthy();

@@ -5,10 +5,11 @@ import {
 	DEFAULT_UNIT,
 	FUEL_PRICE_BASELINE_DAYS,
 	FUEL_PRICE_CHANGE_THRESHOLD_PCT,
+	INSIGHT_MAGNITUDE_CAP_PCT,
 	SPEND_CHANGE_THRESHOLD_PCT
 } from '$lib/config';
 import type { Expense, FuelLog } from '$lib/db/schema';
-import { isFiniteNumber, LITERS_PER_GALLON } from '$lib/utils/calculations';
+import { getMonthKey, isFiniteNumber, LITERS_PER_GALLON } from '$lib/utils/calculations';
 import { mergeHistoryEntries } from '$lib/utils/historyEntries';
 import { comparePeriods, consumptionDelta, spendDelta, type PeriodDelta } from './periodDelta';
 import { m } from '$lib/paraglide/messages';
@@ -65,27 +66,53 @@ const METRIC_PRIORITY: Record<InsightMetric, number> = {
 
 /**
  * The plain-language copy table — Register B (numeric, OQ-3): honest, derives directly from the
- * engine percent, and trivially testable. `pct` is the rounded magnitude; direction is framed
- * humanly (up/down) and never as a warning (DEC-13 non-alarmist), and never invents a cause (UJ-4).
+ * engine percent, and trivially testable. `pct` is the rounded magnitude; `messageDirection` is
+ * framed humanly (up/down) and never as a warning (DEC-13 non-alarmist), and never invents a cause
+ * (UJ-4). `messageDirection` is the direction to select COPY BY — for the consumption metric under
+ * an MPG display unit, the caller (`makeNotable`) has already flipped it relative to the numeric
+ * `direction` so the copy always communicates real-world efficiency, not the raw numeric sign
+ * (H13 — see `makeNotable`'s doc comment for why).
  */
-function buildText(metric: InsightMetric, direction: 'up' | 'down', percentChange: number): string {
+function buildText(
+	metric: InsightMetric,
+	messageDirection: 'up' | 'down',
+	percentChange: number
+): string {
+	// H19b — a magnitude above the cap (e.g. a near-zero baseline producing "up about 4000%") is not
+	// shown as a raw number: a qualitative "sharply" phrasing keeps the sentence honest without
+	// misrepresenting the true magnitude as a clamped, smaller-looking percent (OQ-3).
+	if (Math.abs(percentChange) > INSIGHT_MAGNITUDE_CAP_PCT) {
+		switch (metric) {
+			case 'consumption':
+				return messageDirection === 'up'
+					? m.insight_consumption_up_sharply()
+					: m.insight_consumption_down_sharply();
+			case 'spend':
+				return messageDirection === 'up'
+					? m.insight_spend_up_sharply()
+					: m.insight_spend_down_sharply();
+			case 'fuel-price':
+				return messageDirection === 'up'
+					? m.insight_fuel_price_up_sharply()
+					: m.insight_fuel_price_down_sharply();
+		}
+	}
+
 	const pct = Math.round(Math.abs(percentChange));
 	switch (metric) {
 		case 'consumption':
-			return direction === 'up'
+			return messageDirection === 'up'
 				? m.insight_consumption_up({ pct })
 				: m.insight_consumption_down({ pct });
 		case 'spend':
-			return direction === 'up' ? m.insight_spend_up({ pct }) : m.insight_spend_down({ pct });
+			return messageDirection === 'up'
+				? m.insight_spend_up({ pct })
+				: m.insight_spend_down({ pct });
 		case 'fuel-price':
-			return direction === 'up'
+			return messageDirection === 'up'
 				? m.insight_fuel_price_up({ pct })
 				: m.insight_fuel_price_down({ pct });
 	}
-}
-
-function getMonthKey(date: Date): string {
-	return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
 }
 
 /**
@@ -163,9 +190,19 @@ export function fuelPriceChange(
 	const currencies = new Set([...Object.keys(currentPrice), ...Object.keys(baselinePrice)]);
 	const result: Record<string, PeriodDelta> = {};
 	for (const currency of currencies) {
+		// H19b (AC3): count fuel logs resolved to this currency in each already-date-filtered window,
+		// mirroring the `log.currency ?? homeCurrency` grouping `pricePerLitreByCurrency` itself uses.
+		const currentSampleSize = currentLogs.filter(
+			(log) => (log.currency ?? homeCurrency) === currency
+		).length;
+		const baselineSampleSize = baselineLogs.filter(
+			(log) => (log.currency ?? homeCurrency) === currency
+		).length;
 		result[currency] = comparePeriods(
 			currentPrice[currency] ?? null,
-			baselinePrice[currency] ?? null
+			baselinePrice[currency] ?? null,
+			currentSampleSize,
+			baselineSampleSize
 		);
 	}
 	return result;
@@ -177,12 +214,33 @@ interface Detection {
 	threshold: number;
 }
 
+/**
+ * H13 — an MPG numeric value INCREASING means better efficiency, the opposite of every other
+ * metric (where up always means "more"). `consumptionDelta`'s own computation and its numeric
+ * `direction` stay unit-agnostic (untouched — see the story's HeroMetric.svelte fence); only the
+ * COPY selected here is flipped for an MPG display unit, so an MPG efficiency improvement never
+ * renders "Consumption is up" (the L/100km-correct phrasing for a WORSE outcome).
+ */
+function messageDirectionFor(
+	metric: InsightMetric,
+	direction: 'up' | 'down',
+	fuelUnit: FuelUnit
+): 'up' | 'down' {
+	if (metric === 'consumption' && fuelUnit === 'MPG') {
+		return direction === 'up' ? 'down' : 'up';
+	}
+	return direction;
+}
+
 function makeNotable(
 	metric: InsightMetric,
-	delta: Extract<PeriodDelta, { status: 'ok' }>
+	delta: Extract<PeriodDelta, { status: 'ok' }>,
+	fuelUnit: FuelUnit
 ): Insight {
 	// A notable change exceeds its threshold, so |percentChange| is well above the flat band — the
-	// engine's `direction` is 'up' or 'down' here ('flat' is only returned on an exact 0).
+	// engine's `direction` is 'up' or 'down' here ('flat' is only returned on an exact 0). This is the
+	// raw NUMERIC direction (unit-agnostic) — the `id`/`direction` fields stay numeric; only the
+	// rendered `text` is unit-honest via `messageDirectionFor` (H13).
 	const direction = delta.direction === 'down' ? 'down' : 'up';
 	return {
 		id: `${metric}-${direction}`,
@@ -190,7 +248,7 @@ function makeNotable(
 		severity: 'notable',
 		direction,
 		percentChange: delta.percentChange,
-		text: buildText(metric, direction, delta.percentChange)
+		text: buildText(metric, messageDirectionFor(metric, direction, fuelUnit), delta.percentChange)
 	};
 }
 
@@ -241,7 +299,7 @@ export function getInsights(
 		}
 		anyComparable = true;
 		if (Math.abs(delta.percentChange) >= threshold) {
-			notables.push(makeNotable(metric, delta));
+			notables.push(makeNotable(metric, delta, fuelUnit));
 		}
 	}
 

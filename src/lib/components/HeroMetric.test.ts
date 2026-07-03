@@ -182,9 +182,15 @@ describe('HeroMetric', () => {
 
 	it('AC1/AC2: cost trend UP renders ▲ in brand blue when this month > last month', () => {
 		// May cost/dist = 50/500 = €0.10/km; June = 60/500 = €0.12/km → +20% → ▲ up (text-primary).
+		// H19b sample-size gate: 2 fill-ups per month (split in half — same ratio, same total).
 		const { container } = renderHero(
 			baseSettings(),
-			[makeLog({ id: 1, date: MAY, totalCost: 50 }), makeLog({ id: 2, date: JUN, totalCost: 60 })],
+			[
+				makeLog({ id: 1, date: MAY, quantity: 20, totalCost: 25 }),
+				makeLog({ id: 2, date: MAY, quantity: 20, totalCost: 25 }),
+				makeLog({ id: 3, date: JUN, quantity: 20, totalCost: 30 }),
+				makeLog({ id: 4, date: JUN, quantity: 20, totalCost: 30 })
+			],
 			NOW
 		);
 		const up = glyphEl(container, '▲');
@@ -198,7 +204,12 @@ describe('HeroMetric', () => {
 		// May = €0.12/km; June = €0.10/km → −16.7% → ▼ down (muted, NOT red).
 		const { container } = renderHero(
 			baseSettings(),
-			[makeLog({ id: 1, date: MAY, totalCost: 60 }), makeLog({ id: 2, date: JUN, totalCost: 50 })],
+			[
+				makeLog({ id: 1, date: MAY, quantity: 20, totalCost: 30 }),
+				makeLog({ id: 2, date: MAY, quantity: 20, totalCost: 30 }),
+				makeLog({ id: 3, date: JUN, quantity: 20, totalCost: 25 }),
+				makeLog({ id: 4, date: JUN, quantity: 20, totalCost: 25 })
+			],
 			NOW
 		);
 		const down = glyphEl(container, '▼');
@@ -214,8 +225,10 @@ describe('HeroMetric', () => {
 		const { container } = renderHero(
 			baseSettings(),
 			[
-				makeLog({ id: 1, date: MAY, totalCost: 200 }),
-				makeLog({ id: 2, date: JUN, totalCost: 201 })
+				makeLog({ id: 1, date: MAY, quantity: 20, totalCost: 100 }),
+				makeLog({ id: 2, date: MAY, quantity: 20, totalCost: 100 }),
+				makeLog({ id: 3, date: JUN, quantity: 20, totalCost: 100.5 }),
+				makeLog({ id: 4, date: JUN, quantity: 20, totalCost: 100.5 })
 			],
 			NOW
 		);
@@ -226,12 +239,14 @@ describe('HeroMetric', () => {
 	});
 
 	it('AC4/AC3: toggling swaps the chip — cost trend ≠ consumption trend in the same fixture', async () => {
-		// May: 40 L over 500 km, €60 → cost €0.12/km, consumption 8.0 L/100km.
-		// Jun: 50 L over 500 km, €50 → cost €0.10/km, consumption 10.0 L/100km.
+		// May: 40 L over 500 km, €60 → cost €0.12/km, consumption 8.0 L/100km (split into 2 fill-ups).
+		// Jun: 50 L over 500 km, €50 → cost €0.10/km, consumption 10.0 L/100km (split into 2 fill-ups).
 		// → cost trends DOWN (▼) while consumption trends UP (▲): proves the chip follows the metric.
 		const fixture = [
-			makeLog({ id: 1, date: MAY, quantity: 40, calculatedConsumption: 8, totalCost: 60 }),
-			makeLog({ id: 2, date: JUN, quantity: 50, calculatedConsumption: 10, totalCost: 50 })
+			makeLog({ id: 1, date: MAY, quantity: 20, calculatedConsumption: 8, totalCost: 30 }),
+			makeLog({ id: 2, date: MAY, quantity: 20, calculatedConsumption: 8, totalCost: 30 }),
+			makeLog({ id: 3, date: JUN, quantity: 25, calculatedConsumption: 10, totalCost: 25 }),
+			makeLog({ id: 4, date: JUN, quantity: 25, calculatedConsumption: 10, totalCost: 25 })
 		];
 		const { container } = renderHero(baseSettings(), fixture, NOW);
 		// Cost view: ▼ down.
@@ -252,7 +267,12 @@ describe('HeroMetric', () => {
 		// All-time cost = (50+60)/1000 = €0.11/km; trend up → ", up from last month".
 		const { container } = renderHero(
 			baseSettings(),
-			[makeLog({ id: 1, date: MAY, totalCost: 50 }), makeLog({ id: 2, date: JUN, totalCost: 60 })],
+			[
+				makeLog({ id: 1, date: MAY, quantity: 20, totalCost: 25 }),
+				makeLog({ id: 2, date: MAY, quantity: 20, totalCost: 25 }),
+				makeLog({ id: 3, date: JUN, quantity: 20, totalCost: 30 }),
+				makeLog({ id: 4, date: JUN, quantity: 20, totalCost: 30 })
+			],
 			NOW
 		);
 		const label = screen.getByRole('button').getAttribute('aria-label');

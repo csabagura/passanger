@@ -74,6 +74,16 @@ export const FUEL_PRICE_CHANGE_THRESHOLD_PCT = 5;
 // price drifts slowly, so a multi-month baseline reads truer than a single prior month. Distinct
 // from CADENCE_WINDOW_DAYS (which happens to share the value) — that gates the km/day estimate.
 export const FUEL_PRICE_BASELINE_DAYS = 90;
+// H19b (Story 8.4): an insight only fires as notable/baseline-comparable when both comparison
+// periods have at least this many underlying observations (fuel logs, or history entries in that
+// currency for spend) — fewer yields `insufficient`/`insufficient-sample`, not a confident percentage
+// from a single data point.
+export const MIN_INSIGHT_SAMPLE_SIZE = 2;
+// H19b (Story 8.4): a printed insight percent magnitude above this threshold is not shown as a raw
+// number (e.g. "up about 4000%" from a near-zero baseline) — it renders a qualitative "sharply"
+// phrasing instead. Applies to the displayed copy only; `percentChange`'s own value/ranking math is
+// unaffected.
+export const INSIGHT_MAGNITUDE_CAP_PCT = 100;
 // Plain-language Insight surfacing (Story 4.3 / DEC-3): Home shows the single most-significant
 // insight; the /understand route (Story 4.4) shows up to this many. `selectTopInsights` slices to it.
 export const MAX_INSIGHTS_UNDERSTAND = 3;

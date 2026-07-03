@@ -64,7 +64,7 @@ describe('monthlySpendByCurrency', () => {
 		]);
 	});
 
-	it('orders months oldest to newest regardless of input order', () => {
+	it('orders months oldest to newest regardless of input order, zero-filling the data-free interior month (S27)', () => {
 		const entries = mergeHistoryEntries(
 			[
 				createFuelEntry({ id: 1, date: new Date(2026, 2, 10), totalCost: 50, currency: '€' }),
@@ -73,11 +73,36 @@ describe('monthlySpendByCurrency', () => {
 			],
 			[]
 		);
-		expect(monthlySpendByCurrency(entries, '€').map((bucket) => bucket.monthKey)).toEqual([
+		const buckets = monthlySpendByCurrency(entries, '€');
+		// 2025-12, 2026-01, 2026-02 (data-free — zero-filled, S27), 2026-03.
+		expect(buckets.map((bucket) => bucket.monthKey)).toEqual([
 			'2025-12',
 			'2026-01',
+			'2026-02',
 			'2026-03'
 		]);
+		const februaryBucket = buckets.find((bucket) => bucket.monthKey === '2026-02');
+		expect(februaryBucket?.byCurrency).toEqual({});
+		expect(februaryBucket?.label).toBe(formatMonthLabel(new Date(2026, 1, 1)));
+	});
+
+	it('S27: zero-fills every data-free month across a multi-month gap, not just a single one', () => {
+		const entries = mergeHistoryEntries(
+			[
+				createFuelEntry({ id: 1, date: new Date(2026, 0, 10), totalCost: 50, currency: '€' }),
+				createFuelEntry({ id: 2, date: new Date(2026, 3, 5), totalCost: 30, currency: '€' })
+			],
+			[]
+		);
+		const buckets = monthlySpendByCurrency(entries, '€');
+		expect(buckets.map((bucket) => bucket.monthKey)).toEqual([
+			'2026-01',
+			'2026-02',
+			'2026-03',
+			'2026-04'
+		]);
+		expect(buckets[1].byCurrency).toEqual({});
+		expect(buckets[2].byCurrency).toEqual({});
 	});
 
 	it('keeps currencies separate within a month and never sums across them', () => {
@@ -200,16 +225,17 @@ describe('maintenanceCostTrend (Story 4.4, FR-14)', () => {
 		expect(maintenanceCostTrend([], '€')).toEqual([]);
 	});
 
-	it('sums maintenance cost per calendar month, oldest to newest', () => {
+	it('sums maintenance cost per calendar month, oldest to newest, zero-filling the data-free interior month (S27)', () => {
 		const expenses = [
 			createMaintenanceEntry({ id: 1, date: new Date(2026, 2, 12), cost: 120, currency: '€' }),
 			createMaintenanceEntry({ id: 2, date: new Date(2026, 0, 5), cost: 40, currency: '€' }),
 			createMaintenanceEntry({ id: 3, date: new Date(2026, 2, 20), cost: 30, currency: '€' })
 		];
 		const buckets = maintenanceCostTrend(expenses, '€');
-		expect(buckets.map((bucket) => bucket.monthKey)).toEqual(['2026-01', '2026-03']);
+		expect(buckets.map((bucket) => bucket.monthKey)).toEqual(['2026-01', '2026-02', '2026-03']);
 		expect(buckets[0].byCurrency).toEqual({ '€': 40 });
-		expect(buckets[1].byCurrency).toEqual({ '€': 150 });
+		expect(buckets[1].byCurrency).toEqual({}); // 2026-02, data-free — zero-filled
+		expect(buckets[2].byCurrency).toEqual({ '€': 150 });
 	});
 
 	it('keeps currencies separate within a month (never summed)', () => {

@@ -1016,6 +1016,9 @@ describe('History page', () => {
 	});
 
 	it('recalculates the stat bar and month subtotals from the active entry-type filter', async () => {
+		// Pin "today" to day 20 of the current relative month (S2: current-month now excludes
+		// future-dated entries, so day 9/10 fixtures below must fall BEFORE "today").
+		setHistoryReferenceDate(createDateInRelativeMonth(0, 20));
 		mockActiveVehicle = testVehicle;
 		const olderFuelEntry = {
 			...testFuelEntry,
@@ -1080,6 +1083,9 @@ describe('History page', () => {
 	});
 
 	it('renders consumption labels in MPG when fuel-unit preference is MPG', async () => {
+		// Pin "today" to day 20 of the current relative month (S2: current-month now excludes
+		// future-dated entries, so the day-9 fixture below must fall BEFORE "today").
+		setHistoryReferenceDate(createDateInRelativeMonth(0, 20));
 		mockSettingsFuelUnit = 'MPG';
 		mockActiveVehicle = testVehicle;
 		const currentMonthFuelEntry = {
