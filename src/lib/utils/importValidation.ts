@@ -39,7 +39,7 @@ export function validateImportRow(
 	}
 
 	// Odometer validation
-	if (data.odometer == null || isNaN(data.odometer)) {
+	if (data.odometer == null || !Number.isFinite(data.odometer)) {
 		issues.push({ label: 'Missing odometer reading', severity: 'error' });
 	} else if (data.odometer < 0) {
 		issues.push({ label: 'Negative value \u2014 check the sign', severity: 'error' });
@@ -49,7 +49,7 @@ export function validateImportRow(
 
 	// Quantity validation (skip for maintenance entries where fuel quantity is N/A)
 	if (!options?.skipQuantityValidation) {
-		if (data.quantity == null || isNaN(data.quantity)) {
+		if (data.quantity == null || !Number.isFinite(data.quantity)) {
 			issues.push({ label: 'Missing fuel quantity', severity: 'error' });
 		} else if (data.quantity === 0) {
 			issues.push({ label: 'Fuel quantity is zero', severity: 'warning' });

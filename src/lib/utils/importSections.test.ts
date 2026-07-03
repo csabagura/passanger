@@ -152,4 +152,40 @@ data here`;
 		const sections = splitCSVSections(csv);
 		expect(sections.has('customsection')).toBe(true);
 	});
+
+	// Story 8.3 S6 — a `#`-leading line inside an open CSV quote (an embedded newline in a quoted
+	// notes field) must not be mistaken for a new section header.
+	it('does not treat a #-leading line inside a quoted multi-line field as a new section (S6)', () => {
+		const csv = `##Refuelling
+Odometer,Date,Notes
+12345,5/3/2024,"Line one
+#Not a section header
+Line three"
+
+##Service
+Odometer,Date,Cost
+12500,10/3/2024,150.00`;
+
+		const sections = splitCSVSections(csv);
+		expect(sections.size).toBe(2);
+		expect(sections.has('refuelling')).toBe(true);
+		expect(sections.has('service')).toBe(true);
+		// The embedded "#Not a section header" line must survive as data, not be swallowed/split.
+		expect(sections.get('refuelling')).toContain('#Not a section header');
+		expect(sections.get('refuelling')).toContain('Line three');
+	});
+
+	it('still detects a genuine section marker following a properly closed quoted field', () => {
+		const csv = `##Refuelling
+Odometer,Date,Notes
+12345,5/3/2024,"Quoted notes, no embedded newline"
+
+##Service
+Odometer,Date,Cost
+12500,10/3/2024,150.00`;
+
+		const sections = splitCSVSections(csv);
+		expect(sections.size).toBe(2);
+		expect(sections.get('service')).toContain('12500,10/3/2024,150.00');
+	});
 });

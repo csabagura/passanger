@@ -31,7 +31,12 @@ function finiteOr0(value: number | null | undefined): number {
 export async function commitImportRows(
 	rows: ImportRow[],
 	assignments: VehicleAssignment[],
-	onProgress?: (current: number, total: number) => void
+	onProgress?: (current: number, total: number) => void,
+	// Rows already excluded from `rows` by an earlier wizard step (Review's per-row/skip-all skip,
+	// AC2; the duplicate-detection keep/skip choice, AC1) — folded into the one final skippedCount
+	// so the displayed total is honest about every row that never reached the database, not just the
+	// last stage that touched it.
+	externalSkippedCount = 0
 ): Promise<Result<ImportCommitResult>> {
 	// Imported rows carry no currency metadata (3rd-party CSVs don't include it), so they
 	// adopt the user's home currency. Per-row currency import is a future enhancement.
@@ -57,7 +62,7 @@ export async function commitImportRows(
 		return ok({
 			fuelCount: 0,
 			maintenanceCount: 0,
-			skippedCount: preCommitSkippedCount,
+			skippedCount: preCommitSkippedCount + externalSkippedCount,
 			vehiclesCreated: [],
 			vehiclesMatched: [],
 			totalImported: 0
@@ -279,7 +284,7 @@ export async function commitImportRows(
 	return ok({
 		fuelCount,
 		maintenanceCount,
-		skippedCount: preCommitSkippedCount + commitRejectedCount,
+		skippedCount: preCommitSkippedCount + commitRejectedCount + externalSkippedCount,
 		vehiclesCreated,
 		vehiclesMatched,
 		totalImported: fuelCount + maintenanceCount

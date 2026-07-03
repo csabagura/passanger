@@ -38,9 +38,21 @@ export function splitCSVSections(rawCSV: string): Map<string, string> {
 
 	let currentSection: string | null = null;
 	let currentLines: string[] = [];
+	// S6 (Story 8.3) — quote-depth tracking across raw \n-split lines. A `#`-leading line that falls
+	// INSIDE an open CSV quote (an odd number of unescaped `"` seen so far on the current, possibly
+	// multi-line, logical record) is a continuation of a quoted field's embedded newline, not a new
+	// section header — counting quotes per raw line and toggling on an odd count is standard CSV
+	// multi-line-field detection without needing a full CSV parse pass first.
+	let insideQuotedField = false;
 
 	for (const line of lines) {
-		const match = sectionPattern.exec(line);
+		const wasInsideQuotedField = insideQuotedField;
+		const quoteCountInLine = (line.match(/"/g) ?? []).length;
+		if (quoteCountInLine % 2 === 1) {
+			insideQuotedField = !insideQuotedField;
+		}
+
+		const match = wasInsideQuotedField ? null : sectionPattern.exec(line);
 		if (match) {
 			// Save previous section if any
 			if (currentSection !== null) {

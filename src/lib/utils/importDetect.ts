@@ -6,7 +6,11 @@ import type { Result } from '$lib/utils/result';
 import type { ImportSource } from '$lib/utils/importTypes';
 
 export function detectCSVFormat(csvContent: string): Result<ImportSource> {
-	const firstLine = csvContent.split('\n')[0]?.trim() ?? '';
+	// S3 (Story 8.3) — strip a leading UTF-8 BOM before sniffing, mirroring importSections.ts's
+	// existing strip, so a BOM-prefixed aCar/Drivvo/Fuelly export detects correctly instead of
+	// falling through to 'generic'.
+	const cleaned = csvContent.charCodeAt(0) === 0xfeff ? csvContent.slice(1) : csvContent;
+	const firstLine = cleaned.split('\n')[0]?.trim() ?? '';
 
 	// aCar/Fuelio: starts with "## Vehicle"
 	if (firstLine.startsWith('## Vehicle')) return ok('acar');

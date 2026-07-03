@@ -32,12 +32,19 @@ import {
 // `DRAFT_STALE_DAYS` (7) is reused for consistency with AD-6 (OQ-2 recommended default). `MS_PER_DAY`
 // is a private const in `draftStore.ts` (not exported), so it's re-declared locally — same value.
 const MS_PER_DAY = 86_400_000;
-const PAYLOAD_VERSION = 1;
+// Bumped to 2 for Story 8.3 (AC10/S32) — the persisted payload shape changed (new `fileIdentity`
+// satellite); a pre-8.3 payload at version 1 must be discarded rather than resumed with
+// `fileIdentity: null`, which would leave its `cachedReviewEntries` unprotected by the new
+// cross-file cache-invalidation guard in ImportWizard.svelte (code-review 8-3 patch).
+const PAYLOAD_VERSION = 2;
 
-/** The two resumable satellites that live OUTSIDE `wizardState` as separate component `$state`. */
+/** The resumable satellites that live OUTSIDE `wizardState` as separate component `$state`. */
 export interface ImportProgressSatellites {
 	step4AutoSkipped: boolean;
 	reviewEntries: [number, ReviewRowState][] | null;
+	// Story 8.3 AC5/AC10 — the uploaded file's identity fingerprint (name + size + cheap content
+	// hash), so a resumed session keeps recognizing "the same file" for cache-keying purposes.
+	fileIdentity: string | null;
 }
 
 /** What `loadImportProgress` reconstructs: the wizard state (Dates revived) plus its satellites. */
@@ -45,6 +52,7 @@ export interface RestoredImportProgress {
 	state: ImportWizardState;
 	step4AutoSkipped: boolean;
 	reviewEntries: [number, ReviewRowState][] | null;
+	fileIdentity: string | null;
 }
 
 interface PersistedPayload {
@@ -54,6 +62,7 @@ interface PersistedPayload {
 	state: Omit<ImportWizardState, 'file'>;
 	step4AutoSkipped: boolean;
 	reviewEntries: [number, ReviewRowState][] | null;
+	fileIdentity: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -122,12 +131,21 @@ export function saveImportProgress(
 	satellites: ImportProgressSatellites
 ): void {
 	const { file: _file, ...projection } = state;
+	// B4 (Story 8.3 AC10) — once parsing has happened, `parsedRows` carries what Step 3+ actually
+	// needs; stop writing the raw CSV text through to localStorage from that point on — it was the
+	// payload LEAST likely to fit in the quota (the full source file), for a value nothing downstream
+	// reads once `parsedRows` exists. The raw text is still held transiently in memory
+	// (`wizardState.rawCSV`) between file-pick and parse; only the persisted copy is dropped.
+	if (projection.parsedRows.length > 0) {
+		projection.rawCSV = null;
+	}
 	const payload: PersistedPayload = {
 		version: PAYLOAD_VERSION,
 		updatedAt: Date.now(),
 		state: projection,
 		step4AutoSkipped: satellites.step4AutoSkipped,
-		reviewEntries: satellites.reviewEntries
+		reviewEntries: satellites.reviewEntries,
+		fileIdentity: satellites.fileIdentity
 	};
 	safeSet(IMPORT_PROGRESS_STORAGE_KEY, JSON.stringify(payload));
 }
@@ -151,6 +169,15 @@ export function loadImportProgress(): RestoredImportProgress | null {
 	}
 
 	try {
+		// (a0) Story 8.3 AC10 (S32) — a payload stamped with a version other than the current
+		// `PAYLOAD_VERSION` is discarded the same way a structurally-invalid payload is (no
+		// migration attempted — there is exactly one prior version and no live user depends on it
+		// surviving a bump).
+		if (payload.version !== PAYLOAD_VERSION) {
+			clearImportProgress();
+			return null;
+		}
+
 		// (a) Staleness: an in-progress import older than the horizon is discarded WHOLE (rawCSV +
 		// parse + assignments are one unit), unlike a draft which only drops odometer/date (AC6).
 		const updatedAt = typeof payload.updatedAt === 'number' ? payload.updatedAt : 0;
@@ -201,12 +228,20 @@ export function loadImportProgress(): RestoredImportProgress | null {
 		const reviewEntries = reviveReviewEntries(payload.reviewEntries);
 
 		// The persisted projection has no `file`; resume always lands with `file === null` (AC3).
-		const restoredState: ImportWizardState = { ...state, file: null };
+		// `reviewSkippedCount` (Story 8.3 AC2) is defaulted for a payload written before this field
+		// existed — a stale-shaped resume must not leave it `undefined` for the final skip-count math.
+		const restoredState: ImportWizardState = {
+			...state,
+			file: null,
+			reviewSkippedCount:
+				typeof state.reviewSkippedCount === 'number' ? state.reviewSkippedCount : 0
+		};
 
 		return {
 			state: restoredState,
 			step4AutoSkipped: payload.step4AutoSkipped === true,
-			reviewEntries
+			reviewEntries,
+			fileIdentity: typeof payload.fileIdentity === 'string' ? payload.fileIdentity : null
 		};
 	} catch {
 		// Any structural surprise → clean start, never a half-broken resume (AC2).

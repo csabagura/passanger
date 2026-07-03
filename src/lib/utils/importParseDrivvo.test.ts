@@ -239,4 +239,22 @@ Odometer,Date,Cost,Title,,Notes
 		const serviceRow = rows.find((r) => r.data.type === 'maintenance')!;
 		expect(serviceRow.issues).toContain('Odometer is lower than the previous entry');
 	});
+
+	it("an unparseable-date row does not seed or poison another row's decrease chain (S7)", async () => {
+		const csv = `##Refuelling
+Odometer,Date,Fuel type,Volume price,Total price,Fuel amount,Full fillup
+999999,not-a-date,gasoline,1.85,55.50,30.0,Yes
+12000,5/3/2024,gasoline,1.85,45.00,25.0,Yes
+12100,10/3/2024,gasoline,1.85,40.00,22.0,Yes`;
+
+		const result = await parseDrivvoCSV(csv, METRIC_UNITS);
+		const rows = result.data!.rows;
+		const row1 = rows.find((r) => r.rowNumber === 1)!;
+		const row2 = rows.find((r) => r.rowNumber === 2)!;
+		const row3 = rows.find((r) => r.rowNumber === 3)!;
+
+		expect(row1.issues).toContain('Missing date');
+		expect(row2.issues).not.toContain('Odometer is lower than the previous entry');
+		expect(row3.issues).not.toContain('Odometer is lower than the previous entry');
+	});
 });

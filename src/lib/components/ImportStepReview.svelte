@@ -36,7 +36,11 @@
 	interface ImportStepReviewProps {
 		rows: ImportRow[];
 		summary: ImportDryRunSummary;
-		onReviewConfirmed: (data: { rows: ImportRow[]; summary: ImportDryRunSummary }) => void;
+		onReviewConfirmed: (data: {
+			rows: ImportRow[];
+			summary: ImportDryRunSummary;
+			skippedCount: number;
+		}) => void;
 		initialReviewEntries?: [number, ReviewRowState][];
 		onReviewStateChanged?: (entries: [number, ReviewRowState][]) => void;
 	}
@@ -62,14 +66,35 @@
 	const reviewedCount = $derived.by(() => {
 		let count = 0;
 		for (const [, state] of reviewState) {
-			if (state.status === 'corrected' || state.status === 'skipped') {
+			if (
+				state.status === 'corrected' ||
+				state.status === 'skipped' ||
+				state.status === 'accepted'
+			) {
 				count++;
 			}
 		}
 		return count;
 	});
 
-	const allReviewed = $derived(reviewedCount === flaggedRows.length);
+	// Story 8.3 AC2 (H9) — only `error`-status rows must reach `corrected`/`skipped` before the
+	// wizard can advance; `warning`-status rows may remain `accepted` (bulk or individual) as well as
+	// `corrected`/`skipped`. A still-`pending` warning blocks, same as before this story.
+	const allReviewed = $derived(
+		flaggedRows.every((row) => {
+			const state = getRowState(row.rowNumber);
+			if (row.status === 'error') {
+				return state.status === 'corrected' || state.status === 'skipped';
+			}
+			return state.status !== 'pending';
+		})
+	);
+
+	const hasPendingWarnings = $derived(
+		flaggedRows.some(
+			(row) => row.status === 'warning' && getRowState(row.rowNumber).status === 'pending'
+		)
+	);
 
 	const updatedCounts = $derived.by(() => {
 		let validCount = 0;
@@ -85,6 +110,9 @@
 				if (state.correctedStatus === 'valid') validCount++;
 				else if (state.correctedStatus === 'warning') warningCount++;
 				else errorCount++;
+			} else if (state?.status === 'accepted') {
+				// Bulk-accept only ever applies to warning-severity rows — accepted-as-is, not re-validated.
+				warningCount++;
 			} else {
 				if (row.status === 'valid') validCount++;
 				else if (row.status === 'warning') warningCount++;
@@ -107,7 +135,7 @@
 	// Auto-skip: if no flagged rows, call onReviewConfirmed immediately
 	$effect(() => {
 		if (flaggedRows.length === 0) {
-			onReviewConfirmed({ rows, summary });
+			onReviewConfirmed({ rows, summary, skippedCount: 0 });
 		}
 	});
 
@@ -156,7 +184,7 @@
 
 	function getRowData(row: ImportRow): Partial<NormalizedImportEntry> {
 		const state = getRowState(row.rowNumber);
-		if (state.status === 'corrected') {
+		if (state.status === 'corrected' || state.status === 'accepted') {
 			return { ...row.data, ...state.correctedData };
 		}
 		return row.data;
@@ -164,7 +192,7 @@
 
 	function getRowIssues(row: ImportRow): string[] {
 		const state = getRowState(row.rowNumber);
-		if (state.status === 'corrected') {
+		if (state.status === 'corrected' || state.status === 'accepted') {
 			return state.correctedIssues;
 		}
 		return row.issues;
@@ -216,7 +244,7 @@
 
 	function getCardBorderClass(row: ImportRow): string {
 		const state = getRowState(row.rowNumber);
-		if (state.status === 'corrected') {
+		if (state.status === 'corrected' || state.status === 'accepted') {
 			return 'border-green-500 bg-green-50 dark:bg-green-950/20';
 		}
 		if (state.status === 'skipped') {
@@ -485,6 +513,26 @@
 		notifyStateChanged();
 	}
 
+	// Story 8.3 AC2 (H9) — bulk-accept every still-pending warning-severity row as-is, in one action.
+	// Distinct from handleSkipAllRemaining (which discards); this keeps the row's original data and
+	// issues, matching an individual per-row "leave as warning" outcome. No re-validation — a warning
+	// row with no edits is already validated, so re-running validateImportRow would be a pure no-op.
+	function handleAcceptAllWarnings() {
+		for (const row of flaggedRows) {
+			if (row.status !== 'warning') continue;
+			const existing = getRowState(row.rowNumber);
+			if (existing.status === 'pending') {
+				reviewState.set(row.rowNumber, {
+					status: 'accepted',
+					correctedData: {},
+					correctedIssues: row.issues,
+					correctedStatus: row.status
+				});
+			}
+		}
+		notifyStateChanged();
+	}
+
 	function focusNextCard(currentRowNumber: number) {
 		const currentIndex = flaggedRows.findIndex((r) => r.rowNumber === currentRowNumber);
 		const nextRow = flaggedRows[currentIndex + 1];
@@ -513,7 +561,7 @@
 			})
 			.map((row) => {
 				const state = reviewState.get(row.rowNumber);
-				if (state?.status === 'corrected') {
+				if (state?.status === 'corrected' || state?.status === 'accepted') {
 					const mergedData = { ...row.data, ...state.correctedData };
 					return {
 						...row,
@@ -526,11 +574,26 @@
 			});
 	}
 
+	// Story 8.3 AC2 (H9) — how many rows this step skipped (per-row skip + "skip all remaining").
+	// `buildFinalRows` removes these from the array before `commitImportRows` ever sees them, so the
+	// caller must carry this count forward for the final Confirm-step skippedCount to stay honest.
+	function countReviewSkipped(): number {
+		let count = 0;
+		for (const row of rows) {
+			if (reviewState.get(row.rowNumber)?.status === 'skipped') count++;
+		}
+		return count;
+	}
+
 	function handleAssignVehicles() {
 		if (!allReviewed) return;
 		const finalRows = buildFinalRows();
 		const finalSummary = buildDryRunSummary(finalRows);
-		onReviewConfirmed({ rows: finalRows, summary: finalSummary });
+		onReviewConfirmed({
+			rows: finalRows,
+			summary: finalSummary,
+			skippedCount: countReviewSkipped()
+		});
 	}
 </script>
 
@@ -586,6 +649,11 @@
 								<span
 									class="ml-2 inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800 dark:bg-green-900/30 dark:text-green-400"
 									>{m.import_review_badge_corrected()}</span
+								>
+							{:else if state.status === 'accepted'}
+								<span
+									class="ml-2 inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800 dark:bg-green-900/30 dark:text-green-400"
+									>{m.import_review_badge_accepted()}</span
 								>
 							{:else if state.status === 'skipped'}
 								<span
@@ -710,16 +778,28 @@
 			</div>
 		{/each}
 
-		<!-- Skip all remaining -->
-		{#if flaggedRows.some((r) => getRowState(r.rowNumber).status === 'pending')}
-			<button
-				type="button"
-				class="inline-flex min-h-11 items-center text-xs text-muted-foreground underline"
-				onclick={handleSkipAllRemaining}
-			>
-				{m.import_review_skip_all()}
-			</button>
-		{/if}
+		<!-- Bulk accept-warnings / skip-all-remaining -->
+		<div class="flex flex-wrap items-center gap-4">
+			{#if hasPendingWarnings}
+				<button
+					type="button"
+					class="inline-flex min-h-11 items-center text-xs text-accent underline"
+					data-testid="accept-all-warnings-btn"
+					onclick={handleAcceptAllWarnings}
+				>
+					{m.import_review_accept_all_warnings()}
+				</button>
+			{/if}
+			{#if flaggedRows.some((r) => getRowState(r.rowNumber).status === 'pending')}
+				<button
+					type="button"
+					class="inline-flex min-h-11 items-center text-xs text-muted-foreground underline"
+					onclick={handleSkipAllRemaining}
+				>
+					{m.import_review_skip_all()}
+				</button>
+			{/if}
+		</div>
 
 		<!-- Primary action button -->
 		<button

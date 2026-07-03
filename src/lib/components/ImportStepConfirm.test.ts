@@ -34,6 +34,14 @@ vi.mock('$lib/utils/importCommit', () => ({
 	commitImportRows: (...args: unknown[]) => mockCommitImportRows(...args)
 }));
 
+// Story 8.3 AC1 — default to "no duplicates found" so existing pre-commit-view tests are
+// unaffected; individual tests override this to exercise the keep/skip flow.
+const mockFindDuplicateRows = vi.fn();
+
+vi.mock('$lib/utils/importDuplicates', () => ({
+	findDuplicateRows: (...args: unknown[]) => mockFindDuplicateRows(...args)
+}));
+
 import ImportStepConfirm from './ImportStepConfirm.svelte';
 
 const testVehicle = { id: 1, name: 'My Honda', make: 'Honda', model: 'Civic', year: 2020 };
@@ -111,6 +119,7 @@ function renderConfirm(
 		rows?: ImportRow[];
 		summary?: ImportDryRunSummary;
 		assignments?: VehicleAssignment[];
+		reviewSkippedCount?: number;
 		onImportComplete?: (result: ImportCommitResult) => void;
 		onImportReset?: () => void;
 		ctx?: VehiclesContext;
@@ -124,6 +133,7 @@ function renderConfirm(
 			rows: overrides.rows ?? defaultRows(),
 			summary: overrides.summary ?? defaultSummary(),
 			assignments: overrides.assignments ?? defaultAssignments(),
+			reviewSkippedCount: overrides.reviewSkippedCount ?? 0,
 			onImportComplete: overrides.onImportComplete ?? vi.fn(),
 			onImportReset: overrides.onImportReset ?? vi.fn()
 		},
@@ -140,6 +150,10 @@ describe('ImportStepConfirm', () => {
 				return Promise.resolve({ data: mockCommitResult, error: null } as const);
 			}
 		);
+		mockFindDuplicateRows.mockResolvedValue({
+			data: { duplicateRowNumbers: new Set() },
+			error: null
+		});
 	});
 
 	afterEach(() => {
@@ -399,5 +413,80 @@ describe('ImportStepConfirm', () => {
 		});
 
 		resolveCommit!({ data: mockCommitResult, error: null });
+	});
+
+	describe('duplicate detection (Story 8.3 AC1)', () => {
+		it('surfaces a keep/skip choice before the final commit trigger when duplicates are found', async () => {
+			mockFindDuplicateRows.mockResolvedValue({
+				data: { duplicateRowNumbers: new Set([1, 2]) },
+				error: null
+			});
+
+			renderConfirm();
+
+			await waitFor(() => {
+				expect(screen.getByText(/possible duplicates found/i)).toBeTruthy();
+				expect(screen.getByText(/2 rows match entries already in your data/i)).toBeTruthy();
+			});
+		});
+
+		it('"Import anyway" keeps all rows and commits the full set unmodified', async () => {
+			mockFindDuplicateRows.mockResolvedValue({
+				data: { duplicateRowNumbers: new Set([1]) },
+				error: null
+			});
+
+			renderConfirm();
+
+			await waitFor(() => screen.getByTestId('duplicate-keep-btn'));
+			await fireEvent.click(screen.getByTestId('duplicate-keep-btn'));
+
+			await waitFor(() => {
+				expect(screen.getByTestId('import-btn')).toBeTruthy();
+			});
+			await fireEvent.click(screen.getByTestId('import-btn'));
+
+			await waitFor(() => {
+				expect(mockCommitImportRows).toHaveBeenCalled();
+			});
+			const [committedRows, , , externalSkippedCount] = mockCommitImportRows.mock.calls[0];
+			expect(committedRows).toHaveLength(8); // full defaultRows() set, nothing excluded
+			expect(externalSkippedCount).toBe(0);
+		});
+
+		it('"Skip duplicates" excludes the flagged rows and folds their count into externalSkippedCount', async () => {
+			mockFindDuplicateRows.mockResolvedValue({
+				data: { duplicateRowNumbers: new Set([1, 2]) },
+				error: null
+			});
+
+			renderConfirm();
+
+			await waitFor(() => screen.getByTestId('duplicate-skip-btn'));
+			await fireEvent.click(screen.getByTestId('duplicate-skip-btn'));
+
+			await waitFor(() => {
+				expect(screen.getByTestId('import-btn')).toBeTruthy();
+			});
+			await fireEvent.click(screen.getByTestId('import-btn'));
+
+			await waitFor(() => {
+				expect(mockCommitImportRows).toHaveBeenCalled();
+			});
+			const [committedRows, , , externalSkippedCount] = mockCommitImportRows.mock.calls[0];
+			expect(committedRows.map((r: ImportRow) => r.rowNumber)).not.toContain(1);
+			expect(committedRows.map((r: ImportRow) => r.rowNumber)).not.toContain(2);
+			expect(committedRows).toHaveLength(6);
+			expect(externalSkippedCount).toBe(2);
+		});
+
+		it('does not surface the duplicate panel when no duplicates are found', async () => {
+			renderConfirm();
+
+			await waitFor(() => {
+				expect(screen.getByTestId('import-btn')).toBeTruthy();
+			});
+			expect(screen.queryByText(/possible duplicates found/i)).toBeNull();
+		});
 	});
 });
