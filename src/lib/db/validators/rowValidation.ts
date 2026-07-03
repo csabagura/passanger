@@ -349,3 +349,20 @@ export function validateVehicleReferentialIntegrity(
 	}
 	return null;
 }
+
+// A live write can never produce two rows sharing an id within one table (Dexie assigns ids on
+// create; update/delete take an existing id). `restoreAllTables` writes ids verbatim via
+// `bulkPut`, which silently overwrites same-id rows in write order with no error/skip signal — a
+// hand-edited backup with a duplicate id would otherwise pass every per-row check individually and
+// only quietly lose data on restore. Catch it here instead (ADR-006 AD-WB-4 / H17a).
+export function validateUniqueRowIds(
+	rows: ReadonlyArray<{ id: number }>,
+	entityLabel: string
+): string | null {
+	const seen = new Set<number>();
+	for (const row of rows) {
+		if (seen.has(row.id)) return `${entityLabel} has more than one row with id ${row.id}`;
+		seen.add(row.id);
+	}
+	return null;
+}

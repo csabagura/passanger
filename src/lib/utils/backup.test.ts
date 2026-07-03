@@ -468,6 +468,47 @@ describe('parseBackup — rejections', () => {
 		expect(result.error?.message).toMatch(/cannot contain more than/i);
 	});
 
+	it('rejects two fuel logs sharing an id — bulkPut would silently overwrite one with the other', () => {
+		const json = JSON.stringify({
+			app: BACKUP_APP_ID,
+			schemaVersion: DB_VERSION,
+			exportedAt: new Date().toISOString(),
+			data: {
+				vehicles: [{ id: 1, name: 'Car', make: 'Honda', model: 'Civic' }],
+				fuelLogs: [
+					{
+						id: 5,
+						vehicleId: 1,
+						date: new Date('2026-01-01').toISOString(),
+						odometer: 1000,
+						quantity: 40,
+						unit: 'L',
+						distanceUnit: 'km',
+						totalCost: 60,
+						calculatedConsumption: 0
+					},
+					{
+						id: 5,
+						vehicleId: 1,
+						date: new Date('2026-01-05').toISOString(),
+						odometer: 1400,
+						quantity: 38,
+						unit: 'L',
+						distanceUnit: 'km',
+						totalCost: 55,
+						calculatedConsumption: 5
+					}
+				],
+				expenses: [],
+				serviceReminders: []
+			},
+			settings
+		});
+		const result = parseBackup(json);
+		expect(result.error?.code).toBe('VALIDATION_ERROR');
+		expect(result.error?.message).toMatch(/more than one row with id/i);
+	});
+
 	it('accepts empty arrays (empty-dataset backup)', () => {
 		const json = JSON.stringify({
 			app: BACKUP_APP_ID,

@@ -83,6 +83,13 @@ function recalculateSortedFuelLogs(logs: FuelLog[]): FuelLog[] {
 				// or unit change) and a partial can't anchor a new one → closed until the next full fill.
 				anchor = undefined;
 				carriedQuantity = 0;
+			} else if (isRegression) {
+				// QUARANTINE (H4, extended to partials): a below-anchor odometer is just as untrustworthy
+				// on a partial reading as on a full one — leave anchor/carriedQuantity exactly as they
+				// were (do NOT carry this partial's litres forward), mirroring the full-fill quarantine
+				// below. Without this branch, isPartial short-circuits past isRegression entirely and an
+				// untrusted partial's litres get folded into the next full fill's numerator anyway —
+				// the same over-attribution AD-WB-5 exists to prevent, just reached via a partial row.
 			} else {
 				// Open span continues: accumulate this partial's litres toward the next full fill.
 				carriedQuantity += log.quantity;

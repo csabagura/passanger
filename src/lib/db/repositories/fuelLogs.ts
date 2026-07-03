@@ -95,6 +95,17 @@ export class FuelLogRepository {
 				db.transaction('rw', db.fuelLogs, async () => {
 					const existing = await db.fuelLogs.get(updatedLog.id);
 					if (!existing) throw encodeSentinel('NOT_FOUND', `FuelLog ${updatedLog.id} not found`);
+					// Moving a fuel log to a different vehicle isn't a supported operation (no caller does
+					// this; FuelEntryForm never edits vehicleId) — reject it explicitly rather than
+					// silently querying the NEW vehicle's timeline (which won't contain this row, since
+					// it's still stored under the OLD vehicleId) and dropping this row's own patch as a
+					// side effect of buildFuelLogUpdatePlan's "unknown row → no-op" fallback.
+					if (existing.vehicleId !== updatedLog.vehicleId) {
+						throw encodeSentinel(
+							'VALIDATION_ERROR',
+							"Changing a fuel log's vehicle is not supported"
+						);
+					}
 
 					const timelineLogs = await db.fuelLogs
 						.where('vehicleId')

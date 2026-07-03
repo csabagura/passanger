@@ -600,6 +600,40 @@ describe('commitImportRows — ADR-006 AD-WB-3 (write-boundary hardening)', () =
 		const logs = await db.fuelLogs.toArray();
 		expect(logs).toHaveLength(1);
 		expect(logs[0].odometer).toBe(10400);
+		// The surviving row is the FIRST fuel log ever persisted for this vehicle — its consumption
+		// must be the honest first-ever-fill 0, not a number computed against the excluded rows'
+		// odometers. Before the pre-consumption filter, the two rejected rows still anchored the
+		// timeline engine's synthetic pass (row1's odo=0 became a bogus "first anchor", row2 then
+		// re-anchored to 10200 despite failing validation), so this row computed a poisoned 20
+		// L/100km — a rejected row was influencing a persisted row's data (ADR-006 AD-WB-3).
+		expect(logs[0].calculatedConsumption).toBe(0);
+	});
+
+	it('H3 (poisoning): a row rejected at commit does not become the anchor for a valid neighbor in the same batch', async () => {
+		const vehicleId = await db.vehicles.add({
+			name: 'TestCar',
+			make: 'Honda',
+			model: 'Civic'
+		} as any);
+
+		// Row 1 is rejected (quantity <= 0) but has an odometer BELOW row 2's — if it were left in the
+		// synthetic timeline pass, it would anchor row 2's span at a bogus low point. row2 (the only
+		// row that persists) must instead read as a first-ever fill: consumption 0.
+		const rows = [
+			makeFuelRow(1, { odometer: 9000, quantity: -1 }),
+			makeFuelRow(2, { odometer: 10400, quantity: 40 })
+		];
+		const assignments = [makeExistingAssignment('TestCar', vehicleId as number, 2)];
+
+		const result = await commitImportRows(rows, assignments);
+		expect(result.error).toBeNull();
+		expect(result.data!.fuelCount).toBe(1);
+		expect(result.data!.skippedCount).toBe(1);
+
+		const logs = await db.fuelLogs.toArray();
+		expect(logs).toHaveLength(1);
+		expect(logs[0].odometer).toBe(10400);
+		expect(logs[0].calculatedConsumption).toBe(0);
 	});
 
 	it('H3: rejects an invalid expense row at commit without blocking valid rows in the same batch', async () => {

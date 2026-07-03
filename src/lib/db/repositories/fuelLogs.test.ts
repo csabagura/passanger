@@ -314,6 +314,20 @@ describe('FuelLogRepository', () => {
 			expect(result.error?.code).toBe('NOT_FOUND');
 		});
 
+		it('rejects a vehicleId change rather than silently dropping the edit (ADR-006 — the timeline query uses the NEW vehicleId and would otherwise never find this row)', async () => {
+			const saved = await saveFuelLog(makeLog());
+			const original = saved.data!;
+
+			const result = await updateFuelLogWithTimeline({ ...original, vehicleId: 2, quantity: 99 });
+			expect(result.data).toBeNull();
+			expect(result.error?.code).toBe('VALIDATION_ERROR');
+
+			// The row is untouched — neither the vehicleId nor the attempted quantity change landed.
+			const refreshed = await getFuelLogById(original.id);
+			expect(refreshed.data?.vehicleId).toBe(1);
+			expect(refreshed.data?.quantity).toBe(original.quantity);
+		});
+
 		it('persists a currency-only edit end-to-end (H1 regression)', async () => {
 			const saved = await saveFuelLog({ ...makeLog(), currency: '€' });
 			const original = saved.data!;

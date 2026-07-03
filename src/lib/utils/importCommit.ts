@@ -84,6 +84,38 @@ export async function commitImportRows(
 		}
 	}
 
+	// Step 3.5: exclude rows that will fail the repo-grade validator on fields independent of
+	// vehicleId (odometer/quantity positivity, unit pairing) BEFORE they enter Step 4's consumption
+	// pass. A row that fails commit-time validation is never written (Step 5), but the timeline
+	// engine runs over the WHOLE per-vehicle group — a bad row left in that group can still become
+	// another (valid, persisted) row's anchor, silently poisoning its calculatedConsumption even
+	// though the bad row itself never reaches the DB (ADR-006 AD-WB-3: a rejected row must not
+	// influence a persisted row's data, not just avoid being persisted itself). vehicleId is not yet
+	// assigned at this stage (vehicles are created inside the Step 5 transaction), so a placeholder
+	// positive id is used purely to exercise the OTHER field checks — it is always valid once
+	// substituted with the real id, so it cannot mask a genuine vehicleId-related rejection.
+	const validFuelEntries: typeof fuelEntries = [];
+	let preConsumptionRejectedCount = 0;
+	for (const entry of fuelEntries) {
+		const fieldCandidate: NewFuelLog = {
+			vehicleId: 1,
+			date: entry.row.data.date!,
+			odometer: entry.row.data.odometer ?? 0,
+			quantity: entry.row.data.quantity ?? 0,
+			unit: entry.row.data.unit ?? 'L',
+			distanceUnit: entry.row.data.distanceUnit ?? 'km',
+			totalCost: finiteOr0(entry.row.data.totalCost),
+			calculatedConsumption: 0,
+			isPartialFill: entry.row.data.isPartialFill ?? false,
+			precededByMissedFill: entry.row.data.precededByMissedFill ?? false
+		};
+		if (validateNewFuelLog(fieldCandidate)) {
+			preConsumptionRejectedCount++;
+		} else {
+			validFuelEntries.push(entry);
+		}
+	}
+
 	// Step 4: calculate consumption for fuel rows via the shared timeline engine (Story 7.1), so
 	// imported partial/missed fills defer/zero exactly like live edits (AD-DA-3) — a naive
 	// per-predecessor pass would surface false-low numbers on missed fills and noise on partials.
@@ -91,7 +123,7 @@ export async function commitImportRows(
 	// so this stays outside the transaction (pure, no DB access).
 	const consumptionMap = new Map<ImportRow, number>();
 	const byVehicleName = new Map<string, Array<{ row: ImportRow; vehicleName: string }>>();
-	for (const entry of fuelEntries) {
+	for (const entry of validFuelEntries) {
 		const group = byVehicleName.get(entry.vehicleName) || [];
 		group.push(entry);
 		byVehicleName.set(entry.vehicleName, group);
@@ -140,10 +172,10 @@ export async function commitImportRows(
 	// and counted as skipped, never half-written.
 	const vehiclesCreated: string[] = [];
 	const vehiclesMatched: string[] = [];
-	let commitRejectedCount = 0;
+	let commitRejectedCount = preConsumptionRejectedCount;
 	let fuelCount = 0;
 	let maintenanceCount = 0;
-	const totalRows = fuelEntries.length + maintenanceEntries.length;
+	const totalRows = validFuelEntries.length + maintenanceEntries.length;
 	let currentProgress = 0;
 
 	try {
@@ -169,7 +201,7 @@ export async function commitImportRows(
 				}
 			}
 
-			for (const entry of fuelEntries) {
+			for (const entry of validFuelEntries) {
 				const vehicleId = vehicleNameToId.get(entry.vehicleName);
 				if (vehicleId == null) {
 					throw encodeSentinel(

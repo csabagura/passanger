@@ -578,6 +578,26 @@ describe('fuelLogTimeline — anchor-trust rule (ADR-006 AD-WB-5, H4)', () => {
 		expect(consumptionsById(logs)).toEqual({ 1: 0, 2: 0, 3: 6 });
 	});
 
+	it('a regressing PARTIAL fill does not carry its litres forward either (AD-WB-5 extended to partials)', () => {
+		const logs = [
+			createFuelLog({ id: 1, date: new Date('2026-03-09'), odometer: 10000, quantity: 40 }),
+			// Partial with a below-anchor odometer typo. Without the isRegression guard on the partial
+			// branch, isPartial short-circuits past isRegression and this 999L gets carried forward
+			// into id3's numerator anyway — the same over-attribution AD-WB-5 exists to prevent.
+			createFuelLog({
+				id: 2,
+				date: new Date('2026-03-10'),
+				odometer: 5000,
+				quantity: 999,
+				isPartialFill: true
+			}),
+			createFuelLog({ id: 3, date: new Date('2026-03-11'), odometer: 10500, quantity: 30 })
+		];
+		// id2 (partial regression) reports 0 (isPartial always reports 0) and its litres are dropped.
+		// id3 measures from the still-trusted anchor (10000): (30/500)*100 = 6, not (30+999)/500*100.
+		expect(consumptionsById(logs)).toEqual({ 1: 0, 2: 0, 3: 6 });
+	});
+
 	it('an odometer exactly equal to the anchor is also a regression (no positive span, not just negative)', () => {
 		const logs = [
 			createFuelLog({ id: 1, date: new Date('2026-03-09'), odometer: 10000, quantity: 40 }),

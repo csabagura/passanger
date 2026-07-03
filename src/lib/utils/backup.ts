@@ -20,7 +20,8 @@ import {
 	validateNewServiceReminder,
 	isValidRowId,
 	validateVehicleCount,
-	validateVehicleReferentialIntegrity
+	validateVehicleReferentialIntegrity,
+	validateUniqueRowIds
 } from '$lib/db/validators/rowValidation';
 
 // The on-disk JSON shape. Dates inside `data` serialize to ISO strings via Date.toJSON and are
@@ -204,6 +205,18 @@ export function parseBackup(text: string): Result<{ data: BackupData; settings: 
 		validateVehicleReferentialIntegrity(vehicleIds, validServiceReminders, 'A service reminder');
 	if (referentialError) {
 		return err('VALIDATION_ERROR', referentialError);
+	}
+
+	// ADR-006 AD-WB-4 (H17a): a live write can never produce two rows sharing an id in one table —
+	// restoreAllTables' bulkPut would silently overwrite one with the other with no error/skip
+	// signal, so a hand-edited duplicate id must be caught here, per table.
+	const duplicateIdError =
+		validateUniqueRowIds(validVehicles, 'A vehicle') ||
+		validateUniqueRowIds(validFuelLogs, 'A fuel log') ||
+		validateUniqueRowIds(validExpenses, 'An expense') ||
+		validateUniqueRowIds(validServiceReminders, 'A service reminder');
+	if (duplicateIdError) {
+		return err('VALIDATION_ERROR', duplicateIdError);
 	}
 
 	if (!isValidSettings(settings)) {

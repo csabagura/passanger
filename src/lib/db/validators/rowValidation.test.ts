@@ -12,7 +12,8 @@ import {
 	hasAtLeastOneInterval,
 	isValidRowId,
 	validateVehicleCount,
-	validateVehicleReferentialIntegrity
+	validateVehicleReferentialIntegrity,
+	validateUniqueRowIds
 } from './rowValidation';
 import type { NewVehicle, NewFuelLog, NewExpense, NewServiceReminder } from '../schema';
 
@@ -341,5 +342,19 @@ describe('validateVehicleReferentialIntegrity (H17a)', () => {
 
 	it('accepts an empty row set', () => {
 		expect(validateVehicleReferentialIntegrity(new Set([1]), [], 'expense')).toBeNull();
+	});
+});
+
+describe('validateUniqueRowIds (H17a)', () => {
+	it('accepts rows with distinct ids', () => {
+		expect(validateUniqueRowIds([{ id: 1 }, { id: 2 }, { id: 3 }], 'vehicle')).toBeNull();
+	});
+
+	it('rejects a duplicate id — bulkPut would silently overwrite one row with the other', () => {
+		expect(validateUniqueRowIds([{ id: 1 }, { id: 2 }, { id: 1 }], 'fuelLog')).not.toBeNull();
+	});
+
+	it('accepts an empty row set', () => {
+		expect(validateUniqueRowIds([], 'expense')).toBeNull();
 	});
 });
