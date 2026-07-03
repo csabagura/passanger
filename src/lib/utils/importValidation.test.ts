@@ -73,6 +73,22 @@ describe('validateImportRow', () => {
 		expect(result.issues).toContain('Missing odometer reading');
 	});
 
+	it('returns error for Infinity odometer (code-review 8-3 patch — isNaN missed ±Infinity)', () => {
+		const entry = validEntry();
+		entry.odometer = Infinity;
+		const result = validateImportRow(entry, 1);
+		expect(result.status).toBe('error');
+		expect(result.issues).toContain('Missing odometer reading');
+	});
+
+	it('returns error for -Infinity odometer (code-review 8-3 patch — isNaN missed ±Infinity)', () => {
+		const entry = validEntry();
+		entry.odometer = -Infinity;
+		const result = validateImportRow(entry, 1);
+		expect(result.status).toBe('error');
+		expect(result.issues).toContain('Missing odometer reading');
+	});
+
 	it('returns error for negative odometer', () => {
 		const entry = validEntry();
 		entry.odometer = -100;
@@ -100,6 +116,14 @@ describe('validateImportRow', () => {
 	it('returns error for NaN quantity', () => {
 		const entry = validEntry();
 		entry.quantity = NaN;
+		const result = validateImportRow(entry, 1);
+		expect(result.status).toBe('error');
+		expect(result.issues).toContain('Missing fuel quantity');
+	});
+
+	it('returns error for Infinity quantity (code-review 8-3 patch — isNaN missed ±Infinity)', () => {
+		const entry = validEntry();
+		entry.quantity = Infinity;
 		const result = validateImportRow(entry, 1);
 		expect(result.status).toBe('error');
 		expect(result.issues).toContain('Missing fuel quantity');

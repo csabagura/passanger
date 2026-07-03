@@ -32,7 +32,11 @@ import {
 // `DRAFT_STALE_DAYS` (7) is reused for consistency with AD-6 (OQ-2 recommended default). `MS_PER_DAY`
 // is a private const in `draftStore.ts` (not exported), so it's re-declared locally — same value.
 const MS_PER_DAY = 86_400_000;
-const PAYLOAD_VERSION = 1;
+// Bumped to 2 for Story 8.3 (AC10/S32) — the persisted payload shape changed (new `fileIdentity`
+// satellite); a pre-8.3 payload at version 1 must be discarded rather than resumed with
+// `fileIdentity: null`, which would leave its `cachedReviewEntries` unprotected by the new
+// cross-file cache-invalidation guard in ImportWizard.svelte (code-review 8-3 patch).
+const PAYLOAD_VERSION = 2;
 
 /** The resumable satellites that live OUTSIDE `wizardState` as separate component `$state`. */
 export interface ImportProgressSatellites {

@@ -25,4 +25,11 @@ describe('computeFileIdentity', () => {
 		const b = computeFileIdentity('export.csv', 10, 'bbbbbbbbbb');
 		expect(a).not.toBe(b);
 	});
+
+	it('differs when two files share an identical first 8KB but diverge after it (code-review 8-3 patch)', () => {
+		const sharedPrefix = 'x'.repeat(8192);
+		const a = computeFileIdentity('export.csv', 8202, sharedPrefix + 'AAAAAAAAAA');
+		const b = computeFileIdentity('export.csv', 8202, sharedPrefix + 'BBBBBBBBBB');
+		expect(a).not.toBe(b);
+	});
 });

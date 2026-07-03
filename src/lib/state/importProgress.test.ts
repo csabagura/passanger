@@ -120,7 +120,7 @@ describe('saveImportProgress / loadImportProgress round-trip', () => {
 	it('writes the documented envelope { version, updatedAt, state, ... }', () => {
 		saveImportProgress(makeStep4State(), noSatellites);
 		const raw = JSON.parse(localStorage.getItem(IMPORT_PROGRESS_STORAGE_KEY)!);
-		expect(raw.version).toBe(1);
+		expect(raw.version).toBe(2);
 		expect(typeof raw.updatedAt).toBe('number');
 		expect(raw.state.step).toBe(4);
 	});

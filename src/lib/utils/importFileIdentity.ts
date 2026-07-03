@@ -8,14 +8,16 @@
 
 /**
  * A simple, fast, non-cryptographic 32-bit hash (FNV-1a) over the given string, returned as an
- * unsigned hex string. Only the first `sampleLength` characters are hashed — enough to
- * distinguish real-world exports cheaply without hashing multi-MB files in full.
+ * unsigned hex string. Hashes the FULL content — a code-review patch (Story 8.3 review) replaced
+ * an earlier first-8KB-only sample, which let two different files sharing a name, size, and
+ * identical first 8KB (e.g. a shared header/boilerplate prefix) collide as "the same file" and
+ * silently inherit each other's Review-correction cache. `MAX_CSV_ROWS`/the import size caps keep
+ * this bounded (a few MB at most), so hashing in full is cheap enough to not need sampling.
  */
-function cheapContentHash(content: string, sampleLength = 8192): string {
-	const sample = content.slice(0, sampleLength);
+function cheapContentHash(content: string): string {
 	let hash = 0x811c9dc5;
-	for (let i = 0; i < sample.length; i++) {
-		hash ^= sample.charCodeAt(i);
+	for (let i = 0; i < content.length; i++) {
+		hash ^= content.charCodeAt(i);
 		hash = Math.imul(hash, 0x01000193);
 	}
 	return (hash >>> 0).toString(16);
