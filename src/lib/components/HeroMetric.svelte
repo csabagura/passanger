@@ -201,7 +201,7 @@
 		const next: AppSettings = { ...settingsCtx.settings, heroMetric: otherMetric };
 		// Persist FIRST: if the localStorage write fails (quota/security), don't desync the in-memory
 		// view from what's stored — leave the metric unchanged.
-		if (!saveSettings(next)) {
+		if (saveSettings(next).error) {
 			return;
 		}
 		settingsCtx.updateSettings(next);

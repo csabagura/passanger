@@ -12,34 +12,61 @@ export type StoragePersistenceOutcome = 'granted' | 'denied' | 'unavailable';
 // Safe localStorage helpers — never throw; silently no-op on failure
 // ---------------------------------------------------------------------------
 
-function safeGetItem(key: string): string | null {
+function safeGetItem(storage: Storage, key: string): string | null {
 	try {
-		return localStorage.getItem(key);
+		return storage.getItem(key);
 	} catch {
 		return null;
 	}
 }
 
-function safeSetItem(key: string, value: string): void {
+function safeSetItem(storage: Storage, key: string, value: string): void {
 	try {
-		localStorage.setItem(key, value);
+		storage.setItem(key, value);
 	} catch {
 		// Silently handle QuotaExceededError, SecurityError, etc.
 	}
 }
 
+function safeRemoveItem(storage: Storage, key: string): void {
+	try {
+		storage.removeItem(key);
+	} catch {
+		// Best-effort — ignore.
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Stored outcome helpers
+//
+// S18: 'granted' is cached in localStorage — a real grant should never be re-asked. 'denied' /
+// 'unavailable' are cached in sessionStorage instead, so every NEW browser session naturally
+// re-attempts navigator.storage.persist() rather than trusting a stale-forever denial (a user
+// can grant persistence later via browser settings, bookmarking, engagement, etc.).
 // ---------------------------------------------------------------------------
 
 function getStoredOutcome(): StoragePersistenceOutcome | null {
-	const stored = safeGetItem(STORAGE_PERSISTENCE_OUTCOME_KEY);
-	if (stored === 'granted' || stored === 'denied' || stored === 'unavailable') return stored;
+	if (safeGetItem(localStorage, STORAGE_PERSISTENCE_OUTCOME_KEY) === 'granted') return 'granted';
+	const sessionStored = safeGetItem(sessionStorage, STORAGE_PERSISTENCE_OUTCOME_KEY);
+	if (sessionStored === 'denied' || sessionStored === 'unavailable') return sessionStored;
 	return null;
 }
 
 function setStoredOutcome(outcome: StoragePersistenceOutcome): void {
-	safeSetItem(STORAGE_PERSISTENCE_OUTCOME_KEY, outcome);
+	if (outcome === 'granted') {
+		safeSetItem(localStorage, STORAGE_PERSISTENCE_OUTCOME_KEY, outcome);
+		return;
+	}
+	safeSetItem(sessionStorage, STORAGE_PERSISTENCE_OUTCOME_KEY, outcome);
+}
+
+/**
+ * Clear the session-cached denied/unavailable outcome so the next `requestStoragePersistence()`
+ * call bypasses it and re-asks unconditionally. Used by the `appinstalled` handler (S18) —
+ * installation is the strongest "ask again" signal available.
+ */
+export function clearSessionStoragePersistenceOutcome(): void {
+	safeRemoveItem(sessionStorage, STORAGE_PERSISTENCE_OUTCOME_KEY);
 }
 
 // ---------------------------------------------------------------------------
@@ -47,11 +74,11 @@ function setStoredOutcome(outcome: StoragePersistenceOutcome): void {
 // ---------------------------------------------------------------------------
 
 export function hasNoticeDismissed(): boolean {
-	return safeGetItem(STORAGE_NOTICE_DISMISSED_KEY) === 'true';
+	return safeGetItem(localStorage, STORAGE_NOTICE_DISMISSED_KEY) === 'true';
 }
 
 export function markNoticeDismissed(): void {
-	safeSetItem(STORAGE_NOTICE_DISMISSED_KEY, 'true');
+	safeSetItem(localStorage, STORAGE_NOTICE_DISMISSED_KEY, 'true');
 }
 
 // ---------------------------------------------------------------------------

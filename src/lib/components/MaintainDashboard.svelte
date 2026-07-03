@@ -1,7 +1,6 @@
 <script lang="ts">
 	import { onDestroy, tick } from 'svelte';
-	import { resolve } from '$app/paths';
-	import { createLiveQuery } from '$lib/state/liveQuery.svelte';
+	import { createRepoLiveQuery } from '$lib/state/liveQuery.svelte';
 	import { getAllFuelLogs } from '$lib/db/repositories/fuelLogs';
 	import {
 		getServiceRemindersForVehicle,
@@ -17,6 +16,7 @@
 	import { createWallClock } from '$lib/state/wallClock.svelte';
 	import ServiceReminderForm from '$lib/components/ServiceReminderForm.svelte';
 	import { Button } from '$lib/components/ui/button';
+	import DbErrorCard from '$lib/components/DbErrorCard.svelte';
 	import { m } from '$lib/paraglide/messages';
 	import type { FuelLog, ServiceReminder } from '$lib/db/schema';
 
@@ -42,14 +42,11 @@
 	// AD-4 reactive reads (mirror UnderstandDashboard): reminders AND fuel logs. Logging a fill-up
 	// elsewhere re-derives currentOdometer + cadence here for free; a reminder edit re-emits the list.
 	// `initial = undefined` distinguishes "not loaded yet" (→ skeleton) from "loaded empty" (→ no-data).
-	const reminderQuery = createLiveQuery<ServiceReminder[]>(
-		() => getServiceRemindersForVehicle(vehicleId).then((r) => r.data ?? []),
+	const reminderQuery = createRepoLiveQuery<ServiceReminder[]>(
+		() => getServiceRemindersForVehicle(vehicleId),
 		undefined
 	);
-	const fuelQuery = createLiveQuery<FuelLog[]>(
-		() => getAllFuelLogs(vehicleId).then((r) => r.data ?? []),
-		undefined
-	);
+	const fuelQuery = createRepoLiveQuery<FuelLog[]>(() => getAllFuelLogs(vehicleId), undefined);
 
 	onDestroy(() => {
 		reminderQuery.destroy();
@@ -201,18 +198,11 @@
 
 		{#if dbError}
 			<!-- DB-error takes precedence over loading (a rejected read never emits `current`). -->
-			<div role="alert" class="flex flex-col items-center justify-center gap-4 p-8 text-center">
-				<p class="text-lg font-semibold text-foreground">{m.maintain_error_heading()}</p>
-				<p class="text-sm text-muted-foreground">
-					{m.maintain_error_body()}
-				</p>
-				<a
-					href={resolve('/export')}
-					class="rounded-xl bg-accent px-5 py-3 text-sm font-semibold text-accent-foreground"
-				>
-					{m.maintain_export_cta()}
-				</a>
-			</div>
+			<DbErrorCard
+				title={m.maintain_error_heading()}
+				body={m.maintain_error_body()}
+				ctaLabel={m.maintain_export_cta()}
+			/>
 		{:else if viewState.mode === 'create'}
 			<ServiceReminderForm {vehicleId} onSave={handleSaveOrUpdate} onCancel={handleCancel} />
 		{:else if viewState.mode === 'edit'}

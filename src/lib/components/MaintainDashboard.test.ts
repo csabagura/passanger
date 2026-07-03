@@ -3,7 +3,7 @@ import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
 import { cleanup, render, screen, fireEvent, waitFor, within } from '@testing-library/svelte';
 import { flushSync } from 'svelte';
 import type { FuelLog, ServiceReminder } from '$lib/db/schema';
-import { ok } from '$lib/utils/result';
+import { ok, err } from '$lib/utils/result';
 import MaintainDashboard from './MaintainDashboard.svelte';
 
 vi.mock('$app/paths', () => ({
@@ -161,6 +161,14 @@ describe('MaintainDashboard', () => {
 
 	it('shows the database error state when a read rejects (dbError before loading)', async () => {
 		mockGetServiceRemindersForVehicle.mockRejectedValue(new Error('boom'));
+		mockGetAllFuelLogs.mockResolvedValue(ok([]));
+		renderDashboard();
+		await waitFor(() => expect(screen.getByRole('alert')).toBeTruthy());
+		expect(screen.getByText('Could not load your reminders')).toBeTruthy();
+	});
+
+	it('H2: shows the database error state when a repository resolves to err(...) (the real-world gap — no raw throw)', async () => {
+		mockGetServiceRemindersForVehicle.mockResolvedValue(err('DB_READ_FAILED', 'boom'));
 		mockGetAllFuelLogs.mockResolvedValue(ok([]));
 		renderDashboard();
 		await waitFor(() => expect(screen.getByRole('alert')).toBeTruthy());

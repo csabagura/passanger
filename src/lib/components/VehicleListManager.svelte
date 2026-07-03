@@ -1,22 +1,26 @@
 <script lang="ts">
-	import { tick } from 'svelte';
-	import { MAX_VEHICLES, VEHICLE_ID_STORAGE_KEY } from '$lib/config';
+	import { tick, getContext } from 'svelte';
+	import { MAX_VEHICLES } from '$lib/config';
 	import { getAllVehicles, deleteVehicle } from '$lib/db/repositories/vehicles';
-	import { safeSetItem, safeRemoveItem } from '$lib/utils/vehicleStorage';
 	import type { Vehicle } from '$lib/db/schema';
+	import type { VehiclesContext } from '$lib/utils/vehicleContext';
 	import VehicleForm from './VehicleForm.svelte';
 	import { Button } from '$lib/components/ui/button';
 	import { m } from '$lib/paraglide/messages';
+
+	// H12: the single existing propagation channel for vehicle state (mirrors ImportStepConfirm's
+	// already-correct post-mutation reconciliation) — every CRUD path here must reconcile it, not just
+	// this component's own local list, so AppHeader/Fab/CaptureSheet/etc. see the change same-tab.
+	const vehiclesContext = getContext<VehiclesContext>('vehicles');
 
 	type ViewState = { mode: 'list' } | { mode: 'create' } | { mode: 'edit'; vehicle: Vehicle };
 	type DeleteState = 'idle' | 'armed' | 'loading';
 
 	interface VehicleListManagerProps {
 		activeVehicleId?: number | null;
-		onActiveVehicleChange?: (id: number | null) => void;
 	}
 
-	let { activeVehicleId = null, onActiveVehicleChange }: VehicleListManagerProps = $props();
+	let { activeVehicleId = null }: VehicleListManagerProps = $props();
 
 	let vehicles = $state<Vehicle[]>([]);
 	let vehicleCount = $state(0);
@@ -70,6 +74,10 @@
 
 	async function handleSaveOrUpdate(vehicle: Vehicle) {
 		await loadVehicles();
+		// H12: reconcile the layout's shared vehicles context after the local list reloads, so
+		// AppHeader/Fab/CaptureSheet (and Settings' own display, once it reads the context directly)
+		// see the create/edit in the same tab.
+		await vehiclesContext.refreshVehicles();
 		viewState = { mode: 'list' };
 		await tick();
 		focusVehicleOrAddButton(vehicle.id);
@@ -112,16 +120,18 @@
 		deleteState = 'idle';
 
 		await loadVehicles();
+		// H12: reconcile the shared context BEFORE deciding the active-vehicle fallback below, so
+		// switchVehicle's write goes through the layout's own vehicles array (kept in sync with this
+		// component's local reload) rather than a stale one.
+		await vehiclesContext.refreshVehicles();
 
-		if (wasActive) {
-			if (vehicles.length > 0) {
-				const newActiveId = vehicles[0].id;
-				safeSetItem(VEHICLE_ID_STORAGE_KEY, String(newActiveId));
-				onActiveVehicleChange?.(newActiveId);
-			} else {
-				safeRemoveItem(VEHICLE_ID_STORAGE_KEY);
-				onActiveVehicleChange?.(null);
-			}
+		if (wasActive && vehicles.length > 0) {
+			// Routes the write through the layout's existing switchVehicle (which owns the
+			// VEHICLE_ID_STORAGE_KEY write) — this component no longer writes that key directly.
+			// No vehicles left: intentionally do nothing — switchVehicle needs an id to switch to, and
+			// activeVehicleId now comes from the context (via the parent), which readStoredVehicleId /
+			// the layout's own load path already governs.
+			vehiclesContext.switchVehicle(vehicles[0].id);
 		}
 
 		await tick();

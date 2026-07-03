@@ -190,6 +190,9 @@ function makeVehiclesContext(vehicles = [testVehicle]): VehiclesContext {
 		get loaded() {
 			return true;
 		},
+		get vehiclesError() {
+			return false;
+		},
 		switchVehicle: vi.fn(),
 		refreshVehicles: vi.fn().mockResolvedValue(undefined)
 	};

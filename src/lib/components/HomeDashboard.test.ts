@@ -2,10 +2,20 @@ import 'fake-indexeddb/auto'; // MUST be first — patches global IndexedDB befo
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { cleanup, render, screen, waitFor } from '@testing-library/svelte';
 import { db } from '$lib/db/db';
-import { saveFuelLog } from '$lib/db/repositories/fuelLogs';
+import { saveFuelLog, getAllFuelLogs } from '$lib/db/repositories/fuelLogs';
 import { saveExpense } from '$lib/db/repositories/expenses';
+import { err } from '$lib/utils/result';
 import type { NewFuelLog } from '$lib/db/schema';
 import HomeDashboard from './HomeDashboard.svelte';
+
+vi.mock('$lib/db/repositories/fuelLogs', async () => {
+	const actual = await vi.importActual<typeof import('$lib/db/repositories/fuelLogs')>(
+		'$lib/db/repositories/fuelLogs'
+	);
+	return { ...actual, getAllFuelLogs: vi.fn(actual.getAllFuelLogs) };
+});
+
+const realGetAllFuelLogs = vi.mocked(getAllFuelLogs).getMockImplementation()!;
 
 const VEHICLE_ID = 1;
 
@@ -51,6 +61,7 @@ beforeEach(async () => {
 
 afterEach(() => {
 	cleanup();
+	vi.mocked(getAllFuelLogs).mockImplementation(realGetAllFuelLogs);
 });
 
 describe('HomeDashboard', () => {
@@ -206,5 +217,16 @@ describe('HomeDashboard', () => {
 		await waitFor(() => {
 			expect(screen.getByText(/tracking 1 fill-up · 1 expense for daily driver/i)).toBeTruthy();
 		});
+	});
+
+	it('H2: a repository error renders the DB-error card, never the skeleton forever', async () => {
+		vi.mocked(getAllFuelLogs).mockResolvedValue(err('DB_READ_FAILED', 'boom'));
+		renderDashboard();
+
+		await waitFor(() => {
+			expect(screen.getByRole('alert')).toBeTruthy();
+		});
+		expect(screen.getByText('Could not load your dashboard')).toBeTruthy();
+		expect(screen.queryByText(/loading your dashboard/i)).toBeNull();
 	});
 });

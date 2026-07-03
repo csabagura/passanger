@@ -6,6 +6,7 @@ import {
 	HERO_METRICS
 } from '$lib/config';
 import type { FuelUnit, HeroMetric } from '$lib/config';
+import { ok, err, type Result } from '$lib/utils/result';
 
 export type ThemePreference = 'system' | 'light' | 'dark';
 const VALID_THEMES: readonly ThemePreference[] = ['system', 'light', 'dark'] as const;
@@ -107,31 +108,69 @@ export function getSettings(): AppSettings {
 	}
 }
 
-export function saveSettings(settings: AppSettings): boolean {
-	if (typeof localStorage === 'undefined') return false;
+// S34: an exchangeRates map is "coerced" when the sanitized result drops or alters any entry the
+// caller actually supplied (a non-finite/≤0 rate, or the whole map when nothing survives).
+function exchangeRatesWereCoerced(
+	input: unknown,
+	sanitized: Record<string, number> | undefined
+): boolean {
+	if (!input || typeof input !== 'object') return false;
+	const entries = Object.entries(input as Record<string, unknown>);
+	if (entries.length === 0) return false;
+	const sanitizedMap = sanitized ?? {};
+	if (Object.keys(sanitizedMap).length !== entries.length) return true;
+	return entries.some(([currency, rate]) => sanitizedMap[currency] !== rate);
+}
+
+/**
+ * Persist settings, reporting which fields (if any) were silently substituted with a default or
+ * dropped for invalid input (S34) — `ok({ coercedFields: [] })` means the input was written
+ * verbatim. `err(...)` only on the actual localStorage write failing (unchanged from the prior
+ * bare-boolean behavior's `false` case).
+ */
+export function saveSettings(settings: AppSettings): Result<{ coercedFields: string[] }> {
+	if (typeof localStorage === 'undefined') {
+		return err('SAVE_FAILED', 'localStorage unavailable');
+	}
+
+	const coercedFields: string[] = [];
+
+	const fuelUnitValid = isValidFuelUnit(settings.fuelUnit);
+	if (!fuelUnitValid) coercedFields.push('fuelUnit');
+	const currencyValid = isValidCurrency(settings.currency);
+	if (!currencyValid) coercedFields.push('currency');
+	const themeValid = isValidTheme(settings.theme);
+	if (!themeValid) coercedFields.push('theme');
 
 	const nextSettings: AppSettings = {
-		fuelUnit: isValidFuelUnit(settings.fuelUnit) ? settings.fuelUnit : DEFAULT_SETTINGS.fuelUnit,
-		currency: isValidCurrency(settings.currency) ? settings.currency : DEFAULT_SETTINGS.currency,
-		theme: isValidTheme(settings.theme) ? settings.theme : DEFAULT_SETTINGS.theme
+		fuelUnit: fuelUnitValid ? settings.fuelUnit : DEFAULT_SETTINGS.fuelUnit,
+		currency: currencyValid ? settings.currency : DEFAULT_SETTINGS.currency,
+		theme: themeValid ? settings.theme : DEFAULT_SETTINGS.theme
 	};
 
 	const exchangeRates = sanitizeExchangeRates(settings.exchangeRates);
+	if (exchangeRatesWereCoerced(settings.exchangeRates, exchangeRates)) {
+		coercedFields.push('exchangeRates');
+	}
 	if (exchangeRates) {
 		nextSettings.exchangeRates = exchangeRates;
 	}
 
 	// saveSettings reconstructs nextSettings from known fields only, so heroMetric must be
 	// re-attached here or it is silently dropped. Persist only a valid value (mirrors exchangeRates).
-	if (isValidHeroMetric(settings.heroMetric)) {
-		nextSettings.heroMetric = settings.heroMetric;
+	if (settings.heroMetric !== undefined) {
+		if (isValidHeroMetric(settings.heroMetric)) {
+			nextSettings.heroMetric = settings.heroMetric;
+		} else {
+			coercedFields.push('heroMetric');
+		}
 	}
 
 	try {
 		localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(nextSettings));
-		return true;
+		return ok({ coercedFields });
 	} catch {
 		// Silently handle QuotaExceededError and SecurityError so callers never crash
-		return false;
+		return err('SAVE_FAILED', 'Could not save settings');
 	}
 }

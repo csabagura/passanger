@@ -2713,6 +2713,45 @@ describe('FuelEntryForm component — review fixes validation', () => {
 
 			expect(currencySelect.value).toBe('$');
 		});
+
+		it('H16: a seeded (never-typed) odometer suggestion is never persisted to the draft', async () => {
+			mockGetAllFuelLogs.mockResolvedValue({
+				data: [
+					logAt(1, 87000, '2026-03-01T10:00:00Z'),
+					logAt(2, 87500, '2026-03-08T10:00:00Z'),
+					logAt(3, 88000, '2026-03-15T10:00:00Z')
+				],
+				error: null
+			});
+
+			render(FuelEntryForm, { props: { vehicleId: 1, onSave: onSaveSpy } });
+			await new Promise((r) => setTimeout(r, 0));
+			flushSync();
+
+			expect((screen.getByLabelText(/odometer/i) as HTMLInputElement).value).toBe('88500');
+			expect(fuelDraft['odometer']).toBeUndefined();
+		});
+
+		it('H16: typing over a seeded odometer suggestion persists the real, user-entered value', async () => {
+			mockGetAllFuelLogs.mockResolvedValue({
+				data: [
+					logAt(1, 87000, '2026-03-01T10:00:00Z'),
+					logAt(2, 87500, '2026-03-08T10:00:00Z'),
+					logAt(3, 88000, '2026-03-15T10:00:00Z')
+				],
+				error: null
+			});
+
+			render(FuelEntryForm, { props: { vehicleId: 1, onSave: onSaveSpy } });
+			await new Promise((r) => setTimeout(r, 0));
+			flushSync();
+
+			const odometerInput = screen.getByLabelText(/odometer/i) as HTMLInputElement;
+			await fireEvent.input(odometerInput, { target: { value: '88600' } });
+			flushSync();
+
+			expect(fuelDraft['odometer']).toBe('88600');
+		});
 	});
 
 	describe('Story 7.1: partial / missed fill toggles', () => {

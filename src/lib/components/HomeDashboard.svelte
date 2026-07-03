@@ -1,12 +1,13 @@
 <script lang="ts">
 	import { onDestroy } from 'svelte';
-	import { createLiveQuery } from '$lib/state/liveQuery.svelte';
+	import { createRepoLiveQuery } from '$lib/state/liveQuery.svelte';
 	import { getAllFuelLogs } from '$lib/db/repositories/fuelLogs';
 	import { getAllExpenses } from '$lib/db/repositories/expenses';
 	import UpNextCard from '$lib/components/UpNextCard.svelte';
 	import HeroMetric from '$lib/components/HeroMetric.svelte';
 	import InsightLine from '$lib/components/InsightLine.svelte';
 	import HomeSkeleton from '$lib/components/HomeSkeleton.svelte';
+	import DbErrorCard from '$lib/components/DbErrorCard.svelte';
 	import { recency } from '$lib/utils/metrics/recency';
 	import { m } from '$lib/paraglide/messages';
 	import type { FuelLog, Expense } from '$lib/db/schema';
@@ -29,14 +30,8 @@
 	// AD-4 reactive reads: a new Capture (fuel OR expense) for this vehicle re-emits here without a
 	// reload. `initial = undefined` distinguishes "not loaded yet" (→ skeleton) from "loaded empty"
 	// (→ next-action states). Reads go through repositories inside queryFn (Dexie-isolation contract).
-	const fuelQuery = createLiveQuery<FuelLog[]>(
-		() => getAllFuelLogs(vehicleId).then((r) => r.data ?? []),
-		undefined
-	);
-	const expenseQuery = createLiveQuery<Expense[]>(
-		() => getAllExpenses(vehicleId).then((r) => r.data ?? []),
-		undefined
-	);
+	const fuelQuery = createRepoLiveQuery<FuelLog[]>(() => getAllFuelLogs(vehicleId), undefined);
+	const expenseQuery = createRepoLiveQuery<Expense[]>(() => getAllExpenses(vehicleId), undefined);
 
 	// Teardown contract: release both Dexie subscriptions when this keyed instance is destroyed.
 	onDestroy(() => {
@@ -44,6 +39,9 @@
 		expenseQuery.destroy();
 	});
 
+	// dbError checked FIRST: a rejected read never emits `current`, so `loading` would otherwise stay
+	// true forever and trap the surface on the skeleton (mirrors Understand/Maintain).
+	const dbError = $derived(Boolean(fuelQuery.error) || Boolean(expenseQuery.error));
 	// Skeleton until BOTH seeds resolve, so no glance block renders against a half-loaded picture.
 	const loading = $derived(fuelQuery.current === undefined || expenseQuery.current === undefined);
 
@@ -84,7 +82,13 @@
 	);
 </script>
 
-{#if loading}
+{#if dbError}
+	<DbErrorCard
+		title={m.home_db_error_title()}
+		body={m.home_db_error_body()}
+		ctaLabel={m.home_export_cta()}
+	/>
+{:else if loading}
 	<HomeSkeleton />
 {:else}
 	<div class="space-y-4 px-4 pt-4">

@@ -104,6 +104,21 @@ describe('MaintenanceForm', () => {
 		expect((screen.getByLabelText(/^type$/i) as HTMLInputElement).value).toBe('');
 	});
 
+	it('H16: a "Log this service" prefill is never persisted to the draft until the user edits it', async () => {
+		render(MaintenanceForm, { vehicleId: 7, onSave: onSaveSpy, initialType: 'Oil change' });
+		await new Promise((r) => setTimeout(r, 0));
+		flushSync();
+		expect(maintenanceDraft['type']).toBeUndefined();
+	});
+
+	it('H16: editing a prefilled Type value persists the real, user-entered value', async () => {
+		render(MaintenanceForm, { vehicleId: 7, onSave: onSaveSpy, initialType: 'Oil change' });
+		const typeInput = screen.getByLabelText(/^type$/i) as HTMLInputElement;
+		await fireEvent.input(typeInput, { target: { value: 'Oil change — synthetic' } });
+		flushSync();
+		expect(maintenanceDraft['type']).toBe('Oil change — synthetic');
+	});
+
 	it('uses the saved currency in success feedback', async () => {
 		mockSettings.value = {
 			fuelUnit: 'L/100km',

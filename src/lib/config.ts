@@ -110,6 +110,7 @@ export const INSTALL_PROMPT_DISMISSED_KEY = 'passanger_install_prompt_dismissed'
 export const ONBOARDING_SURVEY_STORAGE_KEY = 'passanger_onboarding_survey'; // localStorage key for onboarding survey state
 export const REMINDER_DISMISSED_STORAGE_KEY = 'passanger_reminder_dismissed'; // localStorage key for the Up-Next reminder dismissal map (Story 3.5 / DEC-8, AD-8)
 export const SESSION_COUNT_STORAGE_KEY = 'passanger_session_count'; // localStorage key for session count (install nudge timing)
+export const SETTINGS_RESTORE_COERCED_NOTICE_KEY = 'passanger_settings_restore_coerced'; // sessionStorage key: show-once notice that a restored backup's settings needed coercion (S34), survives the post-restore reload
 export const TAB_SYNC_CHANNEL = 'passanger_tab_sync'; // BroadcastChannel name for cross-tab reconciliation
 export const TAB_SYNC_CUE_DURATION_MS = 4000; // auto-dismiss duration for the "updated in another tab" cue
 export const SHELL_NAVBAR_HEIGHT = '4rem';

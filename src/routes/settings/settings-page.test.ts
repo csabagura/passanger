@@ -40,6 +40,9 @@ const localStorageMock = (() => {
 
 Object.defineProperty(globalThis, 'localStorage', { value: localStorageMock, writable: true });
 
+const mockSwitchVehicle = vi.fn();
+const mockRefreshVehicles = vi.fn().mockResolvedValue(undefined);
+
 function renderPage() {
 	const settingsContext = {
 		get settings() {
@@ -51,8 +54,23 @@ function renderPage() {
 		}
 	};
 
+	// H12: Settings now reads the layout's shared vehicles context directly (no more page-local
+	// activeVehicleId mirror), so the page/VehicleListManager both need it present.
+	const vehiclesContext = {
+		vehicles: [],
+		activeVehicle: null,
+		activeVehicleId: null,
+		loaded: true,
+		vehiclesError: false,
+		switchVehicle: mockSwitchVehicle,
+		refreshVehicles: mockRefreshVehicles
+	};
+
 	return render(SettingsPage, {
-		context: new Map([['settings', settingsContext]])
+		context: new Map<string, unknown>([
+			['settings', settingsContext],
+			['vehicles', vehiclesContext]
+		])
 	});
 }
 

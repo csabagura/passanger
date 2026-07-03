@@ -129,7 +129,7 @@ describe('Settings utility', () => {
 
 	describe('saveSettings()', () => {
 		it('persists settings as serialised JSON in localStorage', () => {
-			expect(saveSettings({ fuelUnit: 'MPG', currency: '£', theme: 'dark' })).toBe(true);
+			expect(saveSettings({ fuelUnit: 'MPG', currency: '£', theme: 'dark' }).error).toBeNull();
 			const raw = localStorage.getItem(SETTINGS_STORAGE_KEY);
 			expect(raw).not.toBeNull();
 			expect(JSON.parse(raw!)).toEqual({ fuelUnit: 'MPG', currency: '£', theme: 'dark' });
@@ -182,8 +182,8 @@ describe('Settings utility', () => {
 				throw new DOMException('QuotaExceededError', 'QuotaExceededError');
 			});
 			expect(
-				saveSettings({ fuelUnit: DEFAULT_UNIT, currency: DEFAULT_CURRENCY, theme: 'system' })
-			).toBe(false);
+				saveSettings({ fuelUnit: DEFAULT_UNIT, currency: DEFAULT_CURRENCY, theme: 'system' }).error
+			).not.toBeNull();
 			spy.mockRestore();
 		});
 
@@ -192,9 +192,71 @@ describe('Settings utility', () => {
 				throw new DOMException('SecurityError', 'SecurityError');
 			});
 			expect(
-				saveSettings({ fuelUnit: DEFAULT_UNIT, currency: DEFAULT_CURRENCY, theme: 'system' })
-			).toBe(false);
+				saveSettings({ fuelUnit: DEFAULT_UNIT, currency: DEFAULT_CURRENCY, theme: 'system' }).error
+			).not.toBeNull();
 			spy.mockRestore();
+		});
+	});
+
+	describe('S34: saveSettings() reports coercion instead of silent success', () => {
+		it('reports an empty coercedFields array when the input is entirely valid', () => {
+			const result = saveSettings({
+				fuelUnit: DEFAULT_UNIT,
+				currency: DEFAULT_CURRENCY,
+				theme: 'system'
+			});
+			expect(result.error).toBeNull();
+			expect(result.data?.coercedFields).toEqual([]);
+		});
+
+		it('reports fuelUnit/currency/theme when each is invalid and silently defaulted', () => {
+			const result = saveSettings({
+				fuelUnit: 'bogus' as AppSettings['fuelUnit'],
+				currency: '   ',
+				theme: 'neon' as AppSettings['theme']
+			});
+			expect(result.data?.coercedFields).toEqual(
+				expect.arrayContaining(['fuelUnit', 'currency', 'theme'])
+			);
+		});
+
+		it('reports exchangeRates when an entry is invalid and gets dropped', () => {
+			const result = saveSettings({
+				fuelUnit: DEFAULT_UNIT,
+				currency: DEFAULT_CURRENCY,
+				theme: 'system',
+				exchangeRates: { $: -5 }
+			});
+			expect(result.data?.coercedFields).toContain('exchangeRates');
+		});
+
+		it('does NOT report exchangeRates when every entry is valid', () => {
+			const result = saveSettings({
+				fuelUnit: DEFAULT_UNIT,
+				currency: DEFAULT_CURRENCY,
+				theme: 'system',
+				exchangeRates: { $: 1.1 }
+			});
+			expect(result.data?.coercedFields).not.toContain('exchangeRates');
+		});
+
+		it('reports heroMetric when an invalid value is silently dropped', () => {
+			const result = saveSettings({
+				fuelUnit: DEFAULT_UNIT,
+				currency: DEFAULT_CURRENCY,
+				theme: 'system',
+				heroMetric: 'bogus' as AppSettings['heroMetric']
+			});
+			expect(result.data?.coercedFields).toContain('heroMetric');
+		});
+
+		it('does NOT report heroMetric when absent', () => {
+			const result = saveSettings({
+				fuelUnit: DEFAULT_UNIT,
+				currency: DEFAULT_CURRENCY,
+				theme: 'system'
+			});
+			expect(result.data?.coercedFields).not.toContain('heroMetric');
 		});
 	});
 
