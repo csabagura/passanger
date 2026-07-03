@@ -2,11 +2,13 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
 	computeReminderStatus,
 	selectDueReminders,
+	resolveDueSoonThresholdKm,
 	REMINDER_DUE_SOON_KM,
+	REMINDER_DUE_SOON_MI,
 	REMINDER_DUE_SOON_DAYS
 } from './serviceReminder';
 import { setLocale } from '$lib/paraglide/runtime';
-import type { ServiceReminder } from '$lib/db/schema';
+import type { FuelLog, ServiceReminder } from '$lib/db/schema';
 
 // Labels now resolve through Paraglide (Epic 6 i18n). Pin the base locale so these assertions check
 // the English output deterministically (the active locale is module-level — mirror i18n.test.ts).
@@ -61,11 +63,12 @@ describe('computeReminderStatus', () => {
 			expect(result.label).toBe('Overdue by 120 km');
 		});
 
-		it('produces no km signal when lastServiceOdometer is missing (H11a — no 0-default)', () => {
+		it('produces no km signal when lastServiceOdometer AND createdAt are both missing (H11a — no 0-default)', () => {
 			// The old 0-default made a baseline-less reminder on a 200,000 km car scream
 			// "Overdue by 195,000 km". With no usable base the km dimension contributes nothing —
-			// exactly how the days dimension treats an absent lastServiceDate. (Honest "since
-			// creation" baselines arrive with createdAt in 8-5/ADR-007.)
+			// exactly how the days dimension treats an absent lastServiceDate. A reminder with a
+			// createdAt DOES anchor (see the "anchor rule" describe block below) — this covers the
+			// residual case of a reminder with no createdAt at all (pre-v6, unmigrated).
 			const reminder = makeReminder({ intervalKm: 5000 });
 			const result = computeReminderStatus(reminder, 200000, TODAY);
 			expect(result.kmRemaining).toBeUndefined();
@@ -224,6 +227,145 @@ describe('computeReminderStatus', () => {
 			const result = computeReminderStatus(reminder, 60000 - (REMINDER_DUE_SOON_KM + 1), TODAY);
 			expect(result.kmRemaining).toBe(REMINDER_DUE_SOON_KM + 1);
 			expect(result.status).toBe('ok');
+		});
+	});
+
+	// Story 8.5 / H11 / AD-RT-3: an absent baseline anchors to `createdAt` on both dimensions,
+	// instead of contributing no signal forever.
+	describe('anchor rule (absent baseline resolves to createdAt, not no-signal)', () => {
+		function fuelLog(date: string, odometer: number): FuelLog {
+			return { date: new Date(date), odometer } as FuelLog;
+		}
+
+		it('anchors the date baseline to createdAt when lastServiceDate is absent', () => {
+			const createdAt = daysFromToday(-40).getTime();
+			const reminder = makeReminder({ intervalDays: 30, createdAt });
+			// due 30 days after createdAt (40 days ago) → 10 days ago → overdue by 10 days
+			const result = computeReminderStatus(reminder, undefined, TODAY);
+			expect(result.daysRemaining).toBe(-10);
+			expect(result.status).toBe('overdue');
+		});
+
+		it('anchors the km baseline to the odometer interpolated at createdAt when lastServiceOdometer is absent', () => {
+			const createdAt = new Date('2025-06-01').getTime();
+			const reminder = makeReminder({ intervalKm: 10000, createdAt });
+			const fuelLogs = [fuelLog('2025-06-01', 40000)];
+			// baseline 40000 (interpolated at createdAt); due 50000; current 45000 → 5000 remaining
+			const result = computeReminderStatus(reminder, 45000, TODAY, fuelLogs);
+			expect(result.kmRemaining).toBe(5000);
+			expect(result.status).toBe('ok');
+		});
+
+		it('still yields no km signal when createdAt is set but the vehicle has zero fuel logs', () => {
+			const reminder = makeReminder({ intervalKm: 10000, createdAt: Date.now() });
+			const result = computeReminderStatus(reminder, 45000, TODAY, []);
+			expect(result.kmRemaining).toBeUndefined();
+		});
+
+		it('prefers an explicit lastServiceOdometer over the createdAt-interpolated baseline', () => {
+			const createdAt = new Date('2025-06-01').getTime();
+			const reminder = makeReminder({
+				intervalKm: 10000,
+				createdAt,
+				lastServiceOdometer: 42000
+			});
+			const fuelLogs = [fuelLog('2025-06-01', 40000)];
+			// baseline 42000 (explicit), NOT 40000 (interpolated); due 52000; current 45000 → 7000 remaining
+			const result = computeReminderStatus(reminder, 45000, TODAY, fuelLogs);
+			expect(result.kmRemaining).toBe(7000);
+		});
+
+		it('prefers an explicit lastServiceDate over the createdAt anchor', () => {
+			const createdAt = daysFromToday(-100).getTime();
+			const reminder = makeReminder({
+				intervalDays: 30,
+				createdAt,
+				lastServiceDate: daysFromToday(-2)
+			});
+			// baseline = lastServiceDate (2 days ago), NOT createdAt (100 days ago) → 28 days remaining
+			const result = computeReminderStatus(reminder, undefined, TODAY);
+			expect(result.daysRemaining).toBe(28);
+		});
+	});
+
+	// Story 8.5 / S22 / AD-RT-6: due-soon threshold is resolved per the reminder's distance unit.
+	// REMINDER_DUE_SOON_KM and REMINDER_DUE_SOON_MI are intentionally the SAME numeric value (500 —
+	// a distinct round number per unit, not a lossy conversion), so `computeReminderStatus`'s
+	// due-soon boundary can't distinguish a unit mix-up behaviorally — `resolveDueSoonThresholdKm`'s
+	// resolution CHAIN is asserted directly instead.
+	describe('resolveDueSoonThresholdKm (unit resolution chain)', () => {
+		it("uses the reminder's own distanceUnit when present", () => {
+			const reminder = makeReminder({ distanceUnit: 'mi' });
+			expect(resolveDueSoonThresholdKm(reminder, [])).toBe(REMINDER_DUE_SOON_MI);
+		});
+
+		it("falls back to the vehicle's most-recent fuel log distanceUnit when the reminder has none", () => {
+			const reminder = makeReminder({});
+			const fuelLogs: FuelLog[] = [
+				{ date: new Date('2025-01-01'), odometer: 40000, distanceUnit: 'mi' } as FuelLog
+			];
+			expect(resolveDueSoonThresholdKm(reminder, fuelLogs)).toBe(REMINDER_DUE_SOON_MI);
+		});
+
+		it("prefers the reminder's own distanceUnit over the vehicle's most-recent fuel log unit", () => {
+			const reminder = makeReminder({ distanceUnit: 'km' });
+			const fuelLogs: FuelLog[] = [
+				{ date: new Date('2025-01-01'), odometer: 40000, distanceUnit: 'mi' } as FuelLog
+			];
+			expect(resolveDueSoonThresholdKm(reminder, fuelLogs)).toBe(REMINDER_DUE_SOON_KM);
+		});
+
+		it('falls back to REMINDER_DUE_SOON_KM when neither the reminder nor any fuel log carries a distance unit', () => {
+			const reminder = makeReminder({});
+			expect(resolveDueSoonThresholdKm(reminder, [])).toBe(REMINDER_DUE_SOON_KM);
+		});
+
+		it('resolves the "most recent" fuel log by date, not array order', () => {
+			const reminder = makeReminder({});
+			const fuelLogs: FuelLog[] = [
+				{ date: new Date('2025-06-01'), odometer: 45000, distanceUnit: 'mi' } as FuelLog,
+				{ date: new Date('2025-01-01'), odometer: 40000, distanceUnit: 'km' } as FuelLog
+			];
+			expect(resolveDueSoonThresholdKm(reminder, fuelLogs)).toBe(REMINDER_DUE_SOON_MI);
+		});
+	});
+
+	// Integration check: the resolved threshold actually gates the due-soon boundary end-to-end.
+	it('applies the unit-resolved due-soon threshold in computeReminderStatus', () => {
+		const reminder = makeReminder({
+			intervalKm: 10000,
+			lastServiceOdometer: 50000,
+			distanceUnit: 'mi'
+		});
+		const result = computeReminderStatus(reminder, 60000 - REMINDER_DUE_SOON_MI, TODAY);
+		expect(result.status).toBe('due-soon');
+	});
+
+	// Story 8.5 / AD-RT-4: the dismissal due-instance model consumes these absolute thresholds.
+	describe('dueAtOdometer / dueAtDate (absolute due-instance, independent of currentOdometer)', () => {
+		it('reports dueAtOdometer even when currentOdometer is unknown', () => {
+			const reminder = makeReminder({ intervalKm: 10000, lastServiceOdometer: 50000 });
+			const result = computeReminderStatus(reminder, undefined, TODAY);
+			expect(result.dueAtOdometer).toBe(60000);
+			expect(result.kmRemaining).toBeUndefined();
+		});
+
+		it('reports dueAtDate as a YYYY-MM-DD string', () => {
+			const reminder = makeReminder({ intervalDays: 30, lastServiceDate: daysFromToday(-2) });
+			const result = computeReminderStatus(reminder, undefined, TODAY);
+			const expected = new Date(TODAY);
+			expected.setDate(expected.getDate() + 28);
+			const y = expected.getFullYear();
+			const m = String(expected.getMonth() + 1).padStart(2, '0');
+			const d = String(expected.getDate()).padStart(2, '0');
+			expect(result.dueAtDate).toBe(`${y}-${m}-${d}`);
+		});
+
+		it('omits both when neither interval is set', () => {
+			const reminder = makeReminder({});
+			const result = computeReminderStatus(reminder, 50000, TODAY);
+			expect(result.dueAtOdometer).toBeUndefined();
+			expect(result.dueAtDate).toBeUndefined();
 		});
 	});
 });

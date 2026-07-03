@@ -184,4 +184,76 @@ describe('predictedDateView', () => {
 		const reminder = makeReminder({ intervalKm: 500, lastServiceOdometer: 1000 });
 		expect(predictedDateView(reminder, kmLogs(), 1700, NOW)).toEqual({ kind: 'none', text: '' });
 	});
+
+	// Story 8.5 / S23 / AD-RT-7: tie-break between the km-based (cadence) and date-based (exact
+	// calendar) due predictions when a reminder carries BOTH intervals.
+	describe('km/date tie-break (dual-interval reminder)', () => {
+		function daysFromNow(offset: number): Date {
+			const d = new Date(NOW);
+			d.setDate(d.getDate() + offset);
+			return d;
+		}
+
+		it('surfaces the NEARER date-based due when it beats the km-based cadence estimate', () => {
+			// km: due at 2435, current 1700 → kmRemaining 735 → 21 days at 35 km/day.
+			// date: intervalDays 30, lastServiceDate 25 days ago → daysRemaining 5 (nearer).
+			const reminder = makeReminder({
+				intervalKm: 1435,
+				lastServiceOdometer: 1000,
+				intervalDays: 30,
+				lastServiceDate: daysFromNow(-25)
+			});
+			expect(predictedDateView(reminder, kmLogs(), 1700, NOW)).toEqual({
+				kind: 'date',
+				text: expectedDue(5, 'day')
+			});
+		});
+
+		it('surfaces the km-based cadence estimate when it beats the date-based due', () => {
+			// km: 21 days (as above). date: intervalDays 100, lastServiceDate 10 days ago → daysRemaining 90.
+			const reminder = makeReminder({
+				intervalKm: 1435,
+				lastServiceOdometer: 1000,
+				intervalDays: 100,
+				lastServiceDate: daysFromNow(-10)
+			});
+			expect(predictedDateView(reminder, kmLogs(), 1700, NOW)).toEqual({
+				kind: 'date',
+				text: expectedDue(3, 'week') // 21 days
+			});
+		});
+
+		it('surfaces the exact date-based due when the km cadence is insufficient', () => {
+			const reminder = makeReminder({
+				intervalKm: 1435,
+				lastServiceOdometer: 1000,
+				intervalDays: 30,
+				lastServiceDate: daysFromNow(-25) // daysRemaining 5
+			});
+			// Insufficient cadence (only 2 logs) — the date dimension still has an exact answer.
+			expect(predictedDateView(reminder, kmLogs().slice(0, 2), 1700, NOW)).toEqual({
+				kind: 'date',
+				text: expectedDue(5, 'day')
+			});
+		});
+
+		it('applies MAX_PREDICTION_DAYS to the date-based path too (S24/S25)', () => {
+			// date dimension alone, > 365 days out — omitted just like a far-future km prediction.
+			const reminder = makeReminder({ intervalDays: 400, lastServiceDate: daysFromNow(-1) });
+			expect(predictedDateView(reminder, kmLogs(), 1700, NOW)).toEqual({ kind: 'none', text: '' });
+		});
+
+		it('falls back to the km-based prediction when the date dimension is beyond the horizon', () => {
+			const reminder = makeReminder({
+				intervalKm: 1435,
+				lastServiceOdometer: 1000, // km: 21 days
+				intervalDays: 400,
+				lastServiceDate: daysFromNow(-1) // date: ~399 days, beyond horizon
+			});
+			expect(predictedDateView(reminder, kmLogs(), 1700, NOW)).toEqual({
+				kind: 'date',
+				text: expectedDue(3, 'week')
+			});
+		});
+	});
 });

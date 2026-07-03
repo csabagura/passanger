@@ -1,6 +1,6 @@
 // @vitest-environment node
 import 'fake-indexeddb/auto'; // MUST be first import — patches global IndexedDB
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { db } from '../db';
 import {
 	saveServiceReminder,
@@ -11,9 +11,15 @@ import {
 } from './serviceReminders';
 import { getDataGeneration } from '$lib/utils/tabSync';
 
+const mockClearDismissal = vi.hoisted(() => vi.fn());
+vi.mock('$lib/utils/reminderDismissal', () => ({
+	clearDismissal: mockClearDismissal
+}));
+
 beforeEach(async () => {
 	await db.delete();
 	await db.open();
+	mockClearDismissal.mockClear();
 });
 
 describe('ServiceReminderRepository', () => {
@@ -250,6 +256,36 @@ describe('ServiceReminderRepository', () => {
 			expect(updated.error).toBeNull();
 			expect(updated.data?.lastServiceOdometer).toBe(62000);
 			expect(updated.data?.lastServiceDate?.getTime()).toBe(lastServiceDate.getTime());
+		});
+
+		// Story 8.5 / AD-RT-4: a schedule-bearing field edit invalidates a stale dismissal marker —
+		// it was recorded against the OLD due instance.
+		it('clears the dismissal marker when a schedule field changes', async () => {
+			const saved = await saveServiceReminder({ vehicleId: 1, title: 'Oil', intervalKm: 10000 });
+			await updateServiceReminder(saved.data!.id, { intervalKm: 12000 });
+			expect(mockClearDismissal).toHaveBeenCalledExactlyOnceWith(saved.data!.id);
+		});
+
+		it('clears the dismissal marker when lastServiceOdometer/lastServiceDate change', async () => {
+			const saved = await saveServiceReminder({ vehicleId: 1, title: 'Oil', intervalKm: 10000 });
+			await updateServiceReminder(saved.data!.id, { lastServiceOdometer: 5000 });
+			expect(mockClearDismissal).toHaveBeenCalledTimes(1);
+			mockClearDismissal.mockClear();
+			await updateServiceReminder(saved.data!.id, { lastServiceDate: new Date(2026, 0, 1) });
+			expect(mockClearDismissal).toHaveBeenCalledTimes(1);
+		});
+
+		it('does NOT clear the dismissal marker for a non-schedule field change (e.g. title/notes)', async () => {
+			const saved = await saveServiceReminder({ vehicleId: 1, title: 'Oil', intervalKm: 10000 });
+			await updateServiceReminder(saved.data!.id, { title: 'Oil + filter', notes: 'synthetic' });
+			expect(mockClearDismissal).not.toHaveBeenCalled();
+		});
+
+		it('does NOT clear the dismissal marker when the write fails validation', async () => {
+			const saved = await saveServiceReminder({ vehicleId: 1, title: 'Oil', intervalKm: 10000 });
+			const result = await updateServiceReminder(saved.data!.id, { intervalKm: -1 });
+			expect(result.error).not.toBeNull();
+			expect(mockClearDismissal).not.toHaveBeenCalled();
 		});
 	});
 

@@ -85,6 +85,7 @@
 	"reminderform_error_interval_days": "Enter a positive time interval (days)",
 	"reminderform_error_odometer": "Enter a positive odometer reading",
 	"reminderform_error_date": "Enter a valid date",
+	"reminderform_error_date_future": "Date cannot be in the future",
 	"reminderform_error_save": "Failed to save reminder. Please try again.",
 	"reminderform_title_edit": "Edit reminder",
 	"reminderform_title_add": "Add reminder",

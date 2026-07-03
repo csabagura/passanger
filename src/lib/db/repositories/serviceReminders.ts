@@ -8,6 +8,21 @@ import {
 	hasAtLeastOneInterval
 } from '../validators/rowValidation';
 import { runWrite, encodeSentinel } from '../writeSkeleton';
+import { clearDismissal } from '$lib/utils/reminderDismissal';
+
+// Story 8.5 / AD-RT-4: editing any of a reminder's schedule-bearing fields invalidates a stale
+// localStorage dismissal marker — it was recorded against the OLD due instance, and can no longer
+// be trusted to represent what the user actually dismissed.
+const SCHEDULE_FIELDS = [
+	'intervalKm',
+	'intervalDays',
+	'lastServiceOdometer',
+	'lastServiceDate'
+] as const;
+
+function touchesSchedule(changes: Partial<NewServiceReminder>): boolean {
+	return SCHEDULE_FIELDS.some((field) => field in changes);
+}
 
 export class ServiceReminderRepository {
 	async saveServiceReminder(reminder: NewServiceReminder): Promise<Result<ServiceReminder>> {
@@ -46,7 +61,7 @@ export class ServiceReminderRepository {
 		id: number,
 		changes: Partial<NewServiceReminder>
 	): Promise<Result<ServiceReminder>> {
-		return runWrite(
+		const result = await runWrite(
 			() => validatePartialServiceReminder(changes),
 			() =>
 				db.transaction('rw', db.serviceReminders, async () => {
@@ -73,6 +88,12 @@ export class ServiceReminderRepository {
 				}),
 			'UPDATE_FAILED'
 		);
+		// Story 8.5 / AD-RT-4: a stale dismissal marker cannot survive a schedule edit — clear it
+		// AFTER the write commits (never on a failed/rejected write).
+		if (!result.error && touchesSchedule(changes)) {
+			clearDismissal(id);
+		}
+		return result;
 	}
 
 	async deleteServiceReminder(id: number): Promise<Result<void>> {

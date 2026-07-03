@@ -56,13 +56,30 @@ export class ExpenseRepository {
 	}
 
 	async deleteExpense(id: number): Promise<Result<void>> {
+		// Story 8.5 / AD-RT-5 (H18): reverting a loop-close on delete — any reminder this expense
+		// closed (`lastClosedByExpenseId === id`) has its `lastServiceDate`/`lastServiceOdometer`/
+		// `lastClosedByExpenseId` cleared to unset, NOT restored to an unknowable prior value.
+		// AC2's anchor rule then honestly re-anchors it to `createdAt`. Run in the same transaction
+		// as the delete so a partial failure rolls back rather than leaving a stale provenance link.
 		return runWrite(
 			() => null,
 			() =>
-				db.transaction('rw', db.expenses, async () => {
+				db.transaction('rw', db.expenses, db.serviceReminders, async () => {
 					const existing = await db.expenses.get(id);
 					if (!existing) throw encodeSentinel('NOT_FOUND', `Expense ${id} not found`);
 					await db.expenses.delete(id);
+					const closedByThisExpense = await db.serviceReminders
+						.where('vehicleId')
+						.equals(existing.vehicleId)
+						.filter((reminder) => reminder.lastClosedByExpenseId === id)
+						.toArray();
+					for (const reminder of closedByThisExpense) {
+						await db.serviceReminders.update(reminder.id, {
+							lastServiceDate: undefined,
+							lastServiceOdometer: undefined,
+							lastClosedByExpenseId: undefined
+						});
+					}
 				}),
 			'DELETE_FAILED'
 		);

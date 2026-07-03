@@ -85,6 +85,7 @@
 	"reminderform_error_interval_days": "Adj meg pozitív időintervallumot (nap)",
 	"reminderform_error_odometer": "Adj meg pozitív kilométeróra-állást",
 	"reminderform_error_date": "Adj meg egy érvényes dátumot",
+	"reminderform_error_date_future": "A dátum nem lehet jövőbeli",
 	"reminderform_error_save": "Nem sikerült menteni az emlékeztetőt. Kérlek, próbáld újra.",
 	"reminderform_title_edit": "Emlékeztető szerkesztése",
 	"reminderform_title_add": "Emlékeztető hozzáadása",

@@ -50,11 +50,12 @@ async function seedOverdueOilReminder() {
 	return result.data;
 }
 
-async function saveMatchingExpense(type = 'Oil change'): Promise<Expense> {
+async function saveMatchingExpense(type = 'Oil change', odometer?: number): Promise<Expense> {
 	const result = await saveExpense({
 		vehicleId: VEHICLE_ID,
 		date: FIXED_TODAY,
 		type,
+		odometer,
 		cost: 78,
 		currency: '€',
 		notes: ''
@@ -225,6 +226,91 @@ describe('offerReminderReset — match → offer → reset (FR-12 / DEC-6)', () 
 			expect(after.data!.lastServiceOdometer).toBeUndefined();
 			expect(computeReminderStatus(after.data!, undefined, FIXED_TODAY).status).toBe('ok');
 		});
+	});
+
+	// Story 8.5 / H18 / AD-RT-5.
+	it('stamps lastClosedByExpenseId on a confirmed reset', async () => {
+		const reminder = await seedOverdueOilReminder();
+		await saveFuelLog(fuelLog(60000));
+		const expense = await saveMatchingExpense('Oil change');
+		const toast = spyToast();
+
+		await offerReminderReset(expense, toast, { now: () => FIXED_TODAY });
+		toast.action.mock.calls[0][1].onClick();
+
+		await vi.waitFor(async () => {
+			const after = await getServiceReminderById(reminder.id);
+			expect(after.data!.lastClosedByExpenseId).toBe(expense.id);
+		});
+	});
+
+	it("prefers the expense's OWN odometer over the vehicle's fuel-log odometer when present and positive", async () => {
+		const reminder = await seedOverdueOilReminder();
+		await saveFuelLog(fuelLog(60000)); // vehicle odometer signal, would give 60000 under the old sole path
+		const expense = await saveMatchingExpense('Oil change', 61500); // more precise, event-scoped reading
+		const toast = spyToast();
+
+		await offerReminderReset(expense, toast, { now: () => FIXED_TODAY });
+		toast.action.mock.calls[0][1].onClick();
+
+		await vi.waitFor(async () => {
+			const after = await getServiceReminderById(reminder.id);
+			expect(after.data!.lastServiceOdometer).toBe(61500);
+		});
+	});
+
+	it('falls back to the vehicle fuel-log odometer when the expense has no usable odometer of its own', async () => {
+		const reminder = await seedOverdueOilReminder();
+		await saveFuelLog(fuelLog(60000));
+		const expense = await saveMatchingExpense('Oil change'); // no odometer field
+		const toast = spyToast();
+
+		await offerReminderReset(expense, toast, { now: () => FIXED_TODAY });
+		toast.action.mock.calls[0][1].onClick();
+
+		await vi.waitFor(async () => {
+			const after = await getServiceReminderById(reminder.id);
+			expect(after.data!.lastServiceOdometer).toBe(60000);
+		});
+	});
+
+	it('falls back to the vehicle fuel-log odometer when the expense odometer is non-positive', async () => {
+		const reminder = await seedOverdueOilReminder();
+		await saveFuelLog(fuelLog(60000));
+		const expense = await saveMatchingExpense('Oil change', 0);
+		const toast = spyToast();
+
+		await offerReminderReset(expense, toast, { now: () => FIXED_TODAY });
+		toast.action.mock.calls[0][1].onClick();
+
+		await vi.waitFor(async () => {
+			const after = await getServiceReminderById(reminder.id);
+			expect(after.data!.lastServiceOdometer).toBe(60000);
+		});
+	});
+
+	it('re-applying a reset from the same expense id is idempotent (identical values written)', async () => {
+		const reminder = await seedOverdueOilReminder();
+		await saveFuelLog(fuelLog(60000));
+		const expense = await saveMatchingExpense('Oil change', 61500);
+		const toast = spyToast();
+
+		await offerReminderReset(expense, toast, { now: () => FIXED_TODAY });
+		toast.action.mock.calls[0][1].onClick();
+		await vi.waitFor(async () => {
+			const after = await getServiceReminderById(reminder.id);
+			expect(after.data!.lastServiceOdometer).toBe(61500);
+		});
+		const firstApply = await getServiceReminderById(reminder.id);
+
+		// Re-derive an independent offer from the SAME expense and confirm again.
+		const toast2 = spyToast();
+		await offerReminderReset(expense, toast2, { now: () => FIXED_TODAY });
+		toast2.action.mock.calls[0][1].onClick();
+		await vi.waitFor(() => expect(toast2.success).toHaveBeenCalledTimes(1));
+
+		const secondApply = await getServiceReminderById(reminder.id);
+		expect(secondApply.data).toEqual(firstApply.data!);
 	});
 
 	it('surfaces an error toast (not success) when the reminder write fails', async () => {

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { getContext } from 'svelte';
+	import { getContext, onDestroy } from 'svelte';
 	import X from '@lucide/svelte/icons/x';
 	import { getServiceRemindersForVehicle } from '$lib/db/repositories/serviceReminders';
 	import {
@@ -11,23 +11,32 @@
 		readDismissals,
 		dismissReminder,
 		clearDismissal,
-		isSuppressedByDismissal
+		isSuppressedByDismissal,
+		pruneDismissals
 	} from '$lib/utils/reminderDismissal';
 	import type { CaptureSheetContext } from '$lib/state/captureSheet.svelte';
 	import { isFiniteNumber } from '$lib/utils/calculations';
 	import { predictedDateView } from '$lib/utils/metrics/reminderPrediction';
+	import { createWallClock } from '$lib/state/wallClock.svelte';
 	import { m } from '$lib/paraglide/messages';
 	import type { FuelLog } from '$lib/db/schema';
 
 	interface Props {
 		vehicleId: number;
 		// Fed by HomeDashboard's liveQuery so a new fuel Capture re-derives currentOdometer reactively
-		// (AC6) without a refreshSignal. `today` is injectable for deterministic tests.
+		// (AC6) without a refreshSignal. `today` is injectable for deterministic tests — when absent,
+		// the shared reactive wall-clock is used instead of a mount-frozen `new Date()` (Story 8.5 /
+		// S20 / AD-RT-7): a `$props()` default only evaluates once, so a reminder that becomes due
+		// purely by TIME passing (no odometer/dataRevision change) would otherwise never re-evaluate.
 		fuelLogs: FuelLog[];
 		today?: Date;
 	}
 
-	let { vehicleId, fuelLogs, today = new Date() }: Props = $props();
+	let { vehicleId, fuelLogs, today }: Props = $props();
+
+	const wallClock = createWallClock();
+	onDestroy(wallClock.destroy);
+	const effectiveToday = $derived(today ?? wallClock.now);
 
 	// "Log this service" opens Capture(Expense) prefilled with the reminder title (AC2).
 	const capture = getContext<CaptureSheetContext>('captureSheet');
@@ -65,7 +74,7 @@
 		const id = vehicleId;
 		void tabSyncCtx?.dataRevision;
 		const odometer = currentOdometer;
-		const when = today;
+		const when = effectiveToday;
 
 		// `cancelled` guards against out-of-order resolution on a rapid vehicle switch / dataRevision
 		// bump — IndexedDB read latency is unordered, so a stale load could clobber fresh data. Mirrors
@@ -83,7 +92,7 @@
 				loaded = true;
 				return;
 			}
-			dueReminders = selectDueReminders(remindersResult.data, odometer, when);
+			dueReminders = selectDueReminders(remindersResult.data, odometer, when, fuelLogs);
 			vehicleReminderIds = new Set(remindersResult.data.map((reminder) => reminder.id));
 			pruneSafe = true;
 			loaded = true;
@@ -105,29 +114,34 @@
 		const map = readDismissals();
 		return (
 			dueReminders.find(
-				(d) => !isSuppressedByDismissal(d.reminder.id, d.status.status, currentOdometer, map)
+				(d) =>
+					!isSuppressedByDismissal(
+						d.reminder.id,
+						d.status.status,
+						currentOdometer,
+						effectiveToday,
+						map
+					)
 			) ?? null
 		);
 	});
 
 	// Loop-cleanup (AC3 hygiene): prune dismissal markers for THIS vehicle's reminders that are no
-	// longer due (returned to `ok`) so stale markers don't accumulate. The map is shared by all
-	// vehicles, so the prune is scoped to the active vehicle's reminder ids and skipped after a
-	// failed read (H10a) — an unscoped prune wiped other vehicles' dismissals on every switch. A
-	// DELETED reminder's marker is out of reach here (its id left vehicleReminderIds, making it
-	// indistinguishable from another vehicle's); orphans wait for 8-5's due-instance model.
+	// longer due (returned to `ok`) so stale markers don't accumulate. The decision of WHICH ids are
+	// stale is the pure `pruneDismissals` (Story 8.5, relocated out of this component per AD-RT-4) —
+	// this effect only supplies the reactive inputs and performs the storage write. The map is
+	// shared by all vehicles, so the prune is scoped to the active vehicle's reminder ids and
+	// skipped after a failed read (H10a) — an unscoped prune wiped other vehicles' dismissals on
+	// every switch. A DELETED reminder's marker is out of reach here (its id left
+	// vehicleReminderIds, making it indistinguishable from another vehicle's) — tracked as a defer.
 	$effect(() => {
 		void dismissVersion;
 		// Wait for the first load — pruning against the initial empty set would wipe a fresh dismissal.
 		if (!loaded || !pruneSafe) return;
 		const dueIds = new Set(dueReminders.map((d) => d.reminder.id));
 		const map = readDismissals();
-		for (const key of Object.keys(map)) {
-			const id = Number(key);
-			if (!vehicleReminderIds.has(id)) continue; // another vehicle's marker — not ours to judge
-			if (!dueIds.has(id)) {
-				clearDismissal(id);
-			}
+		for (const id of pruneDismissals(map, vehicleReminderIds, dueIds)) {
+			clearDismissal(id);
 		}
 	});
 
@@ -138,7 +152,12 @@
 
 	function handleDismiss() {
 		if (!visible) return;
-		dismissReminder(visible.reminder.id, visible.status.status, currentOdometer);
+		dismissReminder(
+			visible.reminder.id,
+			visible.status.status,
+			visible.status.dueAtOdometer,
+			visible.status.dueAtDate
+		);
 		dismissVersion++;
 	}
 </script>
@@ -146,7 +165,7 @@
 {#if visible}
 	{@const status = visible.status.status}
 	{@const presentation = REMINDER_STATUS_PRESENTATION[status]}
-	{@const dateView = predictedDateView(visible.reminder, fuelLogs, currentOdometer, today)}
+	{@const dateView = predictedDateView(visible.reminder, fuelLogs, currentOdometer, effectiveToday)}
 	<section
 		aria-labelledby="up-next-card-heading"
 		class="mb-4 flex gap-3 overflow-hidden rounded-xl border border-border bg-card p-4"

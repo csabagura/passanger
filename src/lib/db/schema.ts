@@ -48,5 +48,9 @@ export interface ServiceReminder {
 	lastServiceDate?: Date; // JS Date object — NOT string/timestamp
 	notes?: string;
 	// A valid reminder must specify at least one of intervalKm / intervalDays.
+	// v6 (Story 8.5, ADR-007). Additive, non-indexed, optional for back-compat.
+	createdAt?: number; // epoch ms; the anchor of last resort for both dimensions (H11/AD-RT-3)
+	distanceUnit?: 'km' | 'mi'; // unit intervalKm/lastServiceOdometer are expressed in (discharges PREP-4.3)
+	lastClosedByExpenseId?: number; // provenance of the last loop-close reset, for idempotency + revert (H18/AD-RT-5)
 }
 export type NewServiceReminder = Omit<ServiceReminder, 'id'>;

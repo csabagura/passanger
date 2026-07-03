@@ -10,6 +10,7 @@
 import type { FuelLog, ServiceReminder } from '$lib/db/schema';
 import { convertDistanceUnit, isFiniteNumber } from '$lib/utils/calculations';
 import { computeReminderStatus } from '$lib/utils/serviceReminder';
+import { mostRecentDistanceUnit } from '$lib/utils/reminderLoopClose';
 import { cadence } from '$lib/utils/metrics/cadence';
 import { m } from '$lib/paraglide/messages';
 
@@ -36,22 +37,6 @@ export type ReminderPrediction =
 	| { status: 'omit'; reason: ReminderPredictionOmitReason };
 
 /**
- * The unit `kmRemaining` and the reminder's odometer fields are expressed in: the most-recent fuel
- * log's distance unit — the unit the driver currently sees and enters values against (the same one
- * `cadence` fixes its rate to). When `cadence` is `ok` the most-recent overall log is necessarily
- * the most-recent in-window log, so this equals `cadence.distanceUnit` — but we convert the rate
- * into this unit explicitly anyway so the division can never silently mix km and mi.
- */
-function mostRecentDistanceUnit(fuelLogs: FuelLog[]): 'km' | 'mi' | undefined {
-	let latest: FuelLog | undefined;
-	for (const log of fuelLogs) {
-		if (!isFiniteNumber(log.odometer)) continue;
-		if (!latest || log.date.getTime() > latest.date.getTime()) latest = log;
-	}
-	return latest?.distanceUnit;
-}
-
-/**
  * Predict when a distance-interval reminder comes due, from the vehicle's recent driving cadence.
  *
  * @param reminder The reminder (only distance intervals are predictable here).
@@ -72,7 +57,7 @@ export function predictReminderDate(
 	}
 
 	// Reuse computeReminderStatus's kmRemaining — do NOT re-derive it (single source of truth).
-	const { kmRemaining } = computeReminderStatus(reminder, currentOdometer, now);
+	const { kmRemaining } = computeReminderStatus(reminder, currentOdometer, now, fuelLogs);
 	if (kmRemaining === undefined) {
 		return { status: 'omit', reason: 'unknown-odometer' };
 	}
@@ -111,6 +96,27 @@ export function predictReminderDate(
 }
 
 /**
+ * The date dimension's exact due horizon (Story 8.5 / S23-S25 / AD-RT-7) — NOT a cadence estimate
+ * (`daysRemaining` is a direct calendar subtraction, computeReminderStatus's baseline + intervalDays
+ * minus `now`), so there is no "insufficient evidence" case here, only "no time interval" / "already
+ * due or overdue" / "beyond the same horizon the km path is capped at" (S24/S25 — MAX_PREDICTION_DAYS
+ * applies to BOTH dimensions, so neither can predict further out than the other).
+ */
+function dateBasedDaysUntilDue(
+	reminder: ServiceReminder,
+	currentOdometer: number | undefined,
+	now: Date,
+	fuelLogs: FuelLog[]
+): number | undefined {
+	if (!isFiniteNumber(reminder.intervalDays) || reminder.intervalDays <= 0) return undefined;
+	const { daysRemaining } = computeReminderStatus(reminder, currentOdometer, now, fuelLogs);
+	if (daysRemaining === undefined || daysRemaining <= 0 || daysRemaining > MAX_PREDICTION_DAYS) {
+		return undefined;
+	}
+	return daysRemaining;
+}
+
+/**
  * Format a predicted horizon as a calm, approximate relative phrase with the `≈` marker
  * (e.g. "≈ due in 3 weeks" / "≈ due in 5 days" / "≈ due tomorrow"). Reuses `Intl.RelativeTimeFormat`
  * (mirror `recency.ts`, `numeric:'auto'`) — never hand-formats dates. Buckets to whole weeks once the
@@ -136,6 +142,13 @@ export interface PredictedDateView {
  * A sufficient prediction shows the `≈` date; an insufficient cadence shows the honest note; every
  * other omit reason (time-only, overdue, unknown odometer) renders nothing extra (the remaining
  * distance/time label already conveys that state — never a blank, a fake date, or `≈ NaN`).
+ *
+ * Story 8.5 / S23 / AD-RT-7 tie-break: a reminder with BOTH a distance and a time interval has two
+ * independent due candidates — the km path (cadence-derived, uncertain) and the date path (exact
+ * calendar subtraction, no estimation). The NEARER one is surfaced; ties favor the date prediction,
+ * since km-drift interpolation carries more uncertainty than a calendar date. A time-only reminder
+ * (no distance interval) is unaffected — its exact days-remaining is already the primary status
+ * label, so no separate "≈" row is shown for it (unchanged from Story 4.5).
  */
 export function predictedDateView(
 	reminder: ServiceReminder,
@@ -143,11 +156,25 @@ export function predictedDateView(
 	currentOdometer: number | undefined,
 	now: Date = new Date()
 ): PredictedDateView {
-	const prediction = predictReminderDate(reminder, fuelLogs, currentOdometer, now);
-	if (prediction.status === 'ok') {
-		return { kind: 'date', text: formatPredictedDue(prediction.daysUntilDue) };
+	const kmPrediction = predictReminderDate(reminder, fuelLogs, currentOdometer, now);
+	if (kmPrediction.status === 'omit' && kmPrediction.reason === 'no-distance-interval') {
+		return { kind: 'none', text: '' };
 	}
-	if (prediction.reason === 'cadence-insufficient') {
+
+	const dateDays = dateBasedDaysUntilDue(reminder, currentOdometer, now, fuelLogs);
+
+	if (kmPrediction.status === 'ok' && dateDays !== undefined) {
+		const daysUntilDue =
+			dateDays <= kmPrediction.daysUntilDue ? dateDays : kmPrediction.daysUntilDue;
+		return { kind: 'date', text: formatPredictedDue(daysUntilDue) };
+	}
+	if (dateDays !== undefined) {
+		return { kind: 'date', text: formatPredictedDue(dateDays) };
+	}
+	if (kmPrediction.status === 'ok') {
+		return { kind: 'date', text: formatPredictedDue(kmPrediction.daysUntilDue) };
+	}
+	if (kmPrediction.reason === 'cadence-insufficient') {
 		return { kind: 'note', text: m.reminder_prediction_insufficient() };
 	}
 	return { kind: 'none', text: '' };

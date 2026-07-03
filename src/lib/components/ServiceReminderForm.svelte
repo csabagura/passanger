@@ -114,7 +114,13 @@
 			lastServiceDateError = '';
 			return;
 		}
-		lastServiceDateError = parseDateInputValue(trimmed) === null ? m.reminderform_error_date() : '';
+		if (parseDateInputValue(trimmed) === null) {
+			lastServiceDateError = m.reminderform_error_date();
+			return;
+		}
+		// Story 8.5 / S26: past-or-today only, matching the odometer form's not-in-the-future
+		// discipline elsewhere in the app. `YYYY-MM-DD` strings compare correctly lexicographically.
+		lastServiceDateError = trimmed > todayValue ? m.reminderform_error_date_future() : '';
 	}
 
 	function showToast(message: string) {
