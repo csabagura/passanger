@@ -46,6 +46,9 @@ const mockToast = {
 // ADR-006 AD-WB-4 (H17c): the Undo guard also reads `tabSync` context's `dataRevision`, which
 // +layout.svelte bumps when a cross-tab restore lands. Mutable so a test can simulate that bump.
 let mockDataRevision = 0;
+// The load $effect must NOT reload while a restore is pending, even though dataRevision bumped —
+// that would silently swap this tab's intentionally-stale list before the user clicks Reload.
+let mockRestorePending = false;
 
 let mockSettingsFuelUnit: 'L/100km' | 'MPG' = 'L/100km';
 let mockActiveVehicle: {
@@ -80,6 +83,9 @@ vi.mock('svelte', async (importOriginal) => {
 				return {
 					get dataRevision() {
 						return mockDataRevision;
+					},
+					get restorePending() {
+						return mockRestorePending;
 					}
 				};
 			}
@@ -280,6 +286,7 @@ describe('History page', () => {
 		mockRestoreExpense.mockResolvedValue({ data: undefined, error: null });
 		mockGetDataGeneration.mockReturnValue(0);
 		mockDataRevision = 0;
+		mockRestorePending = false;
 		mockUpdateFuelLogWithTimeline.mockResolvedValue({ data: [], error: null });
 		mockUpdateExpense.mockResolvedValue({ data: undefined, error: null });
 		Object.defineProperty(globalThis, 'sessionStorage', {
@@ -515,6 +522,27 @@ describe('History page', () => {
 		expect(mockToast.error).toHaveBeenCalledWith(
 			"Couldn't undo — the timeline changed since you deleted."
 		);
+	});
+
+	it('does not reload the list while a cross-tab restore is pending, even though dataRevision bumps (ADR-006 AD-WB-4 / H17c — never silently swap data)', async () => {
+		mockActiveVehicle = testVehicle;
+		mockGetAllFuelLogs.mockResolvedValue({ data: [testFuelEntry], error: null });
+		mockGetAllExpenses.mockResolvedValue({ data: [], error: null });
+
+		render(HistoryPage);
+		await settlePage();
+
+		const loadsBeforeRestore = mockGetAllFuelLogs.mock.calls.length;
+
+		// A restore lands in another tab: +layout.svelte sets restorePending AND bumps dataRevision
+		// (to disarm this tab's Undo guard) — but the visible list must stay exactly as-is until the
+		// user explicitly reloads.
+		mockRestorePending = true;
+		mockDataRevision = 1;
+		await settlePage();
+
+		expect(mockGetAllFuelLogs.mock.calls.length).toBe(loadsBeforeRestore);
+		expect(screen.getByRole('group', { name: /fuel entry, Mar 9, 2026/i })).toBeTruthy();
 	});
 
 	it('stacked deletes: deleting a second entry blocks the first delete Undo (AC4)', async () => {

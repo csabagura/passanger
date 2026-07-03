@@ -163,6 +163,14 @@
 	setContext('tabSync', {
 		get dataRevision() {
 			return dataRevision;
+		},
+		// ADR-006 AD-WB-4 (H17c): the History load $effect treats `dataRevision` as its multi-tab
+		// reload signal. Bumping it to disarm a pending Undo would ALSO fire that reload — silently
+		// swapping this tab's stale-but-intentionally-displayed list for the restored data before the
+		// user clicks Reload, which is exactly the swap this feature exists to prevent. Consumers that
+		// reload on `dataRevision` must additionally check this flag and skip the reload while it's true.
+		get restorePending() {
+			return remoteRestorePending;
 		}
 	});
 

@@ -40,7 +40,9 @@
 	] as const satisfies ReadonlyArray<{ label: string; value: HistoryEntryFilter }>;
 
 	const vehiclesCtx = getContext<VehiclesContext>('vehicles');
-	const tabSyncCtx = getContext<{ dataRevision: number } | undefined>('tabSync');
+	const tabSyncCtx = getContext<{ dataRevision: number; restorePending?: boolean } | undefined>(
+		'tabSync'
+	);
 	const toast = getContext<ToastApi | undefined>('toast');
 
 	let currentVehicle = $derived(vehiclesCtx.activeVehicle);
@@ -532,6 +534,10 @@
 		const vehicleId = vehiclesCtx.activeVehicle?.id;
 		// Reactive dep: a write in another tab bumps dataRevision → re-run this load (multi-tab safety).
 		const revision = tabSyncCtx?.dataRevision ?? 0;
+		// ADR-006 AD-WB-4 (H17c): a pending cross-tab restore ALSO bumps dataRevision (to disarm this
+		// tab's Undo guard, read below), but must NOT trigger a reload here — that would silently swap
+		// this tab's intentionally-stale list for the restored data before the user clicks Reload.
+		if (tabSyncCtx?.restorePending) return;
 		if (vehicleId && revision >= 0) {
 			void loadEntriesForVehicle(vehicleId);
 		} else {
