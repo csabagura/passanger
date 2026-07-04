@@ -15,7 +15,11 @@ function settingsContext() {
 	};
 }
 
-function makeVehiclesContext(activeVehicle: typeof testVehicle | null = null, loaded = true) {
+function makeVehiclesContext(
+	activeVehicle: typeof testVehicle | null = null,
+	loaded = true,
+	vehiclesError = false
+) {
 	return {
 		get vehicles() {
 			return activeVehicle ? [activeVehicle] : [];
@@ -28,6 +32,9 @@ function makeVehiclesContext(activeVehicle: typeof testVehicle | null = null, lo
 		},
 		get loaded() {
 			return loaded;
+		},
+		get vehiclesError() {
+			return vehiclesError;
 		},
 		switchVehicle: vi.fn(),
 		refreshVehicles: vi.fn().mockResolvedValue(undefined)
@@ -83,5 +90,12 @@ describe('Home page (Story 3.3 shell)', () => {
 		await waitFor(() => {
 			expect(screen.getByText(/log your first fill-up to see cost per km/i)).toBeTruthy();
 		});
+	});
+
+	it('H2: a vehicle-list load failure renders the DB-error card, never first-run onboarding', () => {
+		renderHome(makeVehiclesContext(null, /* loaded */ true, /* vehiclesError */ true));
+		expect(screen.getByRole('alert')).toBeTruthy();
+		expect(screen.getByText('Could not load your dashboard')).toBeTruthy();
+		expect(screen.queryByText('No vehicle yet')).toBeNull();
 	});
 });

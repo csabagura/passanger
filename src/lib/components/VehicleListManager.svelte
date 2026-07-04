@@ -1,22 +1,26 @@
 <script lang="ts">
-	import { tick } from 'svelte';
-	import { MAX_VEHICLES, VEHICLE_ID_STORAGE_KEY } from '$lib/config';
+	import { tick, getContext } from 'svelte';
+	import { MAX_VEHICLES } from '$lib/config';
 	import { getAllVehicles, deleteVehicle } from '$lib/db/repositories/vehicles';
-	import { safeSetItem, safeRemoveItem } from '$lib/utils/vehicleStorage';
 	import type { Vehicle } from '$lib/db/schema';
+	import type { VehiclesContext } from '$lib/utils/vehicleContext';
 	import VehicleForm from './VehicleForm.svelte';
 	import { Button } from '$lib/components/ui/button';
 	import { m } from '$lib/paraglide/messages';
+
+	// H12: the single existing propagation channel for vehicle state (mirrors ImportStepConfirm's
+	// already-correct post-mutation reconciliation) — every CRUD path here must reconcile it, not just
+	// this component's own local list, so AppHeader/Fab/CaptureSheet/etc. see the change same-tab.
+	const vehiclesContext = getContext<VehiclesContext>('vehicles');
 
 	type ViewState = { mode: 'list' } | { mode: 'create' } | { mode: 'edit'; vehicle: Vehicle };
 	type DeleteState = 'idle' | 'armed' | 'loading';
 
 	interface VehicleListManagerProps {
 		activeVehicleId?: number | null;
-		onActiveVehicleChange?: (id: number | null) => void;
 	}
 
-	let { activeVehicleId = null, onActiveVehicleChange }: VehicleListManagerProps = $props();
+	let { activeVehicleId = null }: VehicleListManagerProps = $props();
 
 	let vehicles = $state<Vehicle[]>([]);
 	let vehicleCount = $state(0);
@@ -70,6 +74,10 @@
 
 	async function handleSaveOrUpdate(vehicle: Vehicle) {
 		await loadVehicles();
+		// H12: reconcile the layout's shared vehicles context after the local list reloads, so
+		// AppHeader/Fab/CaptureSheet (and Settings' own display, once it reads the context directly)
+		// see the create/edit in the same tab.
+		await vehiclesContext.refreshVehicles();
 		viewState = { mode: 'list' };
 		await tick();
 		focusVehicleOrAddButton(vehicle.id);
@@ -106,23 +114,18 @@
 			return;
 		}
 
-		const wasActive = activeVehicleId === deletedId;
-
 		deleteTarget = null;
 		deleteState = 'idle';
 
 		await loadVehicles();
-
-		if (wasActive) {
-			if (vehicles.length > 0) {
-				const newActiveId = vehicles[0].id;
-				safeSetItem(VEHICLE_ID_STORAGE_KEY, String(newActiveId));
-				onActiveVehicleChange?.(newActiveId);
-			} else {
-				safeRemoveItem(VEHICLE_ID_STORAGE_KEY);
-				onActiveVehicleChange?.(null);
-			}
-		}
+		// Review fix (8.6): fallback active-vehicle selection is no longer done here. This used to
+		// call vehiclesContext.switchVehicle(vehicles[0].id) using this component's own locally-fetched
+		// list, which could race the layout's own S19 fallback $effect (fired by refreshVehicles()
+		// below re-populating the SEPARATE shared-context vehicles array) — under a concurrent cross-tab
+		// vehicle mutation the two could pick different vehicles non-deterministically. Single owner
+		// now: refreshVehicles() reconciles the shared context, and the layout's S19 effect (which reads
+		// vehiclesError/vehiclesLoaded too) is solely responsible for picking the fallback vehicle.
+		await vehiclesContext.refreshVehicles();
 
 		await tick();
 		// Focus next vehicle in list, or previous, or add button

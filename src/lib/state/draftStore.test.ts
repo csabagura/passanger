@@ -211,6 +211,58 @@ describe('staleness re-validation (AC-4)', () => {
 	});
 });
 
+describe('H16(d): a future updatedAt counts as stale', () => {
+	it('flags a draft whose updatedAt is in the future as stale (clock skew / corrupted payload)', () => {
+		const future = Date.now() + MS_PER_DAY;
+		localStorage.setItem(
+			DRAFT_FUEL_STORAGE_KEY,
+			JSON.stringify({ fields: { odometer: '12000', quantity: '40' }, updatedAt: future })
+		);
+		loadDraftsFromStorage();
+		expect('odometer' in fuelDraft).toBe(false);
+		expect(fuelDraft['quantity']).toBe('40');
+		expect(wasFuelDraftStale()).toBe(true);
+	});
+});
+
+describe('H16(c): change-detection guard on the write-through Proxy traps', () => {
+	it('re-writing the SAME value does not bump updatedAt (root fix for the self-refreshing staleness clock)', () => {
+		localStorage.setItem(
+			DRAFT_FUEL_STORAGE_KEY,
+			JSON.stringify({ fields: { quantity: '40' }, updatedAt: Date.now() - MS_PER_DAY })
+		);
+		loadDraftsFromStorage();
+		const before = JSON.parse(localStorage.getItem(DRAFT_FUEL_STORAGE_KEY) as string).updatedAt;
+
+		// Simulate a mount-time write-through effect re-asserting the unchanged restored value.
+		fuelDraft['quantity'] = '40';
+
+		const after = JSON.parse(localStorage.getItem(DRAFT_FUEL_STORAGE_KEY) as string).updatedAt;
+		expect(after).toBe(before);
+	});
+
+	it('writing a DIFFERENT value still persists and bumps updatedAt', () => {
+		fuelDraft['quantity'] = '40';
+		const before = JSON.parse(localStorage.getItem(DRAFT_FUEL_STORAGE_KEY) as string).updatedAt;
+
+		fuelDraft['quantity'] = '45';
+
+		const after = JSON.parse(localStorage.getItem(DRAFT_FUEL_STORAGE_KEY) as string);
+		expect(after.fields.quantity).toBe('45');
+		expect(after.updatedAt).toBeGreaterThanOrEqual(before);
+	});
+
+	it('deleting an already-absent key is a no-op — does not persist/bump updatedAt', () => {
+		fuelDraft['quantity'] = '40';
+		const before = JSON.parse(localStorage.getItem(DRAFT_FUEL_STORAGE_KEY) as string).updatedAt;
+
+		delete fuelDraft['neverSet'];
+
+		const after = JSON.parse(localStorage.getItem(DRAFT_FUEL_STORAGE_KEY) as string);
+		expect(after.updatedAt).toBe(before);
+	});
+});
+
 describe('stale notice is consumed once — show-once (AC-4)', () => {
 	const staleAt = () => Date.now() - (DRAFT_STALE_DAYS + 1) * MS_PER_DAY;
 

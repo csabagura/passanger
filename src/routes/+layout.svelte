@@ -39,7 +39,8 @@
 	import {
 		requestStoragePersistence,
 		hasNoticeDismissed,
-		markNoticeDismissed
+		markNoticeDismissed,
+		clearSessionStoragePersistenceOutcome
 	} from '$lib/utils/storagePersistence';
 	import type { StoragePersistenceOutcome } from '$lib/utils/storagePersistence';
 	import {
@@ -99,14 +100,21 @@
 	let vehicles = $state<Vehicle[]>([]);
 	let activeVehicleId = $state<number | null>(null);
 	let vehiclesLoaded = $state(false);
+	let vehiclesError = $state(false);
 	let activeVehicle = $derived(
 		activeVehicleId !== null ? (vehicles.find((v) => v.id === activeVehicleId) ?? null) : null
 	);
 
 	async function loadVehicles() {
+		// Reset at the top so a retry (e.g. refreshVehicles() after a transient failure) can clear a
+		// prior error rather than sticking a real failure forever.
+		vehiclesError = false;
 		const result = await getAllVehicles();
 		if (!result.error) {
 			vehicles = result.data;
+		} else {
+			// H2: a DB read failure must render as a failure, never as first-run onboarding.
+			vehiclesError = true;
 		}
 		vehiclesLoaded = true;
 	}
@@ -125,6 +133,23 @@
 		loadVehicles();
 	});
 
+	// S19: a stored active-vehicle id that matches no vehicle (e.g. the vehicle was deleted in
+	// another tab, or a stale id survived across a restore) must fall back to the first vehicle
+	// instead of rendering a populated DB as first-run. Guards: never fire while still loading, never
+	// fire on a real load error (that's H2's job), and never fire on genuine first-run (no stored id,
+	// or the DB is genuinely empty) — those stay onboarding, unchanged.
+	$effect(() => {
+		if (
+			vehiclesLoaded &&
+			!vehiclesError &&
+			activeVehicleId !== null &&
+			vehicles.length > 0 &&
+			!vehicles.some((v) => v.id === activeVehicleId)
+		) {
+			switchVehicle(vehicles[0].id);
+		}
+	});
+
 	setContext('vehicles', {
 		get vehicles() {
 			return vehicles;
@@ -137,6 +162,9 @@
 		},
 		get loaded() {
 			return vehiclesLoaded;
+		},
+		get vehiclesError() {
+			return vehiclesError;
 		},
 		switchVehicle,
 		refreshVehicles
@@ -160,6 +188,14 @@
 		}, TAB_SYNC_CUE_DURATION_MS);
 	}
 
+	// S30: the SAME flag the 'restore' BroadcastChannel branch below sets for a REMOTE restore — this
+	// lets the origin tab (the one that just failed its OWN restore-settings write) arm the identical
+	// <TabSyncNotice restorePending .../> reload banner other tabs get, instead of silently staying
+	// live over a DB that's already been replaced underneath it.
+	function markRestorePending() {
+		remoteRestorePending = true;
+	}
+
 	setContext('tabSync', {
 		get dataRevision() {
 			return dataRevision;
@@ -171,7 +207,8 @@
 		// reload on `dataRevision` must additionally check this flag and skip the reload while it's true.
 		get restorePending() {
 			return remoteRestorePending;
-		}
+		},
+		markRestorePending
 	});
 
 	$effect(() => {
@@ -430,6 +467,12 @@
 			installPromptCompleted = true;
 			installPromptSessionDismissed = true;
 			deferredInstallPrompt = null;
+			// S18: installation is the strongest "ask again" signal — bypass whatever denied/unavailable
+			// outcome is cached this session and re-request unconditionally.
+			clearSessionStoragePersistenceOutcome();
+			requestStoragePersistence().then((outcome) => {
+				storageOutcome = outcome;
+			});
 		};
 
 		syncDisplayMode();

@@ -298,6 +298,11 @@
 	const typicalDelta = $derived(medianDelta(comparableDeltas));
 
 	let hasSeededSuggestion = $state(false);
+	// H16: true only while the odometer field holds a SEEDED suggestion the user has not typed over.
+	// Distinguishes "a real value occupies the field" (false) from "a suggestion is just sitting
+	// there" (true) — the write-through draft-sync effect below uses this to skip persisting a
+	// phantom value the user never actually entered.
+	let odometerIsSeeded = $state(false);
 
 	// Pre-fill the odometer with `last + median delta` exactly once per open, create-mode only,
 	// and only when the field (and any in-progress draft) is empty — so it never clobbers a
@@ -321,6 +326,7 @@
 		}
 		odometer = String(suggestion);
 		hasSeededSuggestion = true;
+		odometerIsSeeded = true;
 	});
 
 	// Live, NON-blocking sanity classification of the entered odometer. Create-mode only — the
@@ -456,8 +462,10 @@
 
 	$effect(() => {
 		if (!isEditMode && !suppressDraftSync) {
-			if (odometer) fuelDraft['odometer'] = odometer;
-			else delete fuelDraft['odometer'];
+			// H16: a seeded-but-untyped odometer value is neither persisted nor deleted-if-nonempty — it
+			// simply doesn't touch the draft key. An empty field still clears any existing draft entry.
+			if (odometer && !odometerIsSeeded) fuelDraft['odometer'] = odometer;
+			else if (!odometer) delete fuelDraft['odometer'];
 			if (quantity) fuelDraft['quantity'] = quantity;
 			else delete fuelDraft['quantity'];
 			if (cost) fuelDraft['cost'] = cost;
@@ -751,7 +759,11 @@
 			bind:value={odometer}
 			error={odometerError}
 			aria-describedby={odometerWarningId}
-			oninput={clearSubmissionFeedback}
+			oninput={() => {
+				// H16: the moment the user types over a seeded suggestion, it becomes a real value.
+				odometerIsSeeded = false;
+				clearSubmissionFeedback();
+			}}
 		/>
 		{#if previousOdometer !== undefined && previousOdometer > 0}
 			<p class="mt-2 text-xs text-muted-foreground">

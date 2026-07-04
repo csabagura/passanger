@@ -1,4 +1,5 @@
 import { liveQuery } from '$lib/db/db';
+import type { Result } from '$lib/utils/result';
 
 // AD-4: a reactive read adapter over Dexie's `liveQuery`, surfaced as a Svelte 5 runes value.
 //
@@ -92,4 +93,29 @@ export function createLiveQuery<T>(queryFn: () => T | Promise<T>, initial?: T): 
 			subscription.unsubscribe();
 		}
 	};
+}
+
+/**
+ * Same contract as `createLiveQuery`, but for repository reads that return `Result<T>`. A repository
+ * never throws — a fallible read reports failure via `r.error`. Naively coalescing that with
+ * `?? []`/`?? undefined` turns a DB failure into a resolved "empty" success, which is indistinguishable
+ * from genuine first-run/empty state downstream. This wrapper re-throws `r.error` instead, so it
+ * reaches `createLiveQuery`'s existing `safeQueryFn` (sync-throw-to-rejection) and surfaces on
+ * `LiveQuery.error` like any other failure.
+ */
+export function createRepoLiveQuery<T>(
+	resultFn: () => Promise<Result<T>>,
+	initial?: T
+): LiveQuery<T> {
+	return createLiveQuery(async () => {
+		const r = await resultFn();
+		if (r.error) {
+			// Review fix (8.6): preserve the repository's descriptive message, not just its code —
+			// `r.error.code` alone discarded debugging detail the repository intentionally attached.
+			const e = new Error(r.error.message);
+			e.name = r.error.code;
+			throw e;
+		}
+		return r.data;
+	}, initial);
 }

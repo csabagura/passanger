@@ -28,6 +28,9 @@ function makeContext(vehicles = [testVehicle1], activeId: number | null = 1): Ve
 		get loaded() {
 			return true;
 		},
+		get vehiclesError() {
+			return false;
+		},
 		switchVehicle: vi.fn(),
 		refreshVehicles: vi.fn().mockResolvedValue(undefined)
 	};

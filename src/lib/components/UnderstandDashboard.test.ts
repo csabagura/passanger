@@ -2,7 +2,7 @@ import 'fake-indexeddb/auto'; // MUST be first — patches global IndexedDB so l
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
 import type { Expense, FuelLog } from '$lib/db/schema';
-import { ok } from '$lib/utils/result';
+import { ok, err } from '$lib/utils/result';
 import { m } from '$lib/paraglide/messages';
 import UnderstandDashboard from './UnderstandDashboard.svelte';
 
@@ -129,6 +129,17 @@ describe('UnderstandDashboard', () => {
 
 	it('shows the database error state when a read rejects', async () => {
 		mockGetAllFuelLogs.mockRejectedValue(new Error('boom'));
+		mockGetAllExpenses.mockResolvedValue(ok([]));
+		renderDashboard();
+
+		await waitFor(() => {
+			expect(screen.getByRole('alert')).toBeTruthy();
+		});
+		expect(screen.getByText(m.understand_db_error_title())).toBeTruthy();
+	});
+
+	it('H2: shows the database error state when a repository resolves to err(...) (the real-world gap — no raw throw)', async () => {
+		mockGetAllFuelLogs.mockResolvedValue(err('DB_READ_FAILED', 'boom'));
 		mockGetAllExpenses.mockResolvedValue(ok([]));
 		renderDashboard();
 

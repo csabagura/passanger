@@ -5,6 +5,7 @@ export interface VehiclesContext {
 	readonly activeVehicle: Vehicle | null;
 	readonly activeVehicleId: number | null;
 	readonly loaded: boolean;
+	readonly vehiclesError: boolean;
 	switchVehicle: (id: number) => void;
 	refreshVehicles: () => Promise<void>;
 }

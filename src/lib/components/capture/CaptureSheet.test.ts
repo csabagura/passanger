@@ -15,12 +15,13 @@ vi.mock('$lib/db/repositories/fuelLogs', () => ({
 
 const settings: AppSettings = { fuelUnit: 'L/100km', currency: '€', theme: 'system' };
 
-function vehiclesCtx(activeVehicleId: number | null): VehiclesContext {
+function vehiclesCtx(activeVehicleId: number | null, vehiclesError = false): VehiclesContext {
 	return {
 		vehicles: [],
 		activeVehicle: null,
 		activeVehicleId,
 		loaded: true,
+		vehiclesError,
 		switchVehicle: vi.fn(),
 		refreshVehicles: vi.fn()
 	} as unknown as VehiclesContext;
@@ -89,6 +90,22 @@ describe('CaptureSheet', () => {
 	it('renders a calm CTA instead of a broken form when no vehicle exists', () => {
 		renderSheet({ open: true, vehicleId: null });
 		expect(screen.getByText(/add your car to get started/i)).toBeTruthy();
+		expect(screen.queryByText(/Total Cost/i)).toBeNull();
+	});
+
+	it('review fix (H2/8.6): shows the DB-error card, never the "no vehicle" CTA, when vehiclesError is true', () => {
+		const capture = createCaptureSheet();
+		capture.openSheet('fuel');
+		render(CaptureSheet, {
+			context: new Map<string, unknown>([
+				['captureSheet', capture],
+				['vehicles', vehiclesCtx(null, true)],
+				['settings', { settings }]
+			])
+		});
+		flushSync();
+		expect(screen.getByRole('alert')).toBeTruthy();
+		expect(screen.queryByText(/add your car to get started/i)).toBeNull();
 		expect(screen.queryByText(/Total Cost/i)).toBeNull();
 	});
 

@@ -116,7 +116,11 @@ function makeDraft(key: string, staleFields: string[]): DraftHandle {
 		try {
 			const parsed = JSON.parse(raw) as { fields?: unknown; updatedAt?: unknown };
 			const updatedAt = typeof parsed.updatedAt === 'number' ? parsed.updatedAt : 0;
-			const isOld = updatedAt > 0 && Date.now() - updatedAt > DRAFT_STALE_DAYS * MS_PER_DAY;
+			// H16(d): a future updatedAt (clock skew, corrupted payload) counts as stale too — a
+			// timestamp that can never legitimately be "not yet old enough" is itself untrustworthy.
+			const isOld =
+				updatedAt > 0 &&
+				(Date.now() - updatedAt > DRAFT_STALE_DAYS * MS_PER_DAY || updatedAt > Date.now());
 			let droppedStaleField = false;
 
 			if (parsed.fields && typeof parsed.fields === 'object') {
@@ -151,11 +155,17 @@ function makeDraft(key: string, staleFields: string[]): DraftHandle {
 			// Coerce defensively: the draft holds strings only, so a non-string would otherwise
 			// survive in memory but be silently dropped by the string-only hydration filter on
 			// reload (in-memory ↔ persisted divergence). Current callers always pass strings.
-			target[prop] = String(value);
+			const next = String(value);
+			// H16(c) root fix: a write-through effect re-asserting an UNCHANGED restored value (e.g.
+			// on mount, before the user has typed anything) must not bump updatedAt — otherwise a
+			// restored draft perpetually refreshes its own staleness clock and never goes stale.
+			if (target[prop] === next) return true;
+			target[prop] = next;
 			persist();
 			return true;
 		},
 		deleteProperty(target, prop: string) {
+			if (!(prop in target)) return true;
 			delete target[prop];
 			persist();
 			return true;

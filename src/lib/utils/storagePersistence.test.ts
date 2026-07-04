@@ -2,8 +2,10 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
 	requestStoragePersistence,
 	hasNoticeDismissed,
-	markNoticeDismissed
+	markNoticeDismissed,
+	clearSessionStoragePersistenceOutcome
 } from './storagePersistence';
+import { STORAGE_PERSISTENCE_OUTCOME_KEY } from '$lib/config';
 
 // ---------------------------------------------------------------------------
 // localStorage mock (localStorage is not available in Node jsdom without setup)
@@ -43,6 +45,9 @@ function setNavigatorStorage(
 
 beforeEach(() => {
 	localStorageMock.clear();
+	// S18: denied/unavailable outcomes are cached in sessionStorage — jsdom's real sessionStorage
+	// persists across tests in the same file unless cleared.
+	sessionStorage.clear();
 	vi.clearAllMocks();
 	// Default: normal storage API present
 	setNavigatorStorage({ persisted: mockPersisted, persist: mockPersist });
@@ -163,6 +168,57 @@ describe('requestStoragePersistence — unsupported browser paths', () => {
 		setNavigatorStorage(undefined);
 
 		await expect(requestStoragePersistence()).resolves.toBeDefined();
+	});
+});
+
+describe('S18: denied/unavailable outcomes re-request per session, granted stays permanent', () => {
+	it('caches "denied" in sessionStorage (not localStorage)', async () => {
+		mockPersisted.mockResolvedValue(false);
+		mockPersist.mockResolvedValue(false);
+		await requestStoragePersistence();
+
+		expect(sessionStorage.getItem(STORAGE_PERSISTENCE_OUTCOME_KEY)).toBe('denied');
+		expect(localStorageMock.getItem(STORAGE_PERSISTENCE_OUTCOME_KEY)).toBeNull();
+	});
+
+	it('caches "granted" in localStorage (permanent — never re-asked)', async () => {
+		mockPersisted.mockResolvedValue(false);
+		mockPersist.mockResolvedValue(true);
+		await requestStoragePersistence();
+
+		expect(localStorageMock.getItem(STORAGE_PERSISTENCE_OUTCOME_KEY)).toBe('granted');
+	});
+
+	it('a fresh session (sessionStorage cleared, localStorage untouched) re-attempts persist() after a prior denial', async () => {
+		mockPersisted.mockResolvedValue(false);
+		mockPersist.mockResolvedValue(false);
+		await requestStoragePersistence();
+		expect(mockPersist).toHaveBeenCalledOnce();
+
+		// Simulate a new browser session: sessionStorage clears, localStorage (no 'granted') persists.
+		sessionStorage.clear();
+		vi.clearAllMocks();
+		mockPersisted.mockResolvedValue(false);
+		mockPersist.mockResolvedValue(false);
+
+		await requestStoragePersistence();
+		expect(mockPersist).toHaveBeenCalledOnce();
+	});
+
+	it('clearSessionStoragePersistenceOutcome() removes only the session-cached outcome', async () => {
+		mockPersisted.mockResolvedValue(false);
+		mockPersist.mockResolvedValue(false);
+		await requestStoragePersistence();
+		expect(sessionStorage.getItem(STORAGE_PERSISTENCE_OUTCOME_KEY)).toBe('denied');
+
+		clearSessionStoragePersistenceOutcome();
+		expect(sessionStorage.getItem(STORAGE_PERSISTENCE_OUTCOME_KEY)).toBeNull();
+
+		vi.clearAllMocks();
+		mockPersisted.mockResolvedValue(false);
+		mockPersist.mockResolvedValue(false);
+		await requestStoragePersistence();
+		expect(mockPersist).toHaveBeenCalledOnce();
 	});
 });
 

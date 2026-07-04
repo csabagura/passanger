@@ -131,6 +131,12 @@
 			? getInitialExpense()!.type
 			: (initialType ?? maintenanceDraft['type'] ?? '')
 	);
+	// H16: true only when typeValue came from a "Log this service" reminder prefill, never from a
+	// draft or a blank field. The write-through draft-sync effect below skips persisting this value
+	// until the user actually edits it, so the prefill never becomes a phantom durable draft. Same
+	// intentional-initial-capture rationale as typeValue above — re-seeds fresh on each mount.
+	// svelte-ignore state_referenced_locally
+	let typeValueIsPrefilled = $state(Boolean(initialType));
 	let odometerValue = $state(
 		getInitialExpense() && getInitialExpense()!.odometer !== undefined
 			? String(getInitialExpense()!.odometer)
@@ -207,7 +213,12 @@
 	}
 
 	function syncDraftField(key: string, value: string, options?: { skipIf?: boolean }) {
-		if (!value || options?.skipIf) {
+		// Review fix (8.6): `skipIf` means "this value is a default/prefill the user hasn't touched
+		// yet" — it must neither write NOR delete, leaving any pre-existing real draft entry alone
+		// (mirrors FuelEntryForm's H16 odometer-seed guard). Only an actually-empty field clears the
+		// draft key.
+		if (options?.skipIf) return;
+		if (!value) {
 			delete maintenanceDraft[key];
 			return;
 		}
@@ -221,7 +232,7 @@
 		}
 
 		syncDraftField('date', dateValue, { skipIf: dateValue === getTodayDateInputValue() });
-		syncDraftField('type', typeValue);
+		syncDraftField('type', typeValue, { skipIf: typeValueIsPrefilled });
 		syncDraftField('odometer', odometerValue);
 		syncDraftField('cost', costValue);
 		syncDraftField('notes', notesValue);
@@ -406,7 +417,12 @@
 			placeholder={m.maintenance_placeholder_type()}
 			bind:value={typeValue}
 			error={typeError}
-			oninput={clearAsyncFeedback}
+			oninput={() => {
+				// H16: once the user edits a reminder-prefilled type, it becomes a deliberate real value —
+				// persist it going forward.
+				typeValueIsPrefilled = false;
+				clearAsyncFeedback();
+			}}
 		/>
 		<datalist id="maintenance-type-suggestions">
 			{#each TYPE_SUGGESTIONS as suggestion (suggestion)}

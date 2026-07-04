@@ -3,7 +3,8 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { db } from '$lib/db/db';
 import { saveFuelLog, getAllFuelLogs } from '$lib/db/repositories/fuelLogs';
 import type { FuelLog, NewFuelLog } from '$lib/db/schema';
-import { createLiveQuery } from './liveQuery.svelte';
+import { createLiveQuery, createRepoLiveQuery } from './liveQuery.svelte';
+import { err } from '$lib/utils/result';
 
 const VEHICLE_ID = 1;
 
@@ -99,6 +100,54 @@ describe('createLiveQuery', () => {
 		// wraps queryFn to convert it into a rejection that lands on `error` (last good `current` kept).
 		await vi.waitFor(() => expect(q.error).toBe(boom));
 		expect(q.current).toEqual([]);
+
+		q.destroy();
+	});
+});
+
+describe('createRepoLiveQuery', () => {
+	it('H2: a resultFn resolving to err(...) surfaces on `.error` instead of a coalesced empty value', async () => {
+		const q = createRepoLiveQuery<FuelLog[]>(
+			() => Promise.resolve(err('DB_READ_FAILED', 'boom')),
+			[]
+		);
+
+		await vi.waitFor(() => expect(q.error).not.toBeNull());
+		// Review fix (8.6): both the error code (name) and the descriptive message are preserved —
+		// previously only the code survived, discarding the repository's message entirely.
+		expect((q.error as Error).name).toBe('DB_READ_FAILED');
+		expect((q.error as Error).message).toBe('boom');
+		// `current` keeps its last good value (the initial seed) rather than becoming `[]` from a swallow.
+		expect(q.current).toEqual([]);
+
+		q.destroy();
+	});
+
+	it('H2: a resultFn resolving to ok(data) emits `.data` on `.current` with no error', async () => {
+		await saveFuelLog(makeLog(50000));
+
+		const q = createRepoLiveQuery<FuelLog[]>(() => getAllFuelLogs(VEHICLE_ID), []);
+
+		await vi.waitFor(() => expect(q.current).toHaveLength(1));
+		expect(q.error).toBeNull();
+
+		q.destroy();
+	});
+
+	it('H2: re-emits a fresh error after a prior success (repository starts failing mid-stream)', async () => {
+		let shouldFail = false;
+		const q = createRepoLiveQuery<FuelLog[]>(
+			() =>
+				shouldFail ? Promise.resolve(err('DB_READ_FAILED', 'boom')) : getAllFuelLogs(VEHICLE_ID),
+			[]
+		);
+
+		await vi.waitFor(() => expect(q.current).toEqual([]));
+		expect(q.error).toBeNull();
+
+		shouldFail = true;
+		await saveFuelLog(makeLog(50000)); // trigger a re-run via the liveQuery table-mutation watch
+		await vi.waitFor(() => expect(q.error).not.toBeNull());
 
 		q.destroy();
 	});

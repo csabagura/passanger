@@ -7,11 +7,13 @@ const mockRequestStoragePersistence =
 	vi.fn<() => Promise<import('$lib/utils/storagePersistence').StoragePersistenceOutcome>>();
 const mockHasNoticeDismissed = vi.fn<() => boolean>();
 const mockMarkNoticeDismissed = vi.fn<() => void>();
+const mockClearSessionStoragePersistenceOutcome = vi.fn<() => void>();
 
 vi.mock('$lib/utils/storagePersistence', () => ({
 	requestStoragePersistence: () => mockRequestStoragePersistence(),
 	hasNoticeDismissed: () => mockHasNoticeDismissed(),
-	markNoticeDismissed: () => mockMarkNoticeDismissed()
+	markNoticeDismissed: () => mockMarkNoticeDismissed(),
+	clearSessionStoragePersistenceOutcome: () => mockClearSessionStoragePersistenceOutcome()
 }));
 
 vi.mock('$lib/utils/settings', () => ({
@@ -179,6 +181,23 @@ describe('layout install prompt context', () => {
 		expect(screen.getByTestId('install-dismissed').textContent).toBe('true');
 		expect(screen.getByTestId('install-can-show').textContent).toBe('false');
 		expect(screen.getByTestId('install-can-trigger').textContent).toBe('false');
+	});
+
+	it('S18: appinstalled bypasses any cached denial and re-requests storage persistence', async () => {
+		mockRequestStoragePersistence.mockResolvedValue('denied');
+		await renderLayout();
+		expect(mockRequestStoragePersistence).toHaveBeenCalledTimes(1);
+
+		mockRequestStoragePersistence.mockClear();
+		mockClearSessionStoragePersistenceOutcome.mockClear();
+		mockRequestStoragePersistence.mockResolvedValue('granted');
+
+		window.dispatchEvent(new Event('appinstalled'));
+		flushSync();
+		await new Promise((r) => setTimeout(r, 0));
+
+		expect(mockClearSessionStoragePersistenceOutcome).toHaveBeenCalledOnce();
+		expect(mockRequestStoragePersistence).toHaveBeenCalledOnce();
 	});
 
 	it('prompts once and hides the in-app promotion afterwards', async () => {

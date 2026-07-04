@@ -1,6 +1,6 @@
 <script lang="ts">
-	import { resolve } from '$app/paths';
 	import { getContext, onDestroy, onMount, tick } from 'svelte';
+	import DbErrorCard from '$lib/components/DbErrorCard.svelte';
 	import EntryDetailSheet from '$lib/components/EntryDetailSheet.svelte';
 	import FuelEntryForm from '$lib/components/FuelEntryForm.svelte';
 	import HistoryList from '$lib/components/HistoryList.svelte';
@@ -543,6 +543,9 @@
 		} else {
 			historyEntries = [];
 			loading = false;
+			// S29: the active vehicle disappearing (deleted / switched away) must clear a stale error
+			// card too — otherwise it stays rendered over what is now a genuine "no vehicle" state.
+			dbError = false;
 		}
 	});
 
@@ -593,25 +596,13 @@
 		</header>
 
 		{#if dbError}
-			<div
-				role="alert"
-				class="flex min-h-[50vh] flex-col items-center justify-center gap-6 p-8 text-center"
-			>
-				<div class="flex flex-col items-center gap-2">
-					<p class="text-lg font-semibold text-foreground">{m.history_db_error_title()}</p>
-					<p class="text-sm text-muted-foreground">
-						{m.history_db_error_body()}
-					</p>
-					<p class="text-sm text-muted-foreground">
-						{m.history_db_error_export_hint()}
-					</p>
-				</div>
-				<a
-					href={resolve('/export')}
-					class="rounded-xl bg-accent px-5 py-3 text-sm font-semibold text-accent-foreground"
-				>
-					{m.history_db_error_export_cta()}
-				</a>
+			<div class="flex min-h-[50vh] flex-col items-center justify-center">
+				<DbErrorCard title={m.history_db_error_title()} ctaLabel={m.history_db_error_export_cta()}>
+					{#snippet body()}
+						<p>{m.history_db_error_body()}</p>
+						<p>{m.history_db_error_export_hint()}</p>
+					{/snippet}
+				</DbErrorCard>
 			</div>
 		{:else if loading && showLoadingState}
 			<div

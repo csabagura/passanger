@@ -19,15 +19,20 @@ vi.mock('$lib/db/repositories/vehicles', () => ({
 	updateVehicle: (...args: unknown[]) => mockUpdateVehicle(...args)
 }));
 
-const mockSafeSetItem = vi.fn();
-const mockSafeRemoveItem = vi.fn();
-const mockReadStoredVehicleId = vi.fn();
+const mockSwitchVehicle = vi.fn();
+const mockRefreshVehicles = vi.fn().mockResolvedValue(undefined);
 
-vi.mock('$lib/utils/vehicleStorage', () => ({
-	safeSetItem: (...args: unknown[]) => mockSafeSetItem(...args),
-	safeRemoveItem: (...args: unknown[]) => mockSafeRemoveItem(...args),
-	readStoredVehicleId: () => mockReadStoredVehicleId()
-}));
+function vehiclesContext() {
+	return {
+		vehicles: [],
+		activeVehicle: null,
+		activeVehicleId: null,
+		loaded: true,
+		vehiclesError: false,
+		switchVehicle: mockSwitchVehicle,
+		refreshVehicles: mockRefreshVehicles
+	};
+}
 
 function makeVehicle(overrides: Partial<Vehicle> & { id: number; name: string }): Vehicle {
 	return { make: 'Make', model: 'Model', ...overrides };
@@ -56,7 +61,9 @@ function setupMocks(vehicles: Vehicle[] = [vehicle1, vehicle2]) {
 async function renderAndWait(props: Record<string, unknown> = {}) {
 	setupMocks(props._vehicles as Vehicle[] | undefined);
 	delete props._vehicles;
-	render(VehicleListManager, props);
+	const context = new Map<string, unknown>();
+	context.set('vehicles', vehiclesContext());
+	render(VehicleListManager, { props, context });
 	await new Promise((r) => setTimeout(r, 0));
 	flushSync();
 }
@@ -185,6 +192,24 @@ describe('VehicleListManager', () => {
 			// Fields should be pre-filled
 			expect((screen.getByLabelText(/display name/i) as HTMLInputElement).value).toBe('My Honda');
 		});
+
+		it('review fix (H12): reconciles the shared vehicles context (refreshVehicles) after an edit save', async () => {
+			mockUpdateVehicle.mockResolvedValue({ data: vehicle1, error: null });
+			await renderAndWait({ _vehicles: [vehicle1, vehicle2] });
+
+			await fireEvent.click(screen.getByRole('button', { name: /edit my honda/i }));
+			flushSync();
+
+			mockRefreshVehicles.mockClear();
+			mockGetAllVehicles.mockResolvedValueOnce({ data: [vehicle1, vehicle2], error: null });
+
+			await fireEvent.click(screen.getByRole('button', { name: /save changes/i }));
+			await new Promise((r) => setTimeout(r, 0));
+			flushSync();
+
+			expect(mockUpdateVehicle).toHaveBeenCalled();
+			expect(mockRefreshVehicles).toHaveBeenCalled();
+		});
 	});
 
 	describe('delete flow', () => {
@@ -228,12 +253,15 @@ describe('VehicleListManager', () => {
 	});
 
 	describe('active vehicle deletion fallback (AC: 6)', () => {
-		it('sets first remaining vehicle as active when active vehicle is deleted', async () => {
+		it('reconciles the shared context but does NOT pick the fallback vehicle itself when the active vehicle is deleted', async () => {
+			// Review fix (8.6): VehicleListManager used to call vehiclesContext.switchVehicle() itself
+			// here, which could race the layout's own S19 fallback $effect (both independently deciding
+			// the next active vehicle from separately-fetched vehicle lists). Fallback selection is now
+			// owned solely by the layout's S19 effect, driven by the refreshVehicles() reconciliation
+			// below — this component no longer calls switchVehicle on delete.
 			mockDeleteVehicle.mockResolvedValue({ data: undefined, error: null });
-			const mockOnChange = vi.fn();
 			await renderAndWait({
 				activeVehicleId: 1,
-				onActiveVehicleChange: mockOnChange,
 				_vehicles: [vehicle1, vehicle2]
 			});
 
@@ -246,16 +274,14 @@ describe('VehicleListManager', () => {
 			await new Promise((r) => setTimeout(r, 0));
 			flushSync();
 
-			expect(mockSafeSetItem).toHaveBeenCalledWith('passanger_vehicle_id', '2');
-			expect(mockOnChange).toHaveBeenCalledWith(2);
+			expect(mockRefreshVehicles).toHaveBeenCalled();
+			expect(mockSwitchVehicle).not.toHaveBeenCalled();
 		});
 
 		it('clears active vehicle when last vehicle is deleted', async () => {
 			mockDeleteVehicle.mockResolvedValue({ data: undefined, error: null });
-			const mockOnChange = vi.fn();
 			await renderAndWait({
 				activeVehicleId: 1,
-				onActiveVehicleChange: mockOnChange,
 				_vehicles: [vehicle1]
 			});
 
@@ -268,16 +294,14 @@ describe('VehicleListManager', () => {
 			await new Promise((r) => setTimeout(r, 0));
 			flushSync();
 
-			expect(mockSafeRemoveItem).toHaveBeenCalledWith('passanger_vehicle_id');
-			expect(mockOnChange).toHaveBeenCalledWith(null);
+			// No vehicles left — nothing to switch to, so switchVehicle is intentionally not called.
+			expect(mockSwitchVehicle).not.toHaveBeenCalled();
 		});
 
 		it('does not change active vehicle when non-active vehicle is deleted', async () => {
 			mockDeleteVehicle.mockResolvedValue({ data: undefined, error: null });
-			const mockOnChange = vi.fn();
 			await renderAndWait({
 				activeVehicleId: 1,
-				onActiveVehicleChange: mockOnChange,
 				_vehicles: [vehicle1, vehicle2]
 			});
 
@@ -290,9 +314,21 @@ describe('VehicleListManager', () => {
 			await new Promise((r) => setTimeout(r, 0));
 			flushSync();
 
-			expect(mockSafeSetItem).not.toHaveBeenCalled();
-			expect(mockSafeRemoveItem).not.toHaveBeenCalled();
-			expect(mockOnChange).not.toHaveBeenCalled();
+			expect(mockSwitchVehicle).not.toHaveBeenCalled();
+		});
+
+		it('H12: reconciles the shared vehicles context (refreshVehicles) after create/edit and delete', async () => {
+			mockDeleteVehicle.mockResolvedValue({ data: undefined, error: null });
+			await renderAndWait({ activeVehicleId: 1, _vehicles: [vehicle1, vehicle2] });
+
+			await fireEvent.click(screen.getByRole('button', { name: /delete work van/i }));
+			flushSync();
+			mockGetAllVehicles.mockResolvedValueOnce({ data: [vehicle1], error: null });
+			await fireEvent.click(screen.getByRole('button', { name: /confirm delete/i }));
+			await new Promise((r) => setTimeout(r, 0));
+			flushSync();
+
+			expect(mockRefreshVehicles).toHaveBeenCalled();
 		});
 	});
 
@@ -302,7 +338,9 @@ describe('VehicleListManager', () => {
 				data: null,
 				error: { code: 'UNKNOWN', message: 'DB error' }
 			});
-			render(VehicleListManager);
+			const context = new Map<string, unknown>();
+			context.set('vehicles', vehiclesContext());
+			render(VehicleListManager, { context });
 			await new Promise((r) => setTimeout(r, 0));
 			flushSync();
 			expect(screen.getByRole('alert')).toBeTruthy();

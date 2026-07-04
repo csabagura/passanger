@@ -3,6 +3,7 @@
 	import { getContext } from 'svelte';
 	import Wrench from '@lucide/svelte/icons/wrench';
 	import MaintainDashboard from '$lib/components/MaintainDashboard.svelte';
+	import DbErrorCard from '$lib/components/DbErrorCard.svelte';
 	import { m } from '$lib/paraglide/messages';
 	import type { VehiclesContext } from '$lib/utils/vehicleContext';
 
@@ -23,6 +24,16 @@
 {#if !vehiclesCtx.loaded}
 	<!-- Vehicles loading — render nothing so the no-vehicle empty state can't flash before the async
 	     read resolves. The dashboard's own cold-load skeleton covers the post-vehicle read. -->
+{:else if vehiclesCtx.vehiclesError}
+	<!-- H2: checked BEFORE the "no vehicle" branch below — a real vehicle-list load failure must never
+	     render as "you have no vehicle yet". -->
+	<div class="px-4 pt-4">
+		<DbErrorCard
+			title={m.maintain_error_heading()}
+			body={m.maintain_error_body()}
+			ctaLabel={m.maintain_export_cta()}
+		/>
+	</div>
 {:else if currentVehicle}
 	<!-- Keyed on the active vehicle id: a vehicle switch tears down the dashboard (releasing its
 	     liveQuery subscriptions) and mounts a fresh one scoped to the new vehicle (AD-4). -->

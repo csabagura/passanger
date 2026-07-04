@@ -1,10 +1,11 @@
 <script lang="ts">
 	import { onDestroy, getContext } from 'svelte';
 	import { resolve } from '$app/paths';
-	import { createLiveQuery } from '$lib/state/liveQuery.svelte';
+	import { createRepoLiveQuery } from '$lib/state/liveQuery.svelte';
 	import { getAllFuelLogs } from '$lib/db/repositories/fuelLogs';
 	import { getAllExpenses } from '$lib/db/repositories/expenses';
 	import InteractiveChart, { type ChartDatum } from '$lib/components/InteractiveChart.svelte';
+	import DbErrorCard from '$lib/components/DbErrorCard.svelte';
 	import {
 		consumptionTrend,
 		fuelVsMaintenanceSplit,
@@ -42,14 +43,8 @@
 	// a reload. `initial = undefined` distinguishes "not loaded yet" (→ skeleton) from "loaded empty"
 	// (→ no-data state). Reads go through repositories (Dexie-isolation contract). This replaces the
 	// retired analytics page's one-shot load + tabSync.dataRevision $effect.
-	const fuelQuery = createLiveQuery<FuelLog[]>(
-		() => getAllFuelLogs(vehicleId).then((r) => r.data ?? []),
-		undefined
-	);
-	const expenseQuery = createLiveQuery<Expense[]>(
-		() => getAllExpenses(vehicleId).then((r) => r.data ?? []),
-		undefined
-	);
+	const fuelQuery = createRepoLiveQuery<FuelLog[]>(() => getAllFuelLogs(vehicleId), undefined);
+	const expenseQuery = createRepoLiveQuery<Expense[]>(() => getAllExpenses(vehicleId), undefined);
 
 	onDestroy(() => {
 		fuelQuery.destroy();
@@ -195,18 +190,11 @@
 		{#if dbError}
 			<!-- DB-error takes precedence: a rejected read never emits a `current`, so `loading` would
 			     otherwise stay true forever and trap the surface on the skeleton. -->
-			<div role="alert" class="flex flex-col items-center justify-center gap-4 p-8 text-center">
-				<p class="text-lg font-semibold text-foreground">{m.understand_db_error_title()}</p>
-				<p class="text-sm text-muted-foreground">
-					{m.understand_db_error_body()}
-				</p>
-				<a
-					href={resolve('/export')}
-					class="rounded-xl bg-accent px-5 py-3 text-sm font-semibold text-accent-foreground"
-				>
-					{m.understand_export_data()}
-				</a>
-			</div>
+			<DbErrorCard
+				title={m.understand_db_error_title()}
+				body={m.understand_db_error_body()}
+				ctaLabel={m.understand_export_data()}
+			/>
 		{:else if loading}
 			<!-- Cold-load skeleton: hand-rolled motion-safe pulse (mirror HomeSkeleton — NO shadcn, protects
 			     NFR-4). aria-hidden shapes + a polite status sibling for screen readers. -->

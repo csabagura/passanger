@@ -1,14 +1,14 @@
 <script lang="ts">
-	import { getContext } from 'svelte';
+	import { getContext, onMount } from 'svelte';
 	import {
 		PRESET_CURRENCIES,
 		SUPPORTED_UNITS,
 		IMPORT_FILE_SIZE_MAX_BYTES,
-		SUPPORTED_LOCALES
+		SUPPORTED_LOCALES,
+		SETTINGS_RESTORE_COERCED_NOTICE_KEY
 	} from '$lib/config';
 	import { saveSettings, type AppSettings, type ThemePreference } from '$lib/utils/settings';
 	import { notifySettingsChanged, notifyTabsRestored } from '$lib/utils/tabSync';
-	import { readStoredVehicleId } from '$lib/utils/vehicleStorage';
 	import { exportAllTables, restoreAllTables, type BackupData } from '$lib/db/backup';
 	import {
 		serializeBackup,
@@ -21,12 +21,7 @@
 	import { Field } from '$lib/components/ui/field';
 	import { m } from '$lib/paraglide/messages';
 	import { getLocale, setLocale, isLocale } from '$lib/paraglide/runtime';
-
-	let activeVehicleId = $state<number | null>(readStoredVehicleId());
-
-	function handleActiveVehicleChange(id: number | null) {
-		activeVehicleId = id;
-	}
+	import type { VehiclesContext } from '$lib/utils/vehicleContext';
 
 	function handleLanguageChange(event: Event): void {
 		const next = (event.currentTarget as HTMLSelectElement).value;
@@ -55,7 +50,12 @@
 	let currencyError = $state('');
 	let settingsStatusMessage = $state('');
 	let settingsErrorMessage = $state('');
-	let initialized = $state(false);
+	// S28: replaces the former one-shot `initialized` latch — that copied `settingsCtx.settings`
+	// into local state exactly once, so a cross-tab settings change never reached this form after
+	// first mount (a local Save would then silently revert the remote change). `dirty` tracks
+	// whether the user has an in-progress unsaved edit; the effect below re-syncs from the context
+	// whenever it changes AND the user has no pending edit, and is reset on a successful save.
+	let dirty = $state(false);
 	// Exchange-rate drafts kept as strings (inputs may be blank/partial). Sanitised to finite
 	// > 0 numbers on save; blank/0/negative entries are dropped from settings.exchangeRates.
 	let exchangeRateDrafts = $state<Record<string, string>>({});
@@ -64,6 +64,11 @@
 		settings: AppSettings;
 		updateSettings: (settings: AppSettings) => void;
 	}>('settings');
+	// H12: read the layout's single shared vehicles channel directly — Settings no longer keeps its
+	// own disconnected activeVehicleId mirror (VehicleListManager reconciles this context itself).
+	const vehiclesCtx = getContext<VehiclesContext>('vehicles');
+	// S30: so a failed restore-settings write can arm the SAME reload latch other tabs get.
+	const tabSyncCtx = getContext<{ markRestorePending: () => void } | undefined>('tabSync');
 
 	const fuelUnitHelpId = 'settings-fuel-unit-help';
 	const currencyHelpId = 'settings-currency-help';
@@ -79,15 +84,13 @@
 	});
 
 	$effect(() => {
-		if (!initialized) {
-			settingsFuelUnit = settingsCtx.settings.fuelUnit;
-			settingsCurrency = settingsCtx.settings.currency;
-			const savedRates = settingsCtx.settings.exchangeRates ?? {};
-			exchangeRateDrafts = Object.fromEntries(
-				Object.entries(savedRates).map(([currency, rate]) => [currency, String(rate)])
-			);
-			initialized = true;
-		}
+		if (dirty) return;
+		settingsFuelUnit = settingsCtx.settings.fuelUnit;
+		settingsCurrency = settingsCtx.settings.currency;
+		const savedRates = settingsCtx.settings.exchangeRates ?? {};
+		exchangeRateDrafts = Object.fromEntries(
+			Object.entries(savedRates).map(([currency, rate]) => [currency, String(rate)])
+		);
 	});
 
 	function handleThemeChange(theme: ThemePreference): void {
@@ -96,7 +99,7 @@
 			theme
 		};
 
-		if (!saveSettings(nextSettings)) {
+		if (saveSettings(nextSettings).error) {
 			return;
 		}
 
@@ -105,6 +108,7 @@
 	}
 
 	function handlePresetCurrencySelect(presetCurrency: string): void {
+		dirty = true;
 		settingsCurrency = presetCurrency;
 		currencyError = '';
 		settingsStatusMessage = '';
@@ -112,14 +116,20 @@
 	}
 
 	function handleCurrencyInput(): void {
+		dirty = true;
 		currencyError = '';
 		settingsStatusMessage = '';
 		settingsErrorMessage = '';
 	}
 
 	function handleExchangeRateInput(): void {
+		dirty = true;
 		settingsStatusMessage = '';
 		settingsErrorMessage = '';
+	}
+
+	function handleFuelUnitChange(): void {
+		dirty = true;
 	}
 
 	// Build the persisted rate map from the drafts: parse each draft and keep only finite > 0
@@ -178,7 +188,7 @@
 		settingsStatusMessage = '';
 		settingsErrorMessage = '';
 
-		if (!saveSettings(nextSettings)) {
+		if (saveSettings(nextSettings).error) {
 			settingsErrorMessage = m.settings_save_error();
 			return;
 		}
@@ -186,6 +196,8 @@
 		settingsCtx.updateSettings(nextSettings);
 		notifySettingsChanged();
 		settingsStatusMessage = m.settings_save_success();
+		// S28: the next remote change (another tab's settings write) should re-sync cleanly again.
+		dirty = false;
 	}
 
 	// Backup & Restore --------------------------------------------------------------------------
@@ -203,6 +215,18 @@
 		backupStatusMessage = '';
 		backupErrorMessage = '';
 	}
+
+	// S34: show the coerced-restore notice once, across the reload confirmRestore triggers.
+	onMount(() => {
+		try {
+			if (sessionStorage.getItem(SETTINGS_RESTORE_COERCED_NOTICE_KEY) === 'true') {
+				sessionStorage.removeItem(SETTINGS_RESTORE_COERCED_NOTICE_KEY);
+				backupStatusMessage = m.settings_restore_settings_coerced();
+			}
+		} catch {
+			// Best-effort — absence of the notice is not worth crashing mount over.
+		}
+	});
 
 	async function handleDownloadBackup(): Promise<void> {
 		resetBackupMessages();
@@ -261,14 +285,29 @@
 			return;
 		}
 
-		if (!saveSettings(restore.settings)) {
+		const saveResult = saveSettings(restore.settings);
+		if (saveResult.error) {
 			// Data restored, but the settings write failed (e.g. storage full). Surface it instead of
 			// reloading into restored-data-with-stale-settings with no signal.
 			backupErrorMessage = m.settings_restore_settings_failed();
 			// The DB is already replaced for every tab (shared IndexedDB), so other tabs must still be
 			// told to reload — even though this tab stays put to show the settings-save error.
 			notifyTabsRestored();
+			// S30: this tab's own view is now stale over the already-replaced DB — arm the same reload
+			// banner other tabs get, rather than silently staying live.
+			tabSyncCtx?.markRestorePending();
 			return;
+		}
+		// S34: `restore.settings` comes from user-supplied/possibly-corrupted backup JSON — surface when
+		// any field was silently substituted with a default rather than claiming an unconditional
+		// success. The immediate `location.reload()` below means a message set now would never be
+		// seen — stash a show-once flag in sessionStorage and display it after reload instead.
+		if (saveResult.data.coercedFields.length > 0) {
+			try {
+				sessionStorage.setItem(SETTINGS_RESTORE_COERCED_NOTICE_KEY, 'true');
+			} catch {
+				// Best-effort — a missed notice here is not worth crashing the restore over.
+			}
 		}
 		// Tell other tabs the DB was replaced, then reload so this tab's live queries and settings
 		// context rehydrate. The message is posted before reload; BroadcastChannel dispatches it
@@ -373,7 +412,7 @@
 			</h2>
 			<p class="text-sm text-muted-foreground">{m.settings_vehicles_desc()}</p>
 		</div>
-		<VehicleListManager {activeVehicleId} onActiveVehicleChange={handleActiveVehicleChange} />
+		<VehicleListManager activeVehicleId={vehiclesCtx.activeVehicleId} />
 	</section>
 
 	<section
@@ -466,7 +505,13 @@
 						<label
 							class="flex min-h-11 cursor-pointer items-center gap-3 rounded-xl border border-border px-4 py-3 text-sm font-medium text-foreground"
 						>
-							<input bind:group={settingsFuelUnit} type="radio" name="fuel-unit" value={unit} />
+							<input
+								bind:group={settingsFuelUnit}
+								type="radio"
+								name="fuel-unit"
+								value={unit}
+								onchange={handleFuelUnitChange}
+							/>
 							<span>{unit}</span>
 						</label>
 					{/each}

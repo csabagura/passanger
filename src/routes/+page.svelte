@@ -3,6 +3,7 @@
 	import { getContext } from 'svelte';
 	import VehicleForm from '$lib/components/VehicleForm.svelte';
 	import HomeDashboard from '$lib/components/HomeDashboard.svelte';
+	import DbErrorCard from '$lib/components/DbErrorCard.svelte';
 	import type { Vehicle } from '$lib/db/schema';
 	import type { VehiclesContext } from '$lib/utils/vehicleContext';
 	import { m } from '$lib/paraglide/messages';
@@ -40,6 +41,14 @@
 {#if !vehiclesCtx.loaded}
 	<!-- Vehicles loading — render nothing so the no-vehicle CTA can't flash before the async read
 	     resolves (AC-3). The dashboard's own cold-load skeleton covers the post-vehicle read. -->
+{:else if vehiclesCtx.vehiclesError}
+	<!-- H2: checked BEFORE the "no vehicles → onboarding" branch below — a real vehicle-list load
+	     failure must never render as first-run. -->
+	<DbErrorCard
+		title={m.home_db_error_title()}
+		body={m.home_db_error_body()}
+		ctaLabel={m.home_export_cta()}
+	/>
 {:else if showVehicleForm}
 	<VehicleForm onSave={handleVehicleSaved} />
 {:else if currentVehicle}
