@@ -441,6 +441,33 @@ describe('VehicleRepository', () => {
 			const stored = await db.vehicles.get(id);
 			expect(stored?.archivedAt).toBeUndefined();
 		});
+
+		it('rejects restore when MAX_VEHICLES are already active (AD-VA-4 — cannot exceed the cap)', async () => {
+			// Reach MAX active + 1 archived via the reachable path: fill to the cap, archive one,
+			// add a replacement (back to MAX active), leaving the archived car restorable.
+			const ids: number[] = [];
+			for (let i = 0; i < MAX_VEHICLES; i++) {
+				const r = await saveVehicle({ name: `Car ${i}`, make: 'Make', model: 'Model' });
+				ids.push(r.data!.id);
+			}
+			await archiveVehicle(ids[0]);
+			await saveVehicle({ name: 'Replacement', make: 'Make', model: 'Model' });
+			// Now MAX active + 1 archived. Restoring the archived car would make MAX+1 active → rejected.
+			const result = await restoreVehicle(ids[0]);
+			expect(result.data).toBeNull();
+			expect(result.error?.code).toBe('MAX_VEHICLES');
+			// The row stays archived — the failed restore did not flip the flag.
+			expect((await db.vehicles.get(ids[0]))?.isArchived).toBe(true);
+		});
+
+		it('allows restore when an active slot is free', async () => {
+			const saved = await saveVehicle({ name: 'Seasonal', make: 'Jeep', model: 'Wrangler' });
+			await archiveVehicle(saved.data!.id);
+			// Only archived rows exist → an active slot is free.
+			const result = await restoreVehicle(saved.data!.id);
+			expect(result.error).toBeNull();
+			expect(result.data?.isArchived).toBe(false);
+		});
 	});
 
 	describe('MAX_VEHICLES — active-only (AD-VA-4)', () => {

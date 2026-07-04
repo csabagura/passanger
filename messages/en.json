@@ -417,6 +417,7 @@
 	"vehiclelist_error_load": "Could not load vehicles. Please try again.",
 	"vehiclelist_error_archive": "Could not archive vehicle. Please try again.",
 	"vehiclelist_error_restore": "Could not restore vehicle. Please try again.",
+	"vehiclelist_error_restore_limit": "Maximum {max} vehicles reached. Archive another vehicle before restoring this one.",
 	"vehiclelist_error_delete": "Could not delete vehicle. Please try again.",
 	"vehiclelist_loading": "Loading vehicles…",
 	"vehiclelist_empty": "No vehicles yet. Add your first vehicle to get started.",

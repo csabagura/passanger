@@ -86,7 +86,18 @@ export class VehicleRepository {
 
 	// AC3: the inverse flag-flip — clear `isArchived` and drop `archivedAt` (Dexie deletes a key set to
 	// undefined). The car returns to the active set, re-selectable, with its history intact.
+	// AD-VA-4: restore re-occupies an active slot, so it is capped the same as saveVehicle — restoring
+	// when MAX_VEHICLES are already active is rejected (else the cap could be exceeded via archive→add→
+	// restore). Mirrors saveVehicle's guard (a check-then-write with the same benign TOCTOU window).
 	async restoreVehicle(id: number): Promise<Result<Vehicle>> {
+		try {
+			const activeCount = await db.vehicles.filter((v) => !v.isArchived).count();
+			if (activeCount >= MAX_VEHICLES) {
+				return err('MAX_VEHICLES', `Maximum ${MAX_VEHICLES} vehicles allowed`);
+			}
+		} catch (e) {
+			return err('UPDATE_FAILED', String(e));
+		}
 		return this.updateVehicle(id, { isArchived: false, archivedAt: undefined });
 	}
 

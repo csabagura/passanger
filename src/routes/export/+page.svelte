@@ -101,7 +101,14 @@
 				throw new Error('GET_FAILED');
 			}
 
-			historyEntries = mergeHistoryEntries(fuelResult.data ?? [], expenseResult.data ?? []);
+			// getAllFuelLogs()/getAllExpenses() return rows for EVERY vehicle incl. archived, but
+			// `allVehicles` is the active-only set — restrict the "all vehicles" export to active
+			// vehicles' rows so an archived car's history never surfaces in an active-scoped export (AC5).
+			const activeVehicleIds = new Set(allVehicles.map((v) => v.id));
+			historyEntries = mergeHistoryEntries(
+				(fuelResult.data ?? []).filter((entry) => activeVehicleIds.has(entry.vehicleId)),
+				(expenseResult.data ?? []).filter((entry) => activeVehicleIds.has(entry.vehicleId))
+			);
 		} else {
 			const [fuelResult, expenseResult] = await Promise.all([
 				getAllFuelLogs(currentVehicle.id),
@@ -186,7 +193,13 @@
 					throw new Error('GET_FAILED');
 				}
 
-				nextEntries = mergeHistoryEntries(fuelResult.data ?? [], expenseResult.data ?? []);
+				// Active-only export (AC5): allVehicles is the active set, so drop any archived vehicle's
+				// retained rows before they reach the CSV — mirrors loadEntriesForScope's summary filter.
+				const activeVehicleIds = new Set(allVehicles.map((v) => v.id));
+				nextEntries = mergeHistoryEntries(
+					(fuelResult.data ?? []).filter((entry) => activeVehicleIds.has(entry.vehicleId)),
+					(expenseResult.data ?? []).filter((entry) => activeVehicleIds.has(entry.vehicleId))
+				);
 				historyEntries = nextEntries;
 
 				if (nextEntries.length === 0) {

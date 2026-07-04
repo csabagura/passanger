@@ -158,7 +158,9 @@
 
 		await tick();
 		if (vehicles.length > 0) {
-			const nextIndex = Math.min(archivedIndex, vehicles.length - 1);
+			// archivedIndex can be -1 if the archived row wasn't in this list (a concurrent external
+			// mutation) — clamp to 0 so we never index vehicles[-1].
+			const nextIndex = Math.min(Math.max(archivedIndex, 0), vehicles.length - 1);
 			focusVehicleOrAddButton(vehicles[nextIndex].id);
 		} else {
 			addButtonEl?.focus();
@@ -175,7 +177,12 @@
 		const result = await restoreVehicle(vehicle.id);
 		restoringId = null;
 		if (result.error) {
-			restoreError = m.vehiclelist_error_restore();
+			// AD-VA-4: restore is capped like add — surface the cap distinctly so the user knows to
+			// archive another active vehicle first, rather than showing a generic "try again".
+			restoreError =
+				result.error.code === 'MAX_VEHICLES'
+					? m.vehiclelist_error_restore_limit({ max: MAX_VEHICLES })
+					: m.vehiclelist_error_restore();
 			return;
 		}
 

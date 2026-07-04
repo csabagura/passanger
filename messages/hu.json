@@ -417,6 +417,7 @@
 	"vehiclelist_error_load": "Nem sikerült betölteni a járműveket. Kérlek, próbáld újra.",
 	"vehiclelist_error_archive": "Nem sikerült archiválni a járművet. Kérlek, próbáld újra.",
 	"vehiclelist_error_restore": "Nem sikerült visszaállítani a járművet. Kérlek, próbáld újra.",
+	"vehiclelist_error_restore_limit": "Elérted a maximális {max} járművet. Archiválj egy másik járművet, mielőtt ezt visszaállítod.",
 	"vehiclelist_error_delete": "Nem sikerült törölni a járművet. Kérlek, próbáld újra.",
 	"vehiclelist_loading": "Járművek betöltése…",
 	"vehiclelist_empty": "Még nincsenek járművek. Add hozzá az első járművedet a kezdéshez.",
