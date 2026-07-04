@@ -300,17 +300,18 @@ describe('Performance budget — bundle size', () => {
 		//                   small TOTAL-JS overhead (chunk boundary): 268,140 bytes, 876 over the 261KB
 		//                   provision. This is the exact "reclaim initial-load weight by lazy-loading"
 		//                   follow-up the note below anticipated — total grows a hair, initial/TTI shrinks.)
-		//   263KB → 264KB  (Story 9.2 vehicle archive & restore, Dexie v7, PREP-4.1 actual-breach raise:
+		//   263KB → 265KB  (Story 9.2 vehicle archive & restore, Dexie v7, PREP-4.1 actual-breach raise:
 		//                   migrations/v7.ts + archive/restore/purge repo methods + the rebuilt
 		//                   VehicleListManager Archived section + ~18 vehiclelist_* i18n keys (en/hu),
 		//                   STACKED on the 9.1 TTI code-split. Combined footprint re-measured post-rebase
-		//                   at 269,876 bytes, over the 263KB provision. Raised one tight ~1KB step with
-		//                   ~0.5KB headroom. Not a pre-raise: measured post-rebase.)
+		//                   at 269,983 bytes, 671 over the 263KB provision. Raised a ~2KB step to keep the
+		//                   project's ~1KB-headroom convention (264KB would leave only 353B — CI-flaky).
+		//                   Not a pre-raise: measured post-rebase.)
 		// This is TOTAL JS across all (lazy-loaded) routes, NOT the initial payload — actual load
 		// performance is gated separately by the Lighthouse FCP/TTI/score budgets in
-		// .lighthouserc.cjs (the real perf contract). Further follow-ups to lazy-load the <Toaster>
-		// (and/or dynamic-import the Capture sheet) would reclaim more initial weight.
-		const MAX_GZIPPED_JS_BYTES = 264 * 1024; // 264KB gzipped (NFR4) — see re-baseline log above
+		// .lighthouserc.cjs (the real perf contract). Current footprint ~263.7KB. Further follow-ups to
+		// lazy-load the <Toaster> (and/or dynamic-import the Capture sheet) would reclaim more initial weight.
+		const MAX_GZIPPED_JS_BYTES = 265 * 1024; // 265KB gzipped (NFR4) — see re-baseline log above
 
 		let totalGzippedBytes = 0;
 		for (const dir of [chunksDir, entryDir, nodesDir]) {
