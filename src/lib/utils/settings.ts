@@ -114,7 +114,10 @@ function exchangeRatesWereCoerced(
 	input: unknown,
 	sanitized: Record<string, number> | undefined
 ): boolean {
-	if (!input || typeof input !== 'object') return false;
+	if (input === undefined || input === null) return false;
+	// Review fix (8.6): a truthy but non-object input (e.g. a string/number from corrupted backup
+	// JSON) is silently dropped by sanitizeExchangeRates too — that's coercion, not "nothing supplied".
+	if (typeof input !== 'object') return true;
 	const entries = Object.entries(input as Record<string, unknown>);
 	if (entries.length === 0) return false;
 	const sanitizedMap = sanitized ?? {};

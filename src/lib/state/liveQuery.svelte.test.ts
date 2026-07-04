@@ -113,7 +113,10 @@ describe('createRepoLiveQuery', () => {
 		);
 
 		await vi.waitFor(() => expect(q.error).not.toBeNull());
-		expect((q.error as Error).message).toBe('DB_READ_FAILED');
+		// Review fix (8.6): both the error code (name) and the descriptive message are preserved —
+		// previously only the code survived, discarding the repository's message entirely.
+		expect((q.error as Error).name).toBe('DB_READ_FAILED');
+		expect((q.error as Error).message).toBe('boom');
 		// `current` keeps its last good value (the initial seed) rather than becoming `[]` from a swallow.
 		expect(q.current).toEqual([]);
 

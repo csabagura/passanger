@@ -192,6 +192,24 @@ describe('VehicleListManager', () => {
 			// Fields should be pre-filled
 			expect((screen.getByLabelText(/display name/i) as HTMLInputElement).value).toBe('My Honda');
 		});
+
+		it('review fix (H12): reconciles the shared vehicles context (refreshVehicles) after an edit save', async () => {
+			mockUpdateVehicle.mockResolvedValue({ data: vehicle1, error: null });
+			await renderAndWait({ _vehicles: [vehicle1, vehicle2] });
+
+			await fireEvent.click(screen.getByRole('button', { name: /edit my honda/i }));
+			flushSync();
+
+			mockRefreshVehicles.mockClear();
+			mockGetAllVehicles.mockResolvedValueOnce({ data: [vehicle1, vehicle2], error: null });
+
+			await fireEvent.click(screen.getByRole('button', { name: /save changes/i }));
+			await new Promise((r) => setTimeout(r, 0));
+			flushSync();
+
+			expect(mockUpdateVehicle).toHaveBeenCalled();
+			expect(mockRefreshVehicles).toHaveBeenCalled();
+		});
 	});
 
 	describe('delete flow', () => {
@@ -235,7 +253,12 @@ describe('VehicleListManager', () => {
 	});
 
 	describe('active vehicle deletion fallback (AC: 6)', () => {
-		it('sets first remaining vehicle as active when active vehicle is deleted', async () => {
+		it('reconciles the shared context but does NOT pick the fallback vehicle itself when the active vehicle is deleted', async () => {
+			// Review fix (8.6): VehicleListManager used to call vehiclesContext.switchVehicle() itself
+			// here, which could race the layout's own S19 fallback $effect (both independently deciding
+			// the next active vehicle from separately-fetched vehicle lists). Fallback selection is now
+			// owned solely by the layout's S19 effect, driven by the refreshVehicles() reconciliation
+			// below — this component no longer calls switchVehicle on delete.
 			mockDeleteVehicle.mockResolvedValue({ data: undefined, error: null });
 			await renderAndWait({
 				activeVehicleId: 1,
@@ -251,8 +274,8 @@ describe('VehicleListManager', () => {
 			await new Promise((r) => setTimeout(r, 0));
 			flushSync();
 
-			// H12: routes through the layout's shared vehicles context, not a raw localStorage write.
-			expect(mockSwitchVehicle).toHaveBeenCalledWith(2);
+			expect(mockRefreshVehicles).toHaveBeenCalled();
+			expect(mockSwitchVehicle).not.toHaveBeenCalled();
 		});
 
 		it('clears active vehicle when last vehicle is deleted', async () => {

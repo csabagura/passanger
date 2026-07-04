@@ -240,6 +240,16 @@ describe('Settings utility', () => {
 			expect(result.data?.coercedFields).not.toContain('exchangeRates');
 		});
 
+		it('review fix: reports exchangeRates when it is a malformed non-object value (e.g. corrupted backup JSON), not just a bad entry', () => {
+			const result = saveSettings({
+				fuelUnit: DEFAULT_UNIT,
+				currency: DEFAULT_CURRENCY,
+				theme: 'system',
+				exchangeRates: 'not-an-object' as unknown as AppSettings['exchangeRates']
+			});
+			expect(result.data?.coercedFields).toContain('exchangeRates');
+		});
+
 		it('reports heroMetric when an invalid value is silently dropped', () => {
 			const result = saveSettings({
 				fuelUnit: DEFAULT_UNIT,

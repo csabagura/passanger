@@ -213,7 +213,12 @@
 	}
 
 	function syncDraftField(key: string, value: string, options?: { skipIf?: boolean }) {
-		if (!value || options?.skipIf) {
+		// Review fix (8.6): `skipIf` means "this value is a default/prefill the user hasn't touched
+		// yet" — it must neither write NOR delete, leaving any pre-existing real draft entry alone
+		// (mirrors FuelEntryForm's H16 odometer-seed guard). Only an actually-empty field clears the
+		// draft key.
+		if (options?.skipIf) return;
+		if (!value) {
 			delete maintenanceDraft[key];
 			return;
 		}

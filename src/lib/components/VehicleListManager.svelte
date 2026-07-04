@@ -114,25 +114,18 @@
 			return;
 		}
 
-		const wasActive = activeVehicleId === deletedId;
-
 		deleteTarget = null;
 		deleteState = 'idle';
 
 		await loadVehicles();
-		// H12: reconcile the shared context BEFORE deciding the active-vehicle fallback below, so
-		// switchVehicle's write goes through the layout's own vehicles array (kept in sync with this
-		// component's local reload) rather than a stale one.
+		// Review fix (8.6): fallback active-vehicle selection is no longer done here. This used to
+		// call vehiclesContext.switchVehicle(vehicles[0].id) using this component's own locally-fetched
+		// list, which could race the layout's own S19 fallback $effect (fired by refreshVehicles()
+		// below re-populating the SEPARATE shared-context vehicles array) — under a concurrent cross-tab
+		// vehicle mutation the two could pick different vehicles non-deterministically. Single owner
+		// now: refreshVehicles() reconciles the shared context, and the layout's S19 effect (which reads
+		// vehiclesError/vehiclesLoaded too) is solely responsible for picking the fallback vehicle.
 		await vehiclesContext.refreshVehicles();
-
-		if (wasActive && vehicles.length > 0) {
-			// Routes the write through the layout's existing switchVehicle (which owns the
-			// VEHICLE_ID_STORAGE_KEY write) — this component no longer writes that key directly.
-			// No vehicles left: intentionally do nothing — switchVehicle needs an id to switch to, and
-			// activeVehicleId now comes from the context (via the parent), which readStoredVehicleId /
-			// the layout's own load path already governs.
-			vehiclesContext.switchVehicle(vehicles[0].id);
-		}
 
 		await tick();
 		// Focus next vehicle in list, or previous, or add button

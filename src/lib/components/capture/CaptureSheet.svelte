@@ -6,6 +6,7 @@
 	import { Button } from '$lib/components/ui/button';
 	import FuelEntryForm from '$lib/components/FuelEntryForm.svelte';
 	import MaintenanceForm from '$lib/components/MaintenanceForm.svelte';
+	import DbErrorCard from '$lib/components/DbErrorCard.svelte';
 	import CaptureSegmented from './CaptureSegmented.svelte';
 	import type { CaptureMode, CaptureSheetContext } from '$lib/state/captureSheet.svelte';
 	import type { VehiclesContext } from '$lib/utils/vehicleContext';
@@ -57,7 +58,17 @@
 			<Sheet.Title>{m.capture_title()}</Sheet.Title>
 		</Sheet.Header>
 
-		{#if vehicles.loaded && vehicles.activeVehicleId !== null}
+		{#if vehicles.loaded && vehicles.vehiclesError}
+			<!-- Review fix (8.6/H2): checked BEFORE the "no vehicle" branch below — a real vehicle-list
+			     load failure must never render as "you have no vehicle yet". -->
+			<div class="px-4 pb-6">
+				<DbErrorCard
+					title={m.capture_db_error_title()}
+					body={m.capture_db_error_body()}
+					ctaLabel={m.capture_export_cta()}
+				/>
+			</div>
+		{:else if vehicles.loaded && vehicles.activeVehicleId !== null}
 			<Tabs.Root
 				value={capture.mode}
 				onValueChange={(v) => capture.setMode(v as CaptureMode)}

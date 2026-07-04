@@ -110,7 +110,11 @@ export function createRepoLiveQuery<T>(
 	return createLiveQuery(async () => {
 		const r = await resultFn();
 		if (r.error) {
-			throw new Error(r.error.code);
+			// Review fix (8.6): preserve the repository's descriptive message, not just its code —
+			// `r.error.code` alone discarded debugging detail the repository intentionally attached.
+			const e = new Error(r.error.message);
+			e.name = r.error.code;
+			throw e;
 		}
 		return r.data;
 	}, initial);
