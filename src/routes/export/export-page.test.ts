@@ -190,6 +190,28 @@ describe('Export page', () => {
 		expect(localStorageMock.getItem('passanger_vehicle_id')).toBe('7');
 	});
 
+	it('treats an archived stored vehicle id as stale — clears it and recovers the first active vehicle (AC6)', async () => {
+		localStorageMock.setItem('passanger_vehicle_id', '7');
+		// The stored id resolves to an ARCHIVED vehicle (getVehicleById is unfiltered)...
+		mockGetVehicleById.mockResolvedValue({
+			data: { ...testVehicle, isArchived: true, archivedAt: 123 },
+			error: null
+		});
+		// ...recovery uses getAllVehicles (active-only) and picks the first active vehicle.
+		mockGetAllVehicles.mockResolvedValue({ data: [testVehicle2], error: null });
+		mockGetAllFuelLogs.mockResolvedValue({ data: [testFuelEntry2], error: null });
+		mockGetAllExpenses.mockResolvedValue({ data: [], error: null });
+
+		renderPage();
+		await settlePage();
+
+		expect(mockGetVehicleById).toHaveBeenCalledWith(7);
+		expect(mockGetAllVehicles).toHaveBeenCalled();
+		// Recovered to the active vehicle (id 12), and the archived stored id was dropped/replaced.
+		expect(screen.getByText(/City Runner · Toyota/)).toBeTruthy();
+		expect(localStorageMock.getItem('passanger_vehicle_id')).toBe('12');
+	});
+
 	it('shows the load error and preserves the stored vehicle id when getVehicleById fails transiently', async () => {
 		localStorageMock.setItem('passanger_vehicle_id', '7');
 		mockGetVehicleById.mockResolvedValue({

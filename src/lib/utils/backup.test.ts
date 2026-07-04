@@ -142,6 +142,60 @@ describe('parseBackup — round-trip', () => {
 		expect(reminder?.distanceUnit).toBe('mi');
 		expect(reminder?.lastClosedByExpenseId).toBe(42);
 	});
+
+	// v7 (Story 9.2, ADR-008): isArchived/archivedAt round-trip through the pass-through revivers with
+	// no validator change (AC9).
+	it('round-trips a vehicle carrying isArchived/archivedAt (v7)', () => {
+		const v7Shaped: BackupData = {
+			...data,
+			vehicles: [
+				{ id: 1, name: 'Car', make: 'Honda', model: 'Civic', isArchived: false },
+				{
+					id: 2,
+					name: 'Old Car',
+					make: 'Ford',
+					model: 'Focus',
+					isArchived: true,
+					archivedAt: 1_700_000_000_000
+				}
+			]
+		};
+		const result = parseBackup(serializeBackup(v7Shaped, settings));
+		expect(result.error).toBeNull();
+		const vehicles = result.data?.data.vehicles;
+		expect(vehicles?.[0].isArchived).toBe(false);
+		expect(vehicles?.[1].isArchived).toBe(true);
+		expect(vehicles?.[1].archivedAt).toBe(1_700_000_000_000);
+	});
+
+	// A pre-v7 backup (no isArchived) restores with the field absent — readers treat it as active.
+	it('preserves a pre-v7 vehicle with isArchived absent (restores as active)', () => {
+		const preV7: BackupData = {
+			...data,
+			vehicles: [{ id: 1, name: 'Car', make: 'Honda', model: 'Civic' }]
+		};
+		const result = parseBackup(serializeBackup(preV7, settings));
+		expect(result.error).toBeNull();
+		expect(result.data?.data.vehicles[0].isArchived).toBeUndefined();
+	});
+
+	// A backup stamped at the previous schema version (6) restores into v7 (forward-compatible).
+	it('accepts a backup stamped at schemaVersion 6 (restores into v7)', () => {
+		const json = JSON.stringify({
+			app: BACKUP_APP_ID,
+			schemaVersion: 6,
+			exportedAt: new Date().toISOString(),
+			data: {
+				vehicles: [{ id: 1, name: 'Car', make: 'Honda', model: 'Civic' }],
+				fuelLogs: [],
+				expenses: [],
+				serviceReminders: []
+			},
+			settings
+		});
+		const result = parseBackup(json);
+		expect(result.error).toBeNull();
+	});
 });
 
 describe('parseBackup — rejections', () => {
@@ -499,6 +553,69 @@ describe('parseBackup — rejections', () => {
 			schemaVersion: DB_VERSION,
 			exportedAt: new Date().toISOString(),
 			data: { vehicles, fuelLogs: [], expenses: [], serviceReminders: [] },
+			settings
+		});
+		const result = parseBackup(json);
+		expect(result.error?.code).toBe('VALIDATION_ERROR');
+		expect(result.error?.message).toMatch(/cannot contain more than/i);
+	});
+
+	// AC8/AD-VA-4: the cap counts ACTIVE vehicles only. A backup with MAX_VEHICLES active + N archived
+	// vehicles imports cleanly — archived rows never occupy a slot.
+	it('accepts MAX_VEHICLES active vehicles PLUS archived ones (active-only cap)', () => {
+		const active = Array.from({ length: MAX_VEHICLES }, (_, i) => ({
+			id: i + 1,
+			name: `Active ${i + 1}`,
+			make: 'Honda',
+			model: 'Civic',
+			isArchived: false
+		}));
+		const archived = Array.from({ length: 3 }, (_, i) => ({
+			id: MAX_VEHICLES + i + 1,
+			name: `Archived ${i + 1}`,
+			make: 'Ford',
+			model: 'Focus',
+			isArchived: true,
+			archivedAt: 1000
+		}));
+		const json = JSON.stringify({
+			app: BACKUP_APP_ID,
+			schemaVersion: DB_VERSION,
+			exportedAt: new Date().toISOString(),
+			data: {
+				vehicles: [...active, ...archived],
+				fuelLogs: [],
+				expenses: [],
+				serviceReminders: []
+			},
+			settings
+		});
+		const result = parseBackup(json);
+		expect(result.error).toBeNull();
+		expect(result.data?.data.vehicles).toHaveLength(MAX_VEHICLES + 3);
+	});
+
+	it('still rejects MORE than MAX_VEHICLES ACTIVE vehicles even when archived ones are present', () => {
+		const active = Array.from({ length: MAX_VEHICLES + 1 }, (_, i) => ({
+			id: i + 1,
+			name: `Active ${i + 1}`,
+			make: 'Honda',
+			model: 'Civic',
+			isArchived: false
+		}));
+		const archived = [
+			{ id: 100, name: 'Archived', make: 'Ford', model: 'Focus', isArchived: true, archivedAt: 1 }
+		];
+		const json = JSON.stringify({
+			app: BACKUP_APP_ID,
+			schemaVersion: DB_VERSION,
+			exportedAt: new Date().toISOString(),
+			data: {
+				vehicles: [...active, ...archived],
+				fuelLogs: [],
+				expenses: [],
+				serviceReminders: []
+			},
 			settings
 		});
 		const result = parseBackup(json);

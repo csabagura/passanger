@@ -6,6 +6,9 @@ import SettingsPage from './+page.svelte';
 
 vi.mock('$lib/db/repositories/vehicles', () => ({
 	getAllVehicles: () => Promise.resolve({ data: [], error: null }),
+	getArchivedVehicles: () => Promise.resolve({ data: [], error: null }),
+	archiveVehicle: () => Promise.resolve({ data: null, error: null }),
+	restoreVehicle: () => Promise.resolve({ data: null, error: null }),
 	deleteVehicle: () => Promise.resolve({ data: undefined, error: null }),
 	getVehicleCount: () => Promise.resolve({ data: 0, error: null }),
 	saveVehicle: () => Promise.resolve({ data: null, error: null }),

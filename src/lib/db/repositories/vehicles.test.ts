@@ -6,9 +6,13 @@ import {
 	saveVehicle,
 	getVehicleById,
 	getAllVehicles,
+	getArchivedVehicles,
 	updateVehicle,
+	archiveVehicle,
+	restoreVehicle,
 	deleteVehicle,
-	getVehicleCount
+	getVehicleCount,
+	getActiveVehicleCount
 } from './vehicles';
 import { MAX_VEHICLES } from '$lib/config';
 import { getDataGeneration } from '$lib/utils/tabSync';
@@ -348,6 +352,128 @@ describe('VehicleRepository', () => {
 			expect(await db.serviceReminders.where('vehicleId').equals(targetId).count()).toBe(0);
 			// The other vehicle is untouched.
 			expect(await db.fuelLogs.where('vehicleId').equals(keepId).count()).toBe(1);
+		});
+	});
+
+	// Story 9.2 — archive & restore (Dexie v7, ADR-008).
+	describe('archiveVehicle', () => {
+		it('flags the vehicle archived + stamps archivedAt, retaining the row and all children', async () => {
+			const saved = await saveVehicle({ name: 'Sold Car', make: 'Ford', model: 'Focus' });
+			const id = saved.data!.id;
+			await db.fuelLogs.add({
+				vehicleId: id,
+				date: new Date('2026-01-01'),
+				odometer: 12000,
+				quantity: 40,
+				unit: 'L',
+				distanceUnit: 'km',
+				totalCost: 60,
+				calculatedConsumption: 0
+			});
+			await db.expenses.add({
+				vehicleId: id,
+				date: new Date('2026-01-02'),
+				type: 'Tyres',
+				cost: 200
+			});
+			await db.serviceReminders.add({ vehicleId: id, title: 'Oil change', intervalKm: 10000 });
+
+			const before = Date.now();
+			const result = await archiveVehicle(id);
+			const after = Date.now();
+
+			expect(result.error).toBeNull();
+			expect(result.data?.isArchived).toBe(true);
+			expect(result.data?.archivedAt).toBeGreaterThanOrEqual(before);
+			expect(result.data?.archivedAt).toBeLessThanOrEqual(after);
+
+			// Odometer/history persist — the row and every child survive (identity = the retained row).
+			expect(await db.vehicles.get(id)).toBeTruthy();
+			expect(await db.fuelLogs.where('vehicleId').equals(id).count()).toBe(1);
+			expect(await db.expenses.where('vehicleId').equals(id).count()).toBe(1);
+			expect(await db.serviceReminders.where('vehicleId').equals(id).count()).toBe(1);
+		});
+
+		it('excludes the archived vehicle from getAllVehicles but includes it in getArchivedVehicles', async () => {
+			const active = await saveVehicle({ name: 'Daily', make: 'Toyota', model: 'Yaris' });
+			const toArchive = await saveVehicle({ name: 'Weekend', make: 'Mazda', model: 'MX-5' });
+			await archiveVehicle(toArchive.data!.id);
+
+			const activeList = await getAllVehicles();
+			expect(activeList.data?.map((v) => v.id)).toEqual([active.data!.id]);
+
+			const archivedList = await getArchivedVehicles();
+			expect(archivedList.data?.map((v) => v.id)).toEqual([toArchive.data!.id]);
+		});
+
+		it('returns NOT_FOUND for a non-existent id', async () => {
+			const result = await archiveVehicle(999);
+			expect(result.data).toBeNull();
+			expect(result.error?.code).toBe('NOT_FOUND');
+		});
+	});
+
+	describe('restoreVehicle', () => {
+		it('clears isArchived + archivedAt and returns the identical car to the active set', async () => {
+			const saved = await saveVehicle({ name: 'Seasonal', make: 'Jeep', model: 'Wrangler' });
+			const id = saved.data!.id;
+			await db.fuelLogs.add({
+				vehicleId: id,
+				date: new Date('2026-01-01'),
+				odometer: 55000,
+				quantity: 50,
+				unit: 'L',
+				distanceUnit: 'km',
+				totalCost: 80,
+				calculatedConsumption: 0
+			});
+			await archiveVehicle(id);
+
+			const result = await restoreVehicle(id);
+			expect(result.error).toBeNull();
+			expect(result.data?.isArchived).toBe(false);
+			expect(result.data?.archivedAt).toBeUndefined();
+
+			// Back in the active funnel, same id, history intact.
+			const activeList = await getAllVehicles();
+			expect(activeList.data?.map((v) => v.id)).toContain(id);
+			expect(await db.fuelLogs.where('vehicleId').equals(id).count()).toBe(1);
+			const stored = await db.vehicles.get(id);
+			expect(stored?.archivedAt).toBeUndefined();
+		});
+	});
+
+	describe('MAX_VEHICLES — active-only (AD-VA-4)', () => {
+		it('archiving a car frees a slot so a new vehicle can be added at the limit', async () => {
+			const ids: number[] = [];
+			for (let i = 0; i < MAX_VEHICLES; i++) {
+				const r = await saveVehicle({ name: `Car ${i}`, make: 'Make', model: 'Model' });
+				ids.push(r.data!.id);
+			}
+			// At the limit, a new save is rejected...
+			const blocked = await saveVehicle({ name: 'Over', make: 'Make', model: 'Model' });
+			expect(blocked.error?.code).toBe('MAX_VEHICLES');
+
+			// ...but archiving one frees a slot (archived rows stay in the table, don't count).
+			await archiveVehicle(ids[0]);
+			const allowed = await saveVehicle({ name: 'Replacement', make: 'Make', model: 'Model' });
+			expect(allowed.error).toBeNull();
+			expect(allowed.data).toBeTruthy();
+
+			// The archived row still physically exists (retained, not purged).
+			expect(await db.vehicles.get(ids[0])).toBeTruthy();
+		});
+
+		it('getActiveVehicleCount counts active vehicles only', async () => {
+			const a = await saveVehicle({ name: 'A', make: 'M', model: 'X' });
+			await saveVehicle({ name: 'B', make: 'M', model: 'X' });
+			await archiveVehicle(a.data!.id);
+
+			const active = await getActiveVehicleCount();
+			expect(active.data).toBe(1);
+			// The raw row count still includes the archived row.
+			const total = await getVehicleCount();
+			expect(total.data).toBe(2);
 		});
 	});
 });

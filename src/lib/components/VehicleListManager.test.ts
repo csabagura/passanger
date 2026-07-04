@@ -6,15 +6,19 @@ import type { Vehicle } from '$lib/db/schema';
 import { MAX_VEHICLES } from '$lib/config';
 
 const mockGetAllVehicles = vi.fn();
+const mockGetArchivedVehicles = vi.fn();
+const mockArchiveVehicle = vi.fn();
+const mockRestoreVehicle = vi.fn();
 const mockDeleteVehicle = vi.fn();
-const mockGetVehicleCount = vi.fn();
 const mockSaveVehicle = vi.fn();
 const mockUpdateVehicle = vi.fn();
 
 vi.mock('$lib/db/repositories/vehicles', () => ({
 	getAllVehicles: () => mockGetAllVehicles(),
+	getArchivedVehicles: () => mockGetArchivedVehicles(),
+	archiveVehicle: (...args: unknown[]) => mockArchiveVehicle(...args),
+	restoreVehicle: (...args: unknown[]) => mockRestoreVehicle(...args),
 	deleteVehicle: (...args: unknown[]) => mockDeleteVehicle(...args),
-	getVehicleCount: () => mockGetVehicleCount(),
 	saveVehicle: (...args: unknown[]) => mockSaveVehicle(...args),
 	updateVehicle: (...args: unknown[]) => mockUpdateVehicle(...args)
 }));
@@ -52,15 +56,25 @@ const vehicle2: Vehicle = makeVehicle({
 	model: 'Transit',
 	year: 2021
 });
+const archivedVehicle: Vehicle = makeVehicle({
+	id: 9,
+	name: 'Old Ranger',
+	make: 'Ford',
+	model: 'Ranger',
+	year: 2008,
+	isArchived: true,
+	archivedAt: 1000
+});
 
-function setupMocks(vehicles: Vehicle[] = [vehicle1, vehicle2]) {
+function setupMocks(vehicles: Vehicle[] = [vehicle1, vehicle2], archived: Vehicle[] = []) {
 	mockGetAllVehicles.mockResolvedValue({ data: vehicles, error: null });
-	mockGetVehicleCount.mockResolvedValue({ data: vehicles.length, error: null });
+	mockGetArchivedVehicles.mockResolvedValue({ data: archived, error: null });
 }
 
 async function renderAndWait(props: Record<string, unknown> = {}) {
-	setupMocks(props._vehicles as Vehicle[] | undefined);
+	setupMocks(props._vehicles as Vehicle[] | undefined, props._archived as Vehicle[] | undefined);
 	delete props._vehicles;
+	delete props._archived;
 	const context = new Map<string, unknown>();
 	context.set('vehicles', vehiclesContext());
 	render(VehicleListManager, { props, context });
@@ -94,12 +108,12 @@ describe('VehicleListManager', () => {
 			expect(items).toHaveLength(2);
 		});
 
-		it('renders Edit and Delete buttons for each vehicle', async () => {
+		it('renders Edit and Archive buttons for each vehicle', async () => {
 			await renderAndWait({ _vehicles: [vehicle1, vehicle2] });
 			expect(screen.getByRole('button', { name: /edit my honda/i })).toBeTruthy();
-			expect(screen.getByRole('button', { name: /delete my honda/i })).toBeTruthy();
+			expect(screen.getByRole('button', { name: /archive my honda/i })).toBeTruthy();
 			expect(screen.getByRole('button', { name: /edit work van/i })).toBeTruthy();
-			expect(screen.getByRole('button', { name: /delete work van/i })).toBeTruthy();
+			expect(screen.getByRole('button', { name: /archive work van/i })).toBeTruthy();
 		});
 
 		it('shows vehicle count out of MAX_VEHICLES', async () => {
@@ -159,7 +173,8 @@ describe('VehicleListManager', () => {
 			);
 			await renderAndWait({ _vehicles: maxVehicles });
 			expect(screen.getByText(/maximum 5 vehicles reached/i)).toBeTruthy();
-			// The add vehicle button should not be present (only limit message)
+			// Copy now nudges toward archiving, not deleting.
+			expect(screen.getByText(/archive a vehicle to add a new one/i)).toBeTruthy();
 			const buttons = screen.getAllByRole('button');
 			const addBtn = buttons.find((b) => b.textContent?.includes('Add vehicle'));
 			expect(addBtn).toBeUndefined();
@@ -171,7 +186,6 @@ describe('VehicleListManager', () => {
 			await renderAndWait({ _vehicles: [vehicle1] });
 			await fireEvent.click(screen.getByRole('button', { name: /add vehicle/i }));
 			flushSync();
-			// VehicleForm should now be rendered (has heading "Add Vehicle")
 			expect(screen.getByRole('heading', { name: /add vehicle/i })).toBeTruthy();
 		});
 
@@ -189,7 +203,6 @@ describe('VehicleListManager', () => {
 			await fireEvent.click(screen.getByRole('button', { name: /edit my honda/i }));
 			flushSync();
 			expect(screen.getByRole('heading', { name: /edit vehicle/i })).toBeTruthy();
-			// Fields should be pre-filled
 			expect((screen.getByLabelText(/display name/i) as HTMLInputElement).value).toBe('My Honda');
 		});
 
@@ -212,123 +225,170 @@ describe('VehicleListManager', () => {
 		});
 	});
 
-	describe('delete flow', () => {
-		it('shows confirmation dialog when Delete is clicked', async () => {
+	describe('archive flow (default destructive action)', () => {
+		it('shows the archive confirmation dialog when Archive is clicked', async () => {
 			await renderAndWait({ _vehicles: [vehicle1, vehicle2] });
-			await fireEvent.click(screen.getByRole('button', { name: /delete my honda/i }));
+			await fireEvent.click(screen.getByRole('button', { name: /archive my honda/i }));
 			flushSync();
-			expect(screen.getByText(/delete my honda\?/i)).toBeTruthy();
-			expect(screen.getByText(/entries linked to this vehicle will remain/i)).toBeTruthy();
+			expect(screen.getByText(/archive my honda\?/i)).toBeTruthy();
+			// Copy reassures the user history is kept and restore is possible.
+			expect(screen.getByText(/history and odometer are kept/i)).toBeTruthy();
 		});
 
-		it('hides confirmation dialog when Cancel is clicked', async () => {
+		it('hides the confirmation dialog when Cancel is clicked', async () => {
 			await renderAndWait({ _vehicles: [vehicle1, vehicle2] });
-			await fireEvent.click(screen.getByRole('button', { name: /delete my honda/i }));
+			await fireEvent.click(screen.getByRole('button', { name: /archive my honda/i }));
 			flushSync();
-			// Click cancel in the confirmation panel
 			const cancelBtns = screen.getAllByRole('button', { name: /cancel/i });
 			await fireEvent.click(cancelBtns[0]);
 			flushSync();
-			expect(screen.queryByText(/delete my honda\?/i)).toBeNull();
+			expect(screen.queryByText(/archive my honda\?/i)).toBeNull();
 		});
 
-		it('calls deleteVehicle and removes vehicle from list on confirm', async () => {
-			mockDeleteVehicle.mockResolvedValue({ data: undefined, error: null });
+		it('calls archiveVehicle (NOT deleteVehicle) and removes the vehicle from the active list on confirm', async () => {
+			mockArchiveVehicle.mockResolvedValue({
+				data: { ...vehicle1, isArchived: true },
+				error: null
+			});
 			await renderAndWait({ _vehicles: [vehicle1, vehicle2] });
 
-			await fireEvent.click(screen.getByRole('button', { name: /delete my honda/i }));
+			await fireEvent.click(screen.getByRole('button', { name: /archive my honda/i }));
 			flushSync();
 
-			// After confirming, the mock will resolve and loadVehicles will be called again
+			// After confirming, loadVehicles re-runs — vehicle1 now moves to the archived list.
 			mockGetAllVehicles.mockResolvedValueOnce({ data: [vehicle2], error: null });
+			mockGetArchivedVehicles.mockResolvedValueOnce({
+				data: [{ ...vehicle1, isArchived: true }],
+				error: null
+			});
 
-			await fireEvent.click(screen.getByRole('button', { name: /confirm delete/i }));
+			await fireEvent.click(screen.getByRole('button', { name: /confirm archive/i }));
 			await new Promise((r) => setTimeout(r, 0));
 			flushSync();
 
-			expect(mockDeleteVehicle).toHaveBeenCalledWith(1);
-			expect(screen.queryByText('My Honda')).toBeNull();
+			expect(mockArchiveVehicle).toHaveBeenCalledWith(1);
+			expect(mockDeleteVehicle).not.toHaveBeenCalled();
+			// vehicle1 is gone from the ACTIVE list (name appears only in the archived section now).
+			expect(screen.getByRole('list', { name: /^vehicle list$/i })).toBeTruthy();
 			expect(screen.getByText('Work Van')).toBeTruthy();
+			expect(screen.getByRole('list', { name: /archived vehicles/i })).toBeTruthy();
+		});
+
+		it('surfaces an error and re-arms when archiveVehicle fails', async () => {
+			mockArchiveVehicle.mockResolvedValue({
+				data: null,
+				error: { code: 'UPDATE_FAILED', message: 'boom' }
+			});
+			await renderAndWait({ _vehicles: [vehicle1, vehicle2] });
+
+			await fireEvent.click(screen.getByRole('button', { name: /archive my honda/i }));
+			flushSync();
+			await fireEvent.click(screen.getByRole('button', { name: /confirm archive/i }));
+			await new Promise((r) => setTimeout(r, 0));
+			flushSync();
+
+			expect(screen.getByText(/could not archive vehicle/i)).toBeTruthy();
+			// Still armed — the dialog is still open.
+			expect(screen.getByText(/archive my honda\?/i)).toBeTruthy();
+		});
+
+		it('H12: reconciles the shared vehicles context (refreshVehicles) after archive', async () => {
+			mockArchiveVehicle.mockResolvedValue({
+				data: { ...vehicle2, isArchived: true },
+				error: null
+			});
+			await renderAndWait({ activeVehicleId: 1, _vehicles: [vehicle1, vehicle2] });
+
+			await fireEvent.click(screen.getByRole('button', { name: /archive work van/i }));
+			flushSync();
+			mockRefreshVehicles.mockClear();
+			mockGetAllVehicles.mockResolvedValueOnce({ data: [vehicle1], error: null });
+			mockGetArchivedVehicles.mockResolvedValueOnce({
+				data: [{ ...vehicle2, isArchived: true }],
+				error: null
+			});
+			await fireEvent.click(screen.getByRole('button', { name: /confirm archive/i }));
+			await new Promise((r) => setTimeout(r, 0));
+			flushSync();
+
+			expect(mockRefreshVehicles).toHaveBeenCalled();
+			// The component never picks the fallback vehicle itself (S19 owns that — review 8.6).
+			expect(mockSwitchVehicle).not.toHaveBeenCalled();
 		});
 	});
 
-	describe('active vehicle deletion fallback (AC: 6)', () => {
-		it('reconciles the shared context but does NOT pick the fallback vehicle itself when the active vehicle is deleted', async () => {
-			// Review fix (8.6): VehicleListManager used to call vehiclesContext.switchVehicle() itself
-			// here, which could race the layout's own S19 fallback $effect (both independently deciding
-			// the next active vehicle from separately-fetched vehicle lists). Fallback selection is now
-			// owned solely by the layout's S19 effect, driven by the refreshVehicles() reconciliation
-			// below — this component no longer calls switchVehicle on delete.
-			mockDeleteVehicle.mockResolvedValue({ data: undefined, error: null });
-			await renderAndWait({
-				activeVehicleId: 1,
-				_vehicles: [vehicle1, vehicle2]
+	describe('archived section', () => {
+		it('renders an Archived list with Restore and Delete-permanently for each archived vehicle', async () => {
+			await renderAndWait({ _vehicles: [vehicle1], _archived: [archivedVehicle] });
+			expect(screen.getByRole('heading', { name: /^archived$/i })).toBeTruthy();
+			const archivedList = screen.getByRole('list', { name: /archived vehicles/i });
+			expect(within(archivedList).getByText('Old Ranger')).toBeTruthy();
+			expect(screen.getByRole('button', { name: /restore old ranger/i })).toBeTruthy();
+			expect(screen.getByRole('button', { name: /delete old ranger permanently/i })).toBeTruthy();
+		});
+
+		it('does not render the Archived section when there are no archived vehicles', async () => {
+			await renderAndWait({ _vehicles: [vehicle1], _archived: [] });
+			expect(screen.queryByRole('heading', { name: /^archived$/i })).toBeNull();
+			expect(screen.queryByRole('list', { name: /archived vehicles/i })).toBeNull();
+		});
+
+		it('restores an archived vehicle (no confirmation) and reconciles the context', async () => {
+			mockRestoreVehicle.mockResolvedValue({
+				data: { ...archivedVehicle, isArchived: false },
+				error: null
 			});
+			await renderAndWait({ _vehicles: [vehicle1], _archived: [archivedVehicle] });
 
-			await fireEvent.click(screen.getByRole('button', { name: /delete my honda/i }));
-			flushSync();
+			// After restore, loadVehicles re-runs: the vehicle moves back to the active list.
+			mockGetAllVehicles.mockResolvedValueOnce({
+				data: [vehicle1, { ...archivedVehicle, isArchived: false }],
+				error: null
+			});
+			mockGetArchivedVehicles.mockResolvedValueOnce({ data: [], error: null });
 
-			mockGetAllVehicles.mockResolvedValueOnce({ data: [vehicle2], error: null });
-
-			await fireEvent.click(screen.getByRole('button', { name: /confirm delete/i }));
+			await fireEvent.click(screen.getByRole('button', { name: /restore old ranger/i }));
 			await new Promise((r) => setTimeout(r, 0));
 			flushSync();
 
+			expect(mockRestoreVehicle).toHaveBeenCalledWith(9);
 			expect(mockRefreshVehicles).toHaveBeenCalled();
-			expect(mockSwitchVehicle).not.toHaveBeenCalled();
+			// The archived section is gone (list emptied) and the car is now active.
+			expect(screen.queryByRole('list', { name: /archived vehicles/i })).toBeNull();
+			expect(screen.getByText('Old Ranger')).toBeTruthy();
 		});
 
-		it('clears active vehicle when last vehicle is deleted', async () => {
+		it('requires confirmation before permanently deleting, then calls deleteVehicle (the cascade)', async () => {
 			mockDeleteVehicle.mockResolvedValue({ data: undefined, error: null });
-			await renderAndWait({
-				activeVehicleId: 1,
-				_vehicles: [vehicle1]
-			});
+			await renderAndWait({ _vehicles: [vehicle1], _archived: [archivedVehicle] });
 
-			await fireEvent.click(screen.getByRole('button', { name: /delete my honda/i }));
+			await fireEvent.click(screen.getByRole('button', { name: /delete old ranger permanently/i }));
 			flushSync();
+			// Explicit destructive confirmation with an irreversibility warning.
+			expect(screen.getByRole('alertdialog')).toBeTruthy();
+			expect(screen.getByText(/permanently delete old ranger\?/i)).toBeTruthy();
+			expect(screen.getByText(/can't be undone/i)).toBeTruthy();
 
-			mockGetAllVehicles.mockResolvedValueOnce({ data: [], error: null });
-
-			await fireEvent.click(screen.getByRole('button', { name: /confirm delete/i }));
+			mockGetArchivedVehicles.mockResolvedValueOnce({ data: [], error: null });
+			await fireEvent.click(screen.getByRole('button', { name: /^delete permanently$/i }));
 			await new Promise((r) => setTimeout(r, 0));
 			flushSync();
 
-			// No vehicles left — nothing to switch to, so switchVehicle is intentionally not called.
-			expect(mockSwitchVehicle).not.toHaveBeenCalled();
+			expect(mockDeleteVehicle).toHaveBeenCalledWith(9);
+			expect(screen.queryByText('Old Ranger')).toBeNull();
 		});
 
-		it('does not change active vehicle when non-active vehicle is deleted', async () => {
-			mockDeleteVehicle.mockResolvedValue({ data: undefined, error: null });
-			await renderAndWait({
-				activeVehicleId: 1,
-				_vehicles: [vehicle1, vehicle2]
-			});
+		it('cancels the permanent-delete confirmation without calling deleteVehicle', async () => {
+			await renderAndWait({ _vehicles: [vehicle1], _archived: [archivedVehicle] });
 
-			await fireEvent.click(screen.getByRole('button', { name: /delete work van/i }));
+			await fireEvent.click(screen.getByRole('button', { name: /delete old ranger permanently/i }));
+			flushSync();
+			const cancelBtns = screen.getAllByRole('button', { name: /cancel/i });
+			await fireEvent.click(cancelBtns[0]);
 			flushSync();
 
-			mockGetAllVehicles.mockResolvedValueOnce({ data: [vehicle1], error: null });
-
-			await fireEvent.click(screen.getByRole('button', { name: /confirm delete/i }));
-			await new Promise((r) => setTimeout(r, 0));
-			flushSync();
-
-			expect(mockSwitchVehicle).not.toHaveBeenCalled();
-		});
-
-		it('H12: reconciles the shared vehicles context (refreshVehicles) after create/edit and delete', async () => {
-			mockDeleteVehicle.mockResolvedValue({ data: undefined, error: null });
-			await renderAndWait({ activeVehicleId: 1, _vehicles: [vehicle1, vehicle2] });
-
-			await fireEvent.click(screen.getByRole('button', { name: /delete work van/i }));
-			flushSync();
-			mockGetAllVehicles.mockResolvedValueOnce({ data: [vehicle1], error: null });
-			await fireEvent.click(screen.getByRole('button', { name: /confirm delete/i }));
-			await new Promise((r) => setTimeout(r, 0));
-			flushSync();
-
-			expect(mockRefreshVehicles).toHaveBeenCalled();
+			expect(screen.queryByRole('alertdialog')).toBeNull();
+			expect(mockDeleteVehicle).not.toHaveBeenCalled();
 		});
 	});
 
@@ -337,6 +397,22 @@ describe('VehicleListManager', () => {
 			mockGetAllVehicles.mockResolvedValue({
 				data: null,
 				error: { code: 'UNKNOWN', message: 'DB error' }
+			});
+			mockGetArchivedVehicles.mockResolvedValue({ data: [], error: null });
+			const context = new Map<string, unknown>();
+			context.set('vehicles', vehiclesContext());
+			render(VehicleListManager, { context });
+			await new Promise((r) => setTimeout(r, 0));
+			flushSync();
+			expect(screen.getByRole('alert')).toBeTruthy();
+			expect(screen.getByText(/could not load vehicles/i)).toBeTruthy();
+		});
+
+		it('renders error message when getArchivedVehicles returns an error', async () => {
+			mockGetAllVehicles.mockResolvedValue({ data: [vehicle1], error: null });
+			mockGetArchivedVehicles.mockResolvedValue({
+				data: null,
+				error: { code: 'GET_FAILED', message: 'DB error' }
 			});
 			const context = new Map<string, unknown>();
 			context.set('vehicles', vehiclesContext());
@@ -348,53 +424,47 @@ describe('VehicleListManager', () => {
 		});
 	});
 
-	describe('delete confirmation accessibility', () => {
-		it('renders delete confirmation with role="alertdialog" and aria-labelledby', async () => {
+	describe('confirmation accessibility', () => {
+		it('renders the archive confirmation with role="alertdialog" and aria-labelledby', async () => {
 			await renderAndWait({ _vehicles: [vehicle1, vehicle2] });
-			await fireEvent.click(screen.getByRole('button', { name: /delete my honda/i }));
+			await fireEvent.click(screen.getByRole('button', { name: /archive my honda/i }));
 			flushSync();
 			const dialog = screen.getByRole('alertdialog');
 			expect(dialog).toBeTruthy();
-			expect(dialog.getAttribute('aria-labelledby')).toBeTruthy();
 			const labelId = dialog.getAttribute('aria-labelledby')!;
+			expect(labelId).toBeTruthy();
 			const label = document.getElementById(labelId);
 			expect(label).toBeTruthy();
-			expect(label!.textContent).toContain('Delete My Honda?');
+			expect(label!.textContent).toContain('Archive My Honda?');
 		});
 	});
 
-	describe('delete state reset on mode switch', () => {
-		it('resets armed delete state when switching to create mode', async () => {
+	describe('action state reset on mode switch', () => {
+		it('resets an armed archive state when switching to create mode', async () => {
 			await renderAndWait({ _vehicles: [vehicle1, vehicle2] });
-			// Arm delete
-			await fireEvent.click(screen.getByRole('button', { name: /delete my honda/i }));
+			await fireEvent.click(screen.getByRole('button', { name: /archive my honda/i }));
 			flushSync();
 			expect(screen.getByRole('alertdialog')).toBeTruthy();
 
-			// Switch to create mode
 			await fireEvent.click(screen.getByRole('button', { name: /add vehicle/i }));
 			flushSync();
 			expect(screen.getByRole('heading', { name: /add vehicle/i })).toBeTruthy();
 
-			// Cancel back to list — confirmation should not reappear
 			await fireEvent.click(screen.getByRole('button', { name: /cancel/i }));
 			flushSync();
 			expect(screen.queryByRole('alertdialog')).toBeNull();
 		});
 
-		it('resets armed delete state when switching to edit mode', async () => {
+		it('resets an armed archive state when switching to edit mode', async () => {
 			await renderAndWait({ _vehicles: [vehicle1, vehicle2] });
-			// Arm delete on vehicle 1
-			await fireEvent.click(screen.getByRole('button', { name: /delete my honda/i }));
+			await fireEvent.click(screen.getByRole('button', { name: /archive my honda/i }));
 			flushSync();
 			expect(screen.getByRole('alertdialog')).toBeTruthy();
 
-			// Switch to edit mode on vehicle 2
 			await fireEvent.click(screen.getByRole('button', { name: /edit work van/i }));
 			flushSync();
 			expect(screen.getByRole('heading', { name: /edit vehicle/i })).toBeTruthy();
 
-			// Cancel back to list — confirmation should not reappear
 			await fireEvent.click(screen.getByRole('button', { name: /cancel/i }));
 			flushSync();
 			expect(screen.queryByRole('alertdialog')).toBeNull();
@@ -402,11 +472,11 @@ describe('VehicleListManager', () => {
 	});
 
 	describe('single vehicle user (AC: 7)', () => {
-		it('works identically with one vehicle — shows list, edit, delete', async () => {
+		it('works identically with one vehicle — shows list, edit, archive', async () => {
 			await renderAndWait({ activeVehicleId: 1, _vehicles: [vehicle1] });
 			expect(screen.getByText('My Honda')).toBeTruthy();
 			expect(screen.getByRole('button', { name: /edit my honda/i })).toBeTruthy();
-			expect(screen.getByRole('button', { name: /delete my honda/i })).toBeTruthy();
+			expect(screen.getByRole('button', { name: /archive my honda/i })).toBeTruthy();
 			expect(screen.getByRole('button', { name: /add vehicle/i })).toBeTruthy();
 			expect(screen.getByText(`1 of ${MAX_VEHICLES} vehicles`)).toBeTruthy();
 		});

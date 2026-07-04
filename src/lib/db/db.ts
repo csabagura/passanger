@@ -11,6 +11,7 @@ import { migrateV1ToV2 } from './migrations/v2';
 import { migrateV2ToV3 } from './migrations/v3';
 import { migrateV4ToV5 } from './migrations/v5';
 import { migrateV5ToV6 } from './migrations/v6';
+import { migrateV6ToV7 } from './migrations/v7';
 
 class PassangerDB extends Dexie {
 	vehicles!: EntityTable<Vehicle, 'id'>;
@@ -84,6 +85,18 @@ class PassangerDB extends Dexie {
 				serviceReminders: '++id, vehicleId'
 			})
 			.upgrade(migrateV5ToV6);
+
+		// Version 7 (Story 9.2, ADR-008) — add `isArchived` / `archivedAt` to vehicles for archive &
+		// restore. Neither is indexed, so the schema strings are re-declared verbatim; the upgrade
+		// backfills existing rows to `isArchived = false`. See ADR-008 and migrations/v7.ts.
+		this.version(7)
+			.stores({
+				vehicles: '++id, name, make, model, year',
+				fuelLogs: '++id, vehicleId, date, odometer',
+				expenses: '++id, vehicleId, date, type, odometer',
+				serviceReminders: '++id, vehicleId'
+			})
+			.upgrade(migrateV6ToV7);
 	}
 }
 

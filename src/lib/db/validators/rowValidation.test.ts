@@ -362,14 +362,24 @@ describe('isValidRowId', () => {
 	});
 });
 
-describe('validateVehicleCount (H17a)', () => {
-	it('accepts a count at or below MAX_VEHICLES', () => {
-		expect(validateVehicleCount(5)).toBeNull();
-		expect(validateVehicleCount(0)).toBeNull();
+describe('validateVehicleCount (H17a / AC8 active-only)', () => {
+	const activeRows = (n: number) => Array.from({ length: n }, () => ({ isArchived: false }));
+
+	it('accepts ACTIVE vehicles at or below MAX_VEHICLES', () => {
+		expect(validateVehicleCount(activeRows(5))).toBeNull();
+		expect(validateVehicleCount([])).toBeNull();
 	});
 
-	it('rejects a count above MAX_VEHICLES', () => {
-		expect(validateVehicleCount(6)).not.toBeNull();
+	it('rejects more than MAX_VEHICLES ACTIVE vehicles', () => {
+		expect(validateVehicleCount(activeRows(6))).not.toBeNull();
+	});
+
+	it('AC8 (AD-VA-4): archived vehicles do not count toward the cap', () => {
+		// 5 active + 3 archived = 8 rows, but only 5 count → accepted.
+		const archivedRows = Array.from({ length: 3 }, () => ({ isArchived: true }));
+		expect(validateVehicleCount([...activeRows(5), ...archivedRows])).toBeNull();
+		// 6 active still rejected even with archived present.
+		expect(validateVehicleCount([...activeRows(6), ...archivedRows])).not.toBeNull();
 	});
 });
 

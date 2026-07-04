@@ -59,14 +59,19 @@
 		if (storedVehicleId !== null) {
 			const result = await getVehicleById(storedVehicleId);
 			if (!result.error) {
-				return result.data;
-			}
-
-			if (result.error.code !== 'NOT_FOUND') {
+				// AC6 (Story 9.2): getVehicleById is unfiltered, so a stored id pointing at an ARCHIVED
+				// vehicle would otherwise resolve here. Treat it like a dangling id — drop the stored id
+				// and fall through to recovery, which picks the first ACTIVE vehicle (getAllVehicles is
+				// active-only). An archived vehicle is never a current car.
+				if (!result.data.isArchived) {
+					return result.data;
+				}
+				safeRemoveItem(VEHICLE_ID_STORAGE_KEY);
+			} else if (result.error.code !== 'NOT_FOUND') {
 				throw new Error('GET_FAILED');
+			} else {
+				safeRemoveItem(VEHICLE_ID_STORAGE_KEY);
 			}
-
-			safeRemoveItem(VEHICLE_ID_STORAGE_KEY);
 		}
 
 		const recoveryResult = await getAllVehicles();

@@ -9,7 +9,9 @@ import { runWrite, encodeSentinel } from '../writeSkeleton';
 export class VehicleRepository {
 	async saveVehicle(vehicle: NewVehicle): Promise<Result<Vehicle>> {
 		try {
-			const existing = await db.vehicles.count();
+			// AD-VA-4: the cap counts ACTIVE vehicles only — archiving a car frees a slot, so a user at
+			// the limit can archive one and add another without hitting MAX_VEHICLES.
+			const existing = await db.vehicles.filter((v) => !v.isArchived).count();
 			if (existing >= MAX_VEHICLES) {
 				return err('MAX_VEHICLES', `Maximum ${MAX_VEHICLES} vehicles allowed`);
 			}
@@ -38,9 +40,22 @@ export class VehicleRepository {
 		}
 	}
 
+	// AC5: the single ACTIVE read funnel. Archived vehicles are excluded here so every consumer that
+	// loads "the vehicles" (layout context → VehicleSwitcher/CaptureSheet/dashboards, Settings, import
+	// steps, export scope) inherits the exclusion — an archived vehicle never appears as a current car.
 	async getAllVehicles(): Promise<Result<Vehicle[]>> {
 		try {
-			const vehicles = await db.vehicles.toArray();
+			const vehicles = await db.vehicles.filter((v) => !v.isArchived).toArray();
+			return ok(vehicles);
+		} catch (e) {
+			return err('GET_FAILED', String(e));
+		}
+	}
+
+	// AC5/AC7: the sibling read for the Archived surface (Settings). Returns ONLY archived vehicles.
+	async getArchivedVehicles(): Promise<Result<Vehicle[]>> {
+		try {
+			const vehicles = await db.vehicles.filter((v) => v.isArchived === true).toArray();
 			return ok(vehicles);
 		} catch (e) {
 			return err('GET_FAILED', String(e));
@@ -61,6 +76,22 @@ export class VehicleRepository {
 		);
 	}
 
+	// AC2: the DEFAULT destructive action — archive, not purge. A single flag-flip update through the
+	// ADR-006 write boundary (validate → op → notify on success). The vehicle row and ALL its child
+	// rows are RETAINED, so odometer/history survive and restore brings back the identical car (identity
+	// = the retained row's stable `id`, AD-VA-3). `archivedAt` stamps when it was archived.
+	async archiveVehicle(id: number): Promise<Result<Vehicle>> {
+		return this.updateVehicle(id, { isArchived: true, archivedAt: Date.now() });
+	}
+
+	// AC3: the inverse flag-flip — clear `isArchived` and drop `archivedAt` (Dexie deletes a key set to
+	// undefined). The car returns to the active set, re-selectable, with its history intact.
+	async restoreVehicle(id: number): Promise<Result<Vehicle>> {
+		return this.updateVehicle(id, { isArchived: false, archivedAt: undefined });
+	}
+
+	// AC4/AC2: the PERMANENT purge — the hard cascade, now reachable only as an explicit
+	// "Delete permanently" action from the Archived list (the only path that destroys data, AD-VA-5).
 	async deleteVehicle(id: number): Promise<Result<void>> {
 		// Cascade-delete the vehicle's owned records so no orphaned fuel logs, expenses, or service
 		// reminders are left behind in IndexedDB. Existence-checked (S17): a no-op delete must not
@@ -97,6 +128,16 @@ export class VehicleRepository {
 			return err('GET_FAILED', String(e));
 		}
 	}
+
+	// AD-VA-4: count of ACTIVE vehicles only — what the MAX_VEHICLES cap is measured against.
+	async getActiveVehicleCount(): Promise<Result<number>> {
+		try {
+			const count = await db.vehicles.filter((v) => !v.isArchived).count();
+			return ok(count);
+		} catch (e) {
+			return err('GET_FAILED', String(e));
+		}
+	}
 }
 
 export const vehicleRepository = new VehicleRepository();
@@ -105,7 +146,11 @@ export const vehicleRepository = new VehicleRepository();
 export const saveVehicle = (vehicle: NewVehicle) => vehicleRepository.saveVehicle(vehicle);
 export const getVehicleById = (id: number) => vehicleRepository.getVehicleById(id);
 export const getAllVehicles = () => vehicleRepository.getAllVehicles();
+export const getArchivedVehicles = () => vehicleRepository.getArchivedVehicles();
 export const updateVehicle = (id: number, changes: Partial<NewVehicle>) =>
 	vehicleRepository.updateVehicle(id, changes);
+export const archiveVehicle = (id: number) => vehicleRepository.archiveVehicle(id);
+export const restoreVehicle = (id: number) => vehicleRepository.restoreVehicle(id);
 export const deleteVehicle = (id: number) => vehicleRepository.deleteVehicle(id);
 export const getVehicleCount = () => vehicleRepository.getVehicleCount();
+export const getActiveVehicleCount = () => vehicleRepository.getActiveVehicleCount();
