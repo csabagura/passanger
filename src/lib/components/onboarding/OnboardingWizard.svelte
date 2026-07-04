@@ -6,9 +6,15 @@
 	import type { AppError } from '$lib/utils/result';
 	import type { AppSettings } from '$lib/utils/settings';
 	import { saveSettings } from '$lib/utils/settings';
-	import { SUPPORTED_UNITS, PRESET_CURRENCIES, PRESET_REMINDERS } from '$lib/config';
+	import {
+		SUPPORTED_UNITS,
+		PRESET_CURRENCIES,
+		PRESET_REMINDERS,
+		ONBOARDING_PARTIAL_LANDING_MS
+	} from '$lib/config';
 	import type { FuelUnit } from '$lib/config';
 	import { getDistanceUnitForFuelUnit } from '$lib/utils/calculations';
+	import { parsePositiveNumeric } from '$lib/utils/numberInput';
 	import { Button } from '$lib/components/ui/button';
 	import { Field } from '$lib/components/ui/field';
 	import { m } from '$lib/paraglide/messages';
@@ -53,14 +59,17 @@
 
 	// Step 2 — measurement + currency (pre-filled from current global settings).
 	let measurement = $state<FuelUnit>(settingsCtx.settings.fuelUnit);
-	let currency = $state<string>(settingsCtx.settings.currency);
+	const initialCurrency = settingsCtx.settings.currency;
+	let currency = $state<string>(initialCurrency);
 	// Preset currencies plus the user's current one if it's a custom value not in the presets, so a
-	// pre-existing custom currency stays selectable.
-	const currencyOptions = $derived(
-		PRESET_CURRENCIES.includes(currency as (typeof PRESET_CURRENCIES)[number])
-			? [...PRESET_CURRENCIES]
-			: [currency, ...PRESET_CURRENCIES]
-	);
+	// pre-existing custom currency stays selectable. Computed ONCE from the initial currency — NOT
+	// $derived on `currency`, or selecting a preset would recompute the list and drop the custom
+	// option, making it impossible to switch back to the original custom currency.
+	const currencyOptions = PRESET_CURRENCIES.includes(
+		initialCurrency as (typeof PRESET_CURRENCIES)[number]
+	)
+		? [...PRESET_CURRENCIES]
+		: [initialCurrency, ...PRESET_CURRENCIES];
 
 	// Step 3 — starting odometer + optional preset reminders.
 	let odometerStr = $state('');
@@ -70,6 +79,7 @@
 	let commitState = $state<AsyncState>({ status: 'idle' });
 	let toastMessage = $state('');
 	let toastTimeout: ReturnType<typeof setTimeout> | null = null;
+	let landingTimeout: ReturnType<typeof setTimeout> | null = null;
 
 	function showToast(message: string) {
 		toastMessage = message;
@@ -81,6 +91,7 @@
 	}
 	onDestroy(() => {
 		if (toastTimeout) clearTimeout(toastTimeout);
+		if (landingTimeout) clearTimeout(landingTimeout);
 	});
 
 	function focusField(id: string): void {
@@ -113,12 +124,15 @@
 		return !displayNameError && !makeError && !modelError && !yearError;
 	}
 
-	// Odometer is optional; when present it must be a positive finite number.
+	// Odometer is optional; when present it must be a positive finite number. Use the shared
+	// `parsePositiveNumeric` (Task 4 mandate) so this matches every other numeric input in the app
+	// (FuelEntryForm / ServiceReminderForm) — locale decimal handling (e.g. hu "45000,5"), and a
+	// strict regex that rejects `1e5`/`0x10`/`+45` that a raw `Number()` would silently accept.
 	function parseOdometer(): { ok: true; value?: number } | { ok: false } {
 		const trimmed = odometerStr.trim();
 		if (trimmed === '') return { ok: true, value: undefined };
-		const n = Number(trimmed);
-		if (!Number.isFinite(n) || n <= 0) {
+		const n = parsePositiveNumeric(trimmed);
+		if (n === null) {
 			odometerError = m.onboarding_odometer_error();
 			return { ok: false };
 		}
@@ -176,21 +190,35 @@
 		}
 		const vehicle = vres.data;
 
-		// 2. Apply unit/currency to GLOBAL settings, only if the user changed them from current.
+		// The remaining writes are best-effort — the vehicle (the critical entity) already exists, so
+		// a later failure must not block landing on a working Home. But "best-effort" is NOT "silent":
+		// per the Epic-8 honest-signals norm, any failure is surfaced (`hadPartialFailure`) before we
+		// land, rather than pretending the whole setup succeeded.
+		let hadPartialFailure = false;
+
+		// 2. Apply unit/currency to GLOBAL settings, only if the user changed them from current. Track
+		//    the EFFECTIVE unit: a failed settings write leaves the app on the OLD unit, so the
+		//    reminders seeded below must be stamped with what actually persisted — never the attempt,
+		//    or a failed MPG write would stamp reminders `mi` while the app stays in `km`.
 		const cur = settingsCtx.settings;
+		let effectiveFuelUnit = cur.fuelUnit;
 		if (measurement !== cur.fuelUnit || currency !== cur.currency) {
 			const next: AppSettings = { ...cur, fuelUnit: measurement, currency };
-			if (!saveSettings(next).error) settingsCtx.updateSettings(next);
-			// A settings-write failure is non-fatal — the vehicle exists; defaults stand.
+			if (saveSettings(next).error) {
+				hadPartialFailure = true;
+			} else {
+				settingsCtx.updateSettings(next);
+				effectiveFuelUnit = measurement;
+			}
 		}
 
 		// 3. Seed the opt-in preset reminders. The starting odometer anchors each reminder's
 		//    lastServiceOdometer (its only honest home — there is no Vehicle.odometer field).
-		//    Best-effort: a failed seed must not block landing on a working Home.
-		const distanceUnit = getDistanceUnitForFuelUnit(measurement);
+		//    distanceUnit follows the EFFECTIVE (successfully-persisted) unit.
+		const distanceUnit = getDistanceUnitForFuelUnit(effectiveFuelUnit);
 		for (const preset of PRESET_REMINDERS) {
 			if (!selectedPresets[preset.key]) continue;
-			await saveServiceReminder({
+			const rres = await saveServiceReminder({
 				vehicleId: vehicle.id,
 				title: presetTitle(preset.key),
 				intervalKm: preset.intervalKm,
@@ -198,9 +226,18 @@
 				distanceUnit,
 				lastServiceOdometer: odo.value
 			});
+			if (rres.error) hadPartialFailure = true;
 		}
 
-		onComplete(vehicle);
+		// Land on a working Home. On a partial failure, surface a non-blocking notice first — and,
+		// because `onComplete` unmounts this wizard (Home swaps to the dashboard), briefly delay the
+		// landing so the toast is actually seen. The happy path lands instantly.
+		if (hadPartialFailure) {
+			showToast(m.onboarding_error_partial());
+			landingTimeout = setTimeout(() => onComplete(vehicle), ONBOARDING_PARTIAL_LANDING_MS);
+		} else {
+			onComplete(vehicle);
+		}
 	}
 </script>
 
@@ -312,7 +349,9 @@
 			placeholder={m.onboarding_odometer_placeholder()}
 			aria-describedby="onboarding-odometer-hint"
 			oninput={() => {
-				if (odometerStr.trim() === '') odometerError = '';
+				// Clear a stale error on any edit — not only when emptied — so a corrected value
+				// doesn't keep showing the old "enter a positive number" until the next Finish.
+				if (odometerError) odometerError = '';
 			}}
 		/>
 		<p id="onboarding-odometer-hint" class="text-meta text-muted-foreground">

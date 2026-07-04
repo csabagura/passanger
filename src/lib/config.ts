@@ -71,6 +71,12 @@ export const PRESET_REMINDERS: readonly PresetReminder[] = [
 	{ key: 'inspection', intervalDays: 365 }
 ];
 
+// Onboarding wizard: when a best-effort step (settings write / reminder seed) fails AFTER the
+// vehicle was created, we still land on a working Home but surface a non-blocking notice first.
+// `onComplete` unmounts the wizard, so the landing is briefly delayed on that path only (shorter
+// than the 4s toast auto-dismiss) so the message is seen. The success path lands instantly.
+export const ONBOARDING_PARTIAL_LANDING_MS = 3000;
+
 // Service-reminder "due soon" thresholds — a reminder switches from ok → due-soon once
 // the remaining distance/time falls at or below these, and → overdue at/below zero.
 export const REMINDER_DUE_SOON_KM = 500;

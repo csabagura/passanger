@@ -144,6 +144,7 @@
 	"onboarding_finish": "Beállítás befejezése",
 	"onboarding_error_save": "Nem sikerült befejezni a beállítást. Próbáld újra.",
 	"onboarding_error_max_vehicles": "Elérted az 5 jármű maximumot.",
+	"onboarding_error_partial": "Az autót hozzáadtuk, de néhány beállítást nem sikerült menteni. A Beállításokban módosíthatod.",
 	"shell_nav_main": "Fő navigáció",
 	"appheader_landmark": "Alkalmazás fejléc",
 	"appheader_title_export": "Exportálás",

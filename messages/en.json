@@ -144,6 +144,7 @@
 	"onboarding_finish": "Finish setup",
 	"onboarding_error_save": "Couldn't finish setup. Please try again.",
 	"onboarding_error_max_vehicles": "You've reached the maximum of 5 vehicles.",
+	"onboarding_error_partial": "Your car was added, but some setup couldn't be saved. You can adjust it in Settings.",
 	"shell_nav_main": "Main navigation",
 	"appheader_landmark": "App header",
 	"appheader_title_export": "Export",

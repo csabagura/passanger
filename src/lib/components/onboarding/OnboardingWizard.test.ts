@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/svelte';
+import { render, screen, fireEvent, cleanup, waitFor, within } from '@testing-library/svelte';
 import OnboardingWizard from './OnboardingWizard.svelte';
 import type { AppSettings } from '$lib/utils/settings';
 
@@ -188,5 +188,96 @@ describe('OnboardingWizard — commit (AC3, AC4, AC5, AC7)', () => {
 		await waitFor(() => expect(screen.getByRole('alert')).toBeTruthy());
 		expect(screen.getByText(/maximum of 5 vehicles/i)).toBeTruthy();
 		expect(onComplete).not.toHaveBeenCalled();
+	});
+});
+
+describe('OnboardingWizard — review patches (2026-07-04)', () => {
+	// P1: odometer parses through the shared parsePositiveNumeric (Task-4 mandate), so a locale
+	// comma-decimal is accepted (raw Number() would have produced NaN and rejected it).
+	it('P1: parses a comma-decimal odometer via the shared parser', async () => {
+		renderWizard();
+		await fillStep1();
+		await fireEvent.click(screen.getByRole('button', { name: /next/i }));
+		await fireEvent.click(screen.getByRole('button', { name: /next/i }));
+		await fireEvent.input(screen.getByLabelText(/starting odometer/i), {
+			target: { value: '45000,5' }
+		});
+		await fireEvent.click(screen.getByRole('checkbox', { name: /oil change/i }));
+		await fireEvent.click(screen.getByRole('button', { name: /finish/i }));
+		await waitFor(() => expect(mockSaveServiceReminder).toHaveBeenCalled());
+		expect(mockSaveServiceReminder.mock.calls[0][0].lastServiceOdometer).toBe(45000.5);
+	});
+
+	// P2: the custom-currency option list is computed once from the initial currency, so selecting a
+	// preset must NOT drop the pre-existing custom option (it stays switch-back-able).
+	it('P2: keeps a pre-existing custom currency selectable after picking a preset', async () => {
+		renderWizard({ settings: { fuelUnit: 'L/100km', currency: 'kr', theme: 'system' } });
+		await fillStep1();
+		await fireEvent.click(screen.getByRole('button', { name: /next/i }));
+		const select = screen.getByLabelText(/currency/i) as HTMLSelectElement;
+		expect(within(select).getByRole('option', { name: 'kr' })).toBeTruthy();
+		await fireEvent.change(select, { target: { value: '€' } });
+		// The custom option is still present — the list did not collapse on selection.
+		expect(within(select).getByRole('option', { name: 'kr' })).toBeTruthy();
+	});
+
+	// P3: a corrected odometer clears the stale error immediately (not only on the next Finish).
+	it('P3: clears a stale odometer error once the value is corrected', async () => {
+		renderWizard();
+		await fillStep1();
+		await fireEvent.click(screen.getByRole('button', { name: /next/i }));
+		await fireEvent.click(screen.getByRole('button', { name: /next/i }));
+		const odo = screen.getByLabelText(/starting odometer/i);
+		await fireEvent.input(odo, { target: { value: '-5' } });
+		await fireEvent.click(screen.getByRole('button', { name: /finish/i }));
+		expect(screen.getByText(/enter a positive number/i)).toBeTruthy();
+		await fireEvent.input(odo, { target: { value: '45000' } });
+		expect(screen.queryByText(/enter a positive number/i)).toBeNull();
+	});
+
+	// D1: a failed reminder seed is no longer silent — a partial-failure notice is shown, and the
+	// user still lands (onComplete fires after the brief failure-path delay).
+	it('D1: surfaces a partial-failure notice when a reminder seed fails, then still lands', async () => {
+		vi.useFakeTimers();
+		try {
+			const onComplete = vi.fn();
+			mockSaveServiceReminder.mockResolvedValue({ error: { code: 'SAVE_FAILED', message: 'x' } });
+			renderWizard({ onComplete });
+			await fillStep1();
+			await fireEvent.click(screen.getByRole('button', { name: /next/i }));
+			await fireEvent.click(screen.getByRole('button', { name: /next/i }));
+			await fireEvent.click(screen.getByRole('checkbox', { name: /oil change/i }));
+			await fireEvent.click(screen.getByRole('button', { name: /finish/i }));
+			// Flush the awaited writes and advance past the failure-path landing delay (3000ms) but
+			// before the 4000ms toast auto-dismiss, so both the toast and the landing are observable.
+			await vi.advanceTimersByTimeAsync(3000);
+			expect(screen.getByRole('alert')).toBeTruthy();
+			expect(screen.getByText(/some setup couldn't be saved/i)).toBeTruthy();
+			expect(onComplete).toHaveBeenCalledWith(VEHICLE);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	// D1: when the settings write fails, seeded reminders are stamped with the EFFECTIVE (old) unit,
+	// never the attempted one — a failed MPG write must not stamp reminders 'mi' while the app is 'km'.
+	it('D1: stamps reminders with the effective unit when the settings write fails', async () => {
+		vi.useFakeTimers();
+		try {
+			mockSaveSettings.mockReturnValue({ error: { code: 'SAVE_FAILED', message: 'quota' } });
+			renderWizard(); // starts L/100km ⇒ km
+			await fillStep1();
+			await fireEvent.click(screen.getByRole('button', { name: /next/i })); // step 2
+			await fireEvent.click(screen.getByRole('radio', { name: /miles per gallon/i })); // choose MPG
+			await fireEvent.click(screen.getByRole('button', { name: /next/i })); // step 3
+			await fireEvent.click(screen.getByRole('checkbox', { name: /oil change/i }));
+			await fireEvent.click(screen.getByRole('button', { name: /finish/i }));
+			await vi.advanceTimersByTimeAsync(3000);
+			expect(mockSaveServiceReminder).toHaveBeenCalledOnce();
+			// The MPG settings write failed → app stays km → the reminder must be stamped 'km', not 'mi'.
+			expect(mockSaveServiceReminder.mock.calls[0][0].distanceUnit).toBe('km');
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 });
