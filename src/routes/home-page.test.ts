@@ -1,5 +1,5 @@
 import 'fake-indexeddb/auto'; // MUST be first — patches global IndexedDB before db.ts opens
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { db } from '$lib/db/db';
 import HomePage from './+page.svelte';
@@ -48,6 +48,14 @@ function renderHome(vehiclesCtx = makeVehiclesContext()) {
 	return render(HomePage, { context });
 }
 
+// The home route now lazily imports OnboardingWizard (Perf/TTI — keeps it out of the initial
+// bundle). In vitest the FIRST dynamic import of a .svelte module cold-compiles it + its dep graph
+// (~5s), which would blow findByRole's timeout; warm Vite's module cache once up front so the
+// component's in-render import resolves instantly. No-op for production behavior.
+beforeAll(async () => {
+	await import('$lib/components/onboarding/OnboardingWizard.svelte');
+}, 20000);
+
 beforeEach(async () => {
 	await db.delete();
 	await db.open();
@@ -73,13 +81,16 @@ describe('Home page (Story 3.3 shell)', () => {
 		expect(screen.queryByRole('button', { name: /Add your vehicle/i })).toBeNull();
 	});
 
-	it('AC3: clicking the CTA reveals the VehicleForm quick-add', async () => {
+	it('AC3: clicking the CTA reveals the onboarding wizard (Story 9.1)', async () => {
 		renderHome(makeVehiclesContext(null));
 		await waitFor(() => {
 			expect(screen.getByRole('button', { name: /Add your vehicle to get started/i })).toBeTruthy();
 		});
 		await fireEvent.click(screen.getByRole('button', { name: /Add your vehicle to get started/i }));
-		expect(screen.getByRole('heading', { name: 'Add Vehicle' })).toBeTruthy();
+		// The guided wizard opens at step 1 (replaces the plain VehicleForm first-run). It is now
+		// lazily imported (Perf/TTI), so it mounts on the next microtask — await its heading.
+		expect(await screen.findByRole('heading', { name: 'Add your car' })).toBeTruthy();
+		expect(screen.getByText(/step 1 of 3/i)).toBeTruthy();
 	});
 
 	it('AC1/AC4: with an active vehicle it mounts the dashboard (cold-load skeleton first)', async () => {

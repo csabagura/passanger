@@ -1,7 +1,6 @@
 <script lang="ts">
 	import Car from '@lucide/svelte/icons/car';
 	import { getContext } from 'svelte';
-	import VehicleForm from '$lib/components/VehicleForm.svelte';
 	import HomeDashboard from '$lib/components/HomeDashboard.svelte';
 	import DbErrorCard from '$lib/components/DbErrorCard.svelte';
 	import type { Vehicle } from '$lib/db/schema';
@@ -50,7 +49,14 @@
 		ctaLabel={m.home_export_cta()}
 	/>
 {:else if showVehicleForm}
-	<VehicleForm onSave={handleVehicleSaved} />
+	<!-- Story 9.1: the guided onboarding wizard replaces the plain single-form first-run. Same
+	     completion semantics (switchVehicle + refreshVehicles) via handleVehicleSaved.
+	     Perf/TTI: lazily imported so the ~400-line wizard (+ its Field/Button/repo deps) stays OUT of
+	     the home route's initial bundle — it's only needed AFTER the user opts to add a car, so it must
+	     not inflate first-load Time-to-Interactive for the far-more-common returning-user path. -->
+	{#await import('$lib/components/onboarding/OnboardingWizard.svelte') then { default: OnboardingWizard }}
+		<OnboardingWizard onComplete={handleVehicleSaved} onCancel={() => (showVehicleForm = false)} />
+	{/await}
 {:else if currentVehicle}
 	<!-- Keyed on the active vehicle id: a vehicle switch tears down the dashboard (releasing its
 	     liveQuery subscriptions) and mounts a fresh one scoped to the new vehicle (AC-4). -->

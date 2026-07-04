@@ -287,11 +287,24 @@ describe('Performance budget — bundle size', () => {
 		//                   to absorb it with a small margin, keeping guardrail pressure — this story was
 		//                   flagged in Dev Notes to "watch the budget but do not raise it preemptively";
 		//                   this is the actual post-implementation breach, not a pre-raise.)
+		//   258KB → 261KB  (Story 9.1 add-a-car onboarding wizard, PREP-4.1 actual-breach raise: the new
+		//                   OnboardingWizard.svelte 3-step flow + PRESET_REMINDERS + ~24 onboarding_* i18n
+		//                   keys (en/hu) landed at 266,430 bytes, 2,238 bytes over the 258KB provision.
+		//                   Raised one tight ~3KB step to absorb it with ~0.8KB headroom — a genuinely
+		//                   net-new feature component (not a refactor), so a slightly larger step than the
+		//                   1KB reminder/state-sync raises. Not a pre-raise: measured post-implementation.)
+		//   261KB → 263KB  (Story 9.1 TTI follow-up, PREP-4.1 actual-breach raise: OnboardingWizard is now
+		//                   LAZY-imported on the home route (dynamic import → its own chunk) so it leaves the
+		//                   home node's INITIAL bundle — the fix for the Lighthouse `interactive` (TTI)
+		//                   budget breach the static import caused (~3120ms > 3000ms). Code-splitting adds a
+		//                   small TOTAL-JS overhead (chunk boundary): 268,140 bytes, 876 over the 261KB
+		//                   provision. This is the exact "reclaim initial-load weight by lazy-loading"
+		//                   follow-up the note below anticipated — total grows a hair, initial/TTI shrinks.)
 		// This is TOTAL JS across all (lazy-loaded) routes, NOT the initial payload — actual load
 		// performance is gated separately by the Lighthouse FCP/TTI/score budgets in
-		// .lighthouserc.cjs (the real perf contract). Current footprint ~257.0KB. A tracked follow-up to
-		// lazy-load the <Toaster> (and/or dynamic-import the Capture sheet) would reclaim initial-load weight.
-		const MAX_GZIPPED_JS_BYTES = 258 * 1024; // 258KB gzipped (NFR4) — see re-baseline log above
+		// .lighthouserc.cjs (the real perf contract). Current footprint ~261.9KB. Further follow-ups to
+		// lazy-load the <Toaster> (and/or dynamic-import the Capture sheet) would reclaim more initial weight.
+		const MAX_GZIPPED_JS_BYTES = 263 * 1024; // 263KB gzipped (NFR4) — see re-baseline log above
 
 		let totalGzippedBytes = 0;
 		for (const dir of [chunksDir, entryDir, nodesDir]) {

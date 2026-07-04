@@ -105,7 +105,10 @@ async function seedVehicleAndFill(page: import('@playwright/test').Page): Promis
 	await page.getByLabel('Display Name').fill('Hero Car');
 	await page.getByLabel('Make').fill('Toyota');
 	await page.getByLabel('Model').fill('Corolla');
-	await page.getByRole('button', { name: 'Save vehicle' }).click();
+	// Story 9.1: the onboarding wizard replaced the single-form first-run — advance its 3 steps.
+	await page.getByRole('button', { name: 'Next' }).click();
+	await page.getByRole('button', { name: 'Next' }).click();
+	await page.getByRole('button', { name: 'Finish setup' }).click();
 	await expect(page.getByText(/No entries yet for/i)).toBeVisible();
 
 	// Two fills (ascending odometer) so the second computes a consumption → a derivable distance.
@@ -200,7 +203,10 @@ test('Maintain (/maintain) with a reminder is axe-clean and Edit is keyboard-ope
 	await page.getByLabel('Display Name').fill('Maintainer');
 	await page.getByLabel('Make').fill('Subaru');
 	await page.getByLabel('Model').fill('Outback');
-	await page.getByRole('button', { name: 'Save vehicle' }).click();
+	// Story 9.1: the onboarding wizard replaced the single-form first-run — advance its 3 steps.
+	await page.getByRole('button', { name: 'Next' }).click();
+	await page.getByRole('button', { name: 'Next' }).click();
+	await page.getByRole('button', { name: 'Finish setup' }).click();
 	await expect(page.getByText(/No entries yet for/i)).toBeVisible();
 
 	// Add a reminder on the Maintain surface (reached via the bottom nav, PREP-3 flip).
@@ -310,7 +316,10 @@ test('Destructive delete-confirm button meets AA text contrast (Story 6.3 AC5)',
 	await page.getByLabel('Display Name').fill('Contrast Car');
 	await page.getByLabel('Make').fill('Mazda');
 	await page.getByLabel('Model').fill('3');
-	await page.getByRole('button', { name: 'Save vehicle' }).click();
+	// Story 9.1: the onboarding wizard replaced the single-form first-run — advance its 3 steps.
+	await page.getByRole('button', { name: 'Next' }).click();
+	await page.getByRole('button', { name: 'Next' }).click();
+	await page.getByRole('button', { name: 'Finish setup' }).click();
 	await expect(page.getByText(/No entries yet for/i)).toBeVisible();
 
 	await page
