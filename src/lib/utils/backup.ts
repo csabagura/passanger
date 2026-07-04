@@ -171,8 +171,12 @@ export function parseBackup(text: string): Result<{ data: BackupData; settings: 
 	}
 
 	// ADR-006 AD-WB-4 (H17a): the vehicle-count cap is checked BEFORE per-row revival — a backup
-	// with more than MAX_VEHICLES rows is rejected outright, matching the write boundary's guard.
-	const vehicleCountError = validateVehicleCount(vehicles.length);
+	// with more than MAX_VEHICLES ACTIVE vehicles is rejected outright, matching the write boundary's
+	// guard. AC8/AD-VA-4: archived vehicles do NOT count toward the cap, so a full-slots + archived
+	// backup restores cleanly.
+	const vehicleCountError = validateVehicleCount(
+		vehicles as ReadonlyArray<{ isArchived?: boolean }>
+	);
 	if (vehicleCountError) {
 		return err('VALIDATION_ERROR', vehicleCountError);
 	}

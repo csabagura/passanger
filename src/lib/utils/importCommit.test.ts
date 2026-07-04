@@ -425,6 +425,37 @@ describe('commitImportRows', () => {
 		expect(result.error!.code).toBe('MAX_VEHICLES');
 	});
 
+	it('does not count archived vehicles toward MAX_VEHICLES (AD-VA-4)', async () => {
+		// MAX active + N archived: the archived rows must NOT consume import slots, else an import the
+		// active-only wizard UI already approved would be rejected at commit. Here: MAX-1 active + 2
+		// archived, importing 1 new vehicle must succeed (active would become MAX, within the cap).
+		for (let i = 0; i < MAX_VEHICLES - 1; i++) {
+			await db.vehicles.add({ name: `Active ${i}`, make: 'Test', model: 'Model' } as any);
+		}
+		await db.vehicles.add({
+			name: 'Archived A',
+			make: 'Test',
+			model: 'Model',
+			isArchived: true
+		} as any);
+		await db.vehicles.add({
+			name: 'Archived B',
+			make: 'Test',
+			model: 'Model',
+			isArchived: true
+		} as any);
+
+		const rows = [makeFuelRow(1, { sourceVehicleName: 'New Car' })];
+		const assignments = [makeNewAssignment('New Car')];
+
+		const result = await commitImportRows(rows, assignments);
+
+		expect(result.error).toBeNull();
+		// The archived rows are untouched and the new active vehicle was created.
+		expect(await db.vehicles.filter((v) => v.isArchived === true).count()).toBe(2);
+		expect(await db.vehicles.filter((v) => !v.isArchived).count()).toBe(MAX_VEHICLES);
+	});
+
 	it('handles mixed fuel + maintenance rows', async () => {
 		const vehicleId = await db.vehicles.add({
 			name: 'TestCar',

@@ -190,6 +190,28 @@ describe('Export page', () => {
 		expect(localStorageMock.getItem('passanger_vehicle_id')).toBe('7');
 	});
 
+	it('treats an archived stored vehicle id as stale — clears it and recovers the first active vehicle (AC6)', async () => {
+		localStorageMock.setItem('passanger_vehicle_id', '7');
+		// The stored id resolves to an ARCHIVED vehicle (getVehicleById is unfiltered)...
+		mockGetVehicleById.mockResolvedValue({
+			data: { ...testVehicle, isArchived: true, archivedAt: 123 },
+			error: null
+		});
+		// ...recovery uses getAllVehicles (active-only) and picks the first active vehicle.
+		mockGetAllVehicles.mockResolvedValue({ data: [testVehicle2], error: null });
+		mockGetAllFuelLogs.mockResolvedValue({ data: [testFuelEntry2], error: null });
+		mockGetAllExpenses.mockResolvedValue({ data: [], error: null });
+
+		renderPage();
+		await settlePage();
+
+		expect(mockGetVehicleById).toHaveBeenCalledWith(7);
+		expect(mockGetAllVehicles).toHaveBeenCalled();
+		// Recovered to the active vehicle (id 12), and the archived stored id was dropped/replaced.
+		expect(screen.getByText(/City Runner · Toyota/)).toBeTruthy();
+		expect(localStorageMock.getItem('passanger_vehicle_id')).toBe('12');
+	});
+
 	it('shows the load error and preserves the stored vehicle id when getVehicleById fails transiently', async () => {
 		localStorageMock.setItem('passanger_vehicle_id', '7');
 		mockGetVehicleById.mockResolvedValue({
@@ -472,6 +494,40 @@ describe('Export page', () => {
 				'mock-csv-content-with-vehicles',
 				'passanger-export-2026-03-12.csv'
 			);
+		});
+
+		it('excludes archived vehicles rows from the all-vehicles export (AC5)', async () => {
+			// getAllFuelLogs()/getAllExpenses() return rows for EVERY vehicle incl. archived, but
+			// allVehicles is active-only — an archived car's retained history must not reach the CSV.
+			const archivedFuelEntry = { ...testFuelEntry, id: 999, vehicleId: 42 };
+			const archivedExpense = { ...testExpense, id: 998, vehicleId: 42 };
+			localStorageMock.setItem('passanger_vehicle_id', '7');
+			mockGetVehicleById.mockResolvedValue({ data: testVehicle, error: null });
+			mockGetAllVehicles.mockResolvedValue({
+				data: [testVehicle, testVehicle2], // active only — vehicle 42 is archived, not listed
+				error: null
+			});
+			mockGetAllFuelLogs.mockResolvedValue({
+				data: [testFuelEntry, testFuelEntry2, archivedFuelEntry],
+				error: null
+			});
+			mockGetAllExpenses.mockResolvedValue({ data: [testExpense, archivedExpense], error: null });
+
+			renderPage();
+			await settlePage();
+
+			await fireEvent.click(screen.getByRole('button', { name: 'Export CSV' }));
+
+			await waitFor(() => {
+				expect(mockBuildHistoryExportCSVWithVehicles).toHaveBeenCalledTimes(1);
+			});
+
+			const exportedEntries = mockBuildHistoryExportCSVWithVehicles.mock.calls[0][0] as Array<{
+				entry: { vehicleId: number };
+			}>;
+			const exportedVehicleIds = exportedEntries.map((e) => e.entry.vehicleId);
+			expect(exportedVehicleIds).not.toContain(42);
+			expect(exportedVehicleIds).toEqual(expect.arrayContaining([7, 12]));
 		});
 
 		it('exports current vehicle data without vehicle column when current-vehicle scope selected', async () => {

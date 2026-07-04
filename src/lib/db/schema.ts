@@ -4,6 +4,12 @@ export interface Vehicle {
 	make: string; // e.g., "Honda"
 	model: string; // e.g., "Civic"
 	year?: number; // optional — user may not know
+	// Story 9.2 (Vehicle archive & restore, Dexie v7, ADR-008). Additive, non-indexed, optional for
+	// back-compat — absent on v1–v6 rows, backfilled to `false` by migrateV6ToV7, and treated as an
+	// active vehicle by readers when absent. An archived vehicle and all its child rows are RETAINED
+	// (identity = the stable `id`); restore is a flag flip back to `isArchived = false`.
+	isArchived?: boolean; // archived (soft-deleted) — excluded from the active read funnel
+	archivedAt?: number; // epoch ms when archived; cleared (undefined) on restore
 }
 export type NewVehicle = Omit<Vehicle, 'id'>;
 

@@ -372,8 +372,16 @@ export function isValidRowId(value: unknown): value is number {
 	return typeof value === 'number' && Number.isInteger(value) && value > 0;
 }
 
-export function validateVehicleCount(count: number): string | null {
-	if (count > MAX_VEHICLES) return `A backup cannot contain more than ${MAX_VEHICLES} vehicles`;
+// AC8 / AD-VA-4: the MAX_VEHICLES cap counts ACTIVE vehicles only, so a backup of MAX_VEHICLES active
+// + N archived vehicles imports cleanly (archived rows never occupy a slot). Takes the raw vehicle
+// rows (pre-revival) — `isArchived` is read leniently (absent/false = active), matching the
+// pass-through revivers that never validate this field (AC9).
+export function validateVehicleCount(
+	vehicles: ReadonlyArray<{ isArchived?: boolean }>
+): string | null {
+	const activeCount = vehicles.filter((v) => !v.isArchived).length;
+	if (activeCount > MAX_VEHICLES)
+		return `A backup cannot contain more than ${MAX_VEHICLES} vehicles`;
 	return null;
 }
 

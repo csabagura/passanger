@@ -59,14 +59,19 @@
 		if (storedVehicleId !== null) {
 			const result = await getVehicleById(storedVehicleId);
 			if (!result.error) {
-				return result.data;
-			}
-
-			if (result.error.code !== 'NOT_FOUND') {
+				// AC6 (Story 9.2): getVehicleById is unfiltered, so a stored id pointing at an ARCHIVED
+				// vehicle would otherwise resolve here. Treat it like a dangling id — drop the stored id
+				// and fall through to recovery, which picks the first ACTIVE vehicle (getAllVehicles is
+				// active-only). An archived vehicle is never a current car.
+				if (!result.data.isArchived) {
+					return result.data;
+				}
+				safeRemoveItem(VEHICLE_ID_STORAGE_KEY);
+			} else if (result.error.code !== 'NOT_FOUND') {
 				throw new Error('GET_FAILED');
+			} else {
+				safeRemoveItem(VEHICLE_ID_STORAGE_KEY);
 			}
-
-			safeRemoveItem(VEHICLE_ID_STORAGE_KEY);
 		}
 
 		const recoveryResult = await getAllVehicles();
@@ -96,7 +101,14 @@
 				throw new Error('GET_FAILED');
 			}
 
-			historyEntries = mergeHistoryEntries(fuelResult.data ?? [], expenseResult.data ?? []);
+			// getAllFuelLogs()/getAllExpenses() return rows for EVERY vehicle incl. archived, but
+			// `allVehicles` is the active-only set — restrict the "all vehicles" export to active
+			// vehicles' rows so an archived car's history never surfaces in an active-scoped export (AC5).
+			const activeVehicleIds = new Set(allVehicles.map((v) => v.id));
+			historyEntries = mergeHistoryEntries(
+				(fuelResult.data ?? []).filter((entry) => activeVehicleIds.has(entry.vehicleId)),
+				(expenseResult.data ?? []).filter((entry) => activeVehicleIds.has(entry.vehicleId))
+			);
 		} else {
 			const [fuelResult, expenseResult] = await Promise.all([
 				getAllFuelLogs(currentVehicle.id),
@@ -181,7 +193,13 @@
 					throw new Error('GET_FAILED');
 				}
 
-				nextEntries = mergeHistoryEntries(fuelResult.data ?? [], expenseResult.data ?? []);
+				// Active-only export (AC5): allVehicles is the active set, so drop any archived vehicle's
+				// retained rows before they reach the CSV — mirrors loadEntriesForScope's summary filter.
+				const activeVehicleIds = new Set(allVehicles.map((v) => v.id));
+				nextEntries = mergeHistoryEntries(
+					(fuelResult.data ?? []).filter((entry) => activeVehicleIds.has(entry.vehicleId)),
+					(expenseResult.data ?? []).filter((entry) => activeVehicleIds.has(entry.vehicleId))
+				);
 				historyEntries = nextEntries;
 
 				if (nextEntries.length === 0) {

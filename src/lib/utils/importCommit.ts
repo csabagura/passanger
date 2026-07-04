@@ -42,10 +42,12 @@ export async function commitImportRows(
 	// adopt the user's home currency. Per-row currency import is a future enhancement.
 	const homeCurrency = getSettings().currency || DEFAULT_CURRENCY;
 
-	// Step 1: MAX_VEHICLES pre-check — a cheap early UX guard before any parsing work below. The
-	// transactional path (Step 5) is authoritative: it is the only check that can see vehicles
-	// created earlier in the SAME commit and cannot be bypassed by a concurrent write.
-	const existingCount = await db.vehicles.count();
+	// Step 1: MAX_VEHICLES pre-check — the import cap enforcement point (Step 5's transaction adds
+	// vehicles but has no count guard of its own, so this is authoritative for the cap). Counts
+	// ACTIVE vehicles only (AD-VA-4): archived rows never occupy a slot, mirroring saveVehicle's
+	// guard (vehicles.ts) and validateVehicleCount (backup path) — otherwise an archived car would
+	// block an import even though the active-only wizard UI already approved it.
+	const existingCount = await db.vehicles.filter((v) => !v.isArchived).count();
 	const newVehicleCount = assignments.filter((a) => a.assignmentType === 'new').length;
 	if (existingCount + newVehicleCount > MAX_VEHICLES) {
 		return err(
