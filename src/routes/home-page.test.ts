@@ -73,13 +73,15 @@ describe('Home page (Story 3.3 shell)', () => {
 		expect(screen.queryByRole('button', { name: /Add your vehicle/i })).toBeNull();
 	});
 
-	it('AC3: clicking the CTA reveals the VehicleForm quick-add', async () => {
+	it('AC3: clicking the CTA reveals the onboarding wizard (Story 9.1)', async () => {
 		renderHome(makeVehiclesContext(null));
 		await waitFor(() => {
 			expect(screen.getByRole('button', { name: /Add your vehicle to get started/i })).toBeTruthy();
 		});
 		await fireEvent.click(screen.getByRole('button', { name: /Add your vehicle to get started/i }));
-		expect(screen.getByRole('heading', { name: 'Add Vehicle' })).toBeTruthy();
+		// The guided wizard opens at step 1 (replaces the plain VehicleForm first-run).
+		expect(screen.getByRole('heading', { name: 'Add your car' })).toBeTruthy();
+		expect(screen.getByText(/step 1 of 3/i)).toBeTruthy();
 	});
 
 	it('AC1/AC4: with an active vehicle it mounts the dashboard (cold-load skeleton first)', async () => {

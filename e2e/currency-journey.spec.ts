@@ -16,7 +16,10 @@ async function createVehicle(page: Page, name: string): Promise<void> {
 	await page.getByLabel('Display Name').fill(name);
 	await page.getByLabel('Make').fill('Honda');
 	await page.getByLabel('Model').fill('Civic');
-	await page.getByRole('button', { name: 'Save vehicle' }).click();
+	// Story 9.1: the onboarding wizard replaced the single-form first-run — advance its 3 steps.
+	await page.getByRole('button', { name: 'Next' }).click();
+	await page.getByRole('button', { name: 'Next' }).click();
+	await page.getByRole('button', { name: 'Finish setup' }).click();
 
 	await expect(page.getByText(/No entries yet for/i)).toBeVisible();
 }

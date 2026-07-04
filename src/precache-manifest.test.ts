@@ -287,11 +287,17 @@ describe('Performance budget — bundle size', () => {
 		//                   to absorb it with a small margin, keeping guardrail pressure — this story was
 		//                   flagged in Dev Notes to "watch the budget but do not raise it preemptively";
 		//                   this is the actual post-implementation breach, not a pre-raise.)
+		//   258KB → 261KB  (Story 9.1 add-a-car onboarding wizard, PREP-4.1 actual-breach raise: the new
+		//                   OnboardingWizard.svelte 3-step flow + PRESET_REMINDERS + ~24 onboarding_* i18n
+		//                   keys (en/hu) landed at 266,430 bytes, 2,238 bytes over the 258KB provision.
+		//                   Raised one tight ~3KB step to absorb it with ~0.8KB headroom — a genuinely
+		//                   net-new feature component (not a refactor), so a slightly larger step than the
+		//                   1KB reminder/state-sync raises. Not a pre-raise: measured post-implementation.)
 		// This is TOTAL JS across all (lazy-loaded) routes, NOT the initial payload — actual load
 		// performance is gated separately by the Lighthouse FCP/TTI/score budgets in
-		// .lighthouserc.cjs (the real perf contract). Current footprint ~257.0KB. A tracked follow-up to
+		// .lighthouserc.cjs (the real perf contract). Current footprint ~260.2KB. A tracked follow-up to
 		// lazy-load the <Toaster> (and/or dynamic-import the Capture sheet) would reclaim initial-load weight.
-		const MAX_GZIPPED_JS_BYTES = 258 * 1024; // 258KB gzipped (NFR4) — see re-baseline log above
+		const MAX_GZIPPED_JS_BYTES = 261 * 1024; // 261KB gzipped (NFR4) — see re-baseline log above
 
 		let totalGzippedBytes = 0;
 		for (const dir of [chunksDir, entryDir, nodesDir]) {

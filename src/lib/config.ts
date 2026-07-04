@@ -55,6 +55,22 @@ export const BACKUP_FILENAME_PREFIX = 'passanger-backup';
 
 export const MAX_VEHICLES = 5;
 
+// Onboarding wizard (Story 9.1): the optional common-reminder presets offered at the last step.
+// Locale-neutral here — `key` maps to a localized title (`m.onboarding_preset_<key>()`) at creation
+// time, and the interval numbers are applied in the vehicle's chosen distance unit (km or mi; the
+// reminder stamps its own `distanceUnit`). Editable afterwards like any reminder. Each satisfies the
+// at-least-one-interval invariant (rowValidation `hasAtLeastOneInterval`). NOT pre-checked — opt-in.
+export interface PresetReminder {
+	key: string;
+	intervalKm?: number;
+	intervalDays?: number;
+}
+export const PRESET_REMINDERS: readonly PresetReminder[] = [
+	{ key: 'oil', intervalKm: 10_000, intervalDays: 365 },
+	{ key: 'tires', intervalKm: 10_000 },
+	{ key: 'inspection', intervalDays: 365 }
+];
+
 // Service-reminder "due soon" thresholds — a reminder switches from ok → due-soon once
 // the remaining distance/time falls at or below these, and → overdue at/below zero.
 export const REMINDER_DUE_SOON_KM = 500;
