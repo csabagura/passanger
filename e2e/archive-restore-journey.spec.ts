@@ -23,6 +23,13 @@ async function onboardFirstVehicle(page: Page, name: string): Promise<void> {
 	// Step 3 — no odometer / no presets needed.
 	await page.getByRole('button', { name: 'Finish setup' }).click();
 
+	// handleFinish saves the vehicle asynchronously and only calls onComplete (which UNMOUNTS the
+	// wizard) AFTER saveVehicle resolves. The wizard's "Step N of M" label is present the whole time
+	// it is open, so waiting for it to disappear is a real completion signal — without it the caller's
+	// next page navigation (goto '/settings') can abort the in-flight save and silently drop the new
+	// car, leaving it absent from the vehicle list. (The old "No vehicle yet" check was vacuous: that
+	// heading is never shown while the wizard is open, so it passed before the save even started.)
+	await expect(page.getByText(/step \d+ of \d+/i)).toHaveCount(0);
 	await expect(page.getByRole('heading', { name: 'No vehicle yet' })).toHaveCount(0);
 }
 
