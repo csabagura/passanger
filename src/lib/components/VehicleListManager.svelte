@@ -90,6 +90,14 @@
 
 	init();
 
+	// Story 9.3: let a parent that commits a vehicle mutation OUTSIDE this component (Settings' "Import
+	// a shared car", which writes through the shared context) refresh this on-page list + count. This
+	// component owns its own active/archived lists, so vehiclesContext.refreshVehicles() alone — which
+	// only reconciles the shared context — never touches them.
+	export async function reload() {
+		await loadVehicles();
+	}
+
 	function resetActionState() {
 		archiveTarget = null;
 		archiveState = 'idle';

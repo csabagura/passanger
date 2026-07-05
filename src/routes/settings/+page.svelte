@@ -328,6 +328,9 @@
 	let pendingCarImport: VehicleShareData | null = null;
 	let showCarImportConfirm = $state(false);
 	let carFileInput = $state<HTMLInputElement | null>(null);
+	// The embedded VehicleListManager owns its own active/archived lists; a car import writes through
+	// the shared context, so we call its exported reload() to refresh the on-page list + count.
+	let vehicleListManager = $state<{ reload: () => Promise<void> } | null>(null);
 
 	function resetCarImportMessages(): void {
 		carImportStatusMessage = '';
@@ -380,8 +383,10 @@
 		}
 
 		// Additive merge — reconcile the shared vehicles context so the new car appears in the switcher
-		// and this page's own VehicleListManager same-tab, without a whole-DB reload.
+		// and AppHeader same-tab, without a whole-DB reload. VehicleListManager owns its own lists, so
+		// reload it explicitly too (refreshVehicles only touches the shared context, not that list/count).
 		await vehiclesCtx.refreshVehicles();
+		await vehicleListManager?.reload();
 		carImportStatusMessage = m.settings_car_import_success({ name: result.data.vehicleName });
 	}
 </script>
@@ -481,7 +486,7 @@
 			</h2>
 			<p class="text-sm text-muted-foreground">{m.settings_vehicles_desc()}</p>
 		</div>
-		<VehicleListManager activeVehicleId={vehiclesCtx.activeVehicleId} />
+		<VehicleListManager bind:this={vehicleListManager} activeVehicleId={vehiclesCtx.activeVehicleId} />
 
 		<div class="space-y-3 border-t border-border pt-5">
 			<div class="space-y-1">
