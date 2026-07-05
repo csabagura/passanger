@@ -10,12 +10,14 @@
 	import { saveSettings, type AppSettings, type ThemePreference } from '$lib/utils/settings';
 	import { notifySettingsChanged, notifyTabsRestored } from '$lib/utils/tabSync';
 	import { exportAllTables, restoreAllTables, type BackupData } from '$lib/db/backup';
+	import { importVehicleShare } from '$lib/db/vehicleShare';
 	import {
 		serializeBackup,
 		parseBackup,
 		downloadBackupFile,
 		buildBackupFilename
 	} from '$lib/utils/backup';
+	import { parseVehicleShare, type VehicleShareData } from '$lib/utils/vehicleShare';
 	import VehicleListManager from '$lib/components/VehicleListManager.svelte';
 	import { Button } from '$lib/components/ui/button';
 	import { Field } from '$lib/components/ui/field';
@@ -315,6 +317,73 @@
 		notifyTabsRestored();
 		location.reload();
 	}
+
+	// Import a shared car (Story 9.3) ------------------------------------------------------------
+	// Distinct from restore: this ADDS a new vehicle (remapping all foreign keys) — it never
+	// replaces existing data and never touches settings, so no reload/replace-all banner is needed.
+	let carImportStatusMessage = $state('');
+	let carImportErrorMessage = $state('');
+	// Kept OUT of $state (same reason as pendingRestore): $state deep-proxies the graph and a Proxy is
+	// not structured-cloneable, so an IndexedDB add would throw DataCloneError.
+	let pendingCarImport: VehicleShareData | null = null;
+	let showCarImportConfirm = $state(false);
+	let carFileInput = $state<HTMLInputElement | null>(null);
+
+	function resetCarImportMessages(): void {
+		carImportStatusMessage = '';
+		carImportErrorMessage = '';
+	}
+
+	async function handleCarImportFileChange(event: Event): Promise<void> {
+		resetCarImportMessages();
+		pendingCarImport = null;
+		showCarImportConfirm = false;
+		const input = event.currentTarget as HTMLInputElement;
+		const file = input.files?.[0];
+		if (!file) return;
+
+		if (file.size > IMPORT_FILE_SIZE_MAX_BYTES) {
+			carImportErrorMessage = m.settings_backup_error_too_large();
+			input.value = '';
+			return;
+		}
+
+		const parsed = parseVehicleShare(await file.text());
+		// Allow re-selecting the same file later by clearing the input value now.
+		input.value = '';
+		if (parsed.error) {
+			carImportErrorMessage = parsed.error.message;
+			return;
+		}
+		pendingCarImport = parsed.data;
+		showCarImportConfirm = true;
+	}
+
+	function cancelCarImport(): void {
+		pendingCarImport = null;
+		showCarImportConfirm = false;
+		resetCarImportMessages();
+	}
+
+	async function confirmCarImport(): Promise<void> {
+		if (!pendingCarImport) return;
+		const share = pendingCarImport;
+		// Clear pending state before the await so a double-click can't trigger a second import.
+		pendingCarImport = null;
+		showCarImportConfirm = false;
+		resetCarImportMessages();
+
+		const result = await importVehicleShare(share);
+		if (result.error) {
+			carImportErrorMessage = result.error.message;
+			return;
+		}
+
+		// Additive merge — reconcile the shared vehicles context so the new car appears in the switcher
+		// and this page's own VehicleListManager same-tab, without a whole-DB reload.
+		await vehiclesCtx.refreshVehicles();
+		carImportStatusMessage = m.settings_car_import_success({ name: result.data.vehicleName });
+	}
 </script>
 
 <svelte:head>
@@ -413,6 +482,56 @@
 			<p class="text-sm text-muted-foreground">{m.settings_vehicles_desc()}</p>
 		</div>
 		<VehicleListManager activeVehicleId={vehiclesCtx.activeVehicleId} />
+
+		<div class="space-y-3 border-t border-border pt-5">
+			<div class="space-y-1">
+				<h3 class="text-sm font-semibold text-foreground">{m.settings_car_import_heading()}</h3>
+				<p class="text-sm text-muted-foreground">{m.settings_car_import_desc()}</p>
+			</div>
+
+			<div class="space-y-1">
+				<label for="settings-car-import-file" class="text-sm font-medium text-foreground">
+					{m.settings_car_import_label()}
+				</label>
+				<input
+					id="settings-car-import-file"
+					bind:this={carFileInput}
+					type="file"
+					accept=".json,application/json"
+					onchange={handleCarImportFileChange}
+					class="block w-full text-base text-foreground file:mr-3 file:min-h-11 file:rounded-md file:border file:border-border file:bg-muted/60 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-foreground"
+				/>
+			</div>
+
+			{#if showCarImportConfirm}
+				<div
+					role="alertdialog"
+					aria-labelledby="settings-car-import-confirm-heading"
+					aria-describedby="settings-car-import-confirm-body"
+					class="space-y-3 rounded-xl border border-border bg-muted/40 p-4"
+				>
+					<h4
+						id="settings-car-import-confirm-heading"
+						class="text-sm font-semibold text-foreground"
+					>
+						{m.settings_car_import_confirm_heading()}
+					</h4>
+					<p id="settings-car-import-confirm-body" class="text-sm text-muted-foreground">
+						{m.settings_car_import_confirm_body()}
+					</p>
+					<div class="flex flex-wrap gap-2">
+						<Button onclick={confirmCarImport}>{m.settings_car_import_confirm_add()}</Button>
+						<Button variant="outline" onclick={cancelCarImport}>{m.common_cancel()}</Button>
+					</div>
+				</div>
+			{/if}
+
+			{#if carImportErrorMessage}
+				<p role="alert" class="text-sm text-destructive">{carImportErrorMessage}</p>
+			{:else if carImportStatusMessage}
+				<p role="status" class="text-sm text-muted-foreground">{carImportStatusMessage}</p>
+			{/if}
+		</div>
 	</section>
 
 	<section

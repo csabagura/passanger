@@ -307,11 +307,19 @@ describe('Performance budget — bundle size', () => {
 		//                   at 269,983 bytes, 671 over the 263KB provision. Raised a ~2KB step to keep the
 		//                   project's ~1KB-headroom convention (264KB would leave only 353B — CI-flaky).
 		//                   Not a pre-raise: measured post-rebase.)
+		//   265KB → 267KB  (Story 9.3 per-car export handoff, PREP-4.1 actual-breach raise: the net-new
+		//                   utils/vehicleShare.ts (serialize/parse/slug) + db/vehicleShare.ts (scoped
+		//                   read + remap-import) + the Export row action in VehicleListManager + the
+		//                   "Import a shared car" control on the Settings page + ~11 new i18n keys
+		//                   (en/hu). Re-measured post-implementation at 272,034 bytes, 674 over the 265KB
+		//                   provision. Raised a ~2KB step to keep the project's ~1KB-headroom convention
+		//                   (266KB would leave only 686B — CI-flaky). Not a pre-raise: measured
+		//                   post-implementation.)
 		// This is TOTAL JS across all (lazy-loaded) routes, NOT the initial payload — actual load
 		// performance is gated separately by the Lighthouse FCP/TTI/score budgets in
-		// .lighthouserc.cjs (the real perf contract). Current footprint ~263.7KB. Further follow-ups to
+		// .lighthouserc.cjs (the real perf contract). Current footprint ~265.7KB. Further follow-ups to
 		// lazy-load the <Toaster> (and/or dynamic-import the Capture sheet) would reclaim more initial weight.
-		const MAX_GZIPPED_JS_BYTES = 265 * 1024; // 265KB gzipped (NFR4) — see re-baseline log above
+		const MAX_GZIPPED_JS_BYTES = 267 * 1024; // 267KB gzipped (NFR4) — see re-baseline log above
 
 		let totalGzippedBytes = 0;
 		for (const dir of [chunksDir, entryDir, nodesDir]) {
