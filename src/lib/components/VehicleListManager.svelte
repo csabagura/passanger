@@ -10,6 +10,9 @@
 	} from '$lib/db/repositories/vehicles';
 	import type { Vehicle } from '$lib/db/schema';
 	import type { VehiclesContext } from '$lib/utils/vehicleContext';
+	import { exportVehicleTables } from '$lib/db/vehicleShare';
+	import { serializeVehicleShare, buildVehicleShareFilename } from '$lib/utils/vehicleShare';
+	import { downloadBackupFile } from '$lib/utils/backup';
 	import VehicleForm from './VehicleForm.svelte';
 	import { Button } from '$lib/components/ui/button';
 	import { m } from '$lib/paraglide/messages';
@@ -52,6 +55,11 @@
 	let restoringId = $state<number | null>(null);
 	let restoreError = $state('');
 
+	// Story 9.3: per-car export → local Blob download. No confirmation (read-only, no network); just a
+	// per-row busy flag and a shared error surface.
+	let exportingId = $state<number | null>(null);
+	let exportError = $state('');
+
 	let listContainerEl = $state<HTMLElement | null>(null);
 	let addButtonEl = $state<HTMLElement | null>(null);
 
@@ -82,6 +90,14 @@
 
 	init();
 
+	// Story 9.3: let a parent that commits a vehicle mutation OUTSIDE this component (Settings' "Import
+	// a shared car", which writes through the shared context) refresh this on-page list + count. This
+	// component owns its own active/archived lists, so vehiclesContext.refreshVehicles() alone — which
+	// only reconciles the shared context — never touches them.
+	export async function reload() {
+		await loadVehicles();
+	}
+
 	function resetActionState() {
 		archiveTarget = null;
 		archiveState = 'idle';
@@ -90,6 +106,7 @@
 		purgeState = 'idle';
 		purgeError = '';
 		restoreError = '';
+		exportError = '';
 	}
 
 	function handleCreateClick() {
@@ -116,6 +133,28 @@
 		viewState = { mode: 'list' };
 	}
 
+	// --- Export (active row) ----------------------------------------------------------------------
+
+	async function handleExport(vehicle: Vehicle) {
+		if (exportingId !== null) return;
+		exportingId = vehicle.id;
+		exportError = '';
+
+		const result = await exportVehicleTables(vehicle.id);
+		exportingId = null;
+		if (result.error) {
+			// A corrupt-row export block carries a truthful message; a read fault is generic.
+			exportError =
+				result.error.code === 'VALIDATION_ERROR'
+					? result.error.message
+					: m.vehiclelist_error_export();
+			return;
+		}
+
+		const json = serializeVehicleShare(result.data);
+		downloadBackupFile(json, buildVehicleShareFilename(vehicle.name, new Date()));
+	}
+
 	// --- Archive (active row) ---------------------------------------------------------------------
 
 	function handleArchiveRequest(vehicle: Vehicle) {
@@ -123,6 +162,8 @@
 		archiveTarget = vehicle;
 		archiveState = 'armed';
 		archiveError = '';
+		// A prior export error is unrelated to this action — don't leave its banner standing.
+		exportError = '';
 	}
 
 	function handleArchiveCancel() {
@@ -267,6 +308,11 @@
 			>
 		</div>
 	{:else}
+		{#if exportError}
+			<div role="alert" class="mb-3 rounded-xl border border-destructive/20 bg-background/80 p-3">
+				<p class="text-sm text-destructive">{exportError}</p>
+			</div>
+		{/if}
 		<ul class="space-y-3" aria-label={m.vehiclelist_list_label()} bind:this={listContainerEl}>
 			{#each vehicles as vehicle (vehicle.id)}
 				{@const isActive = activeVehicleId === vehicle.id}
@@ -304,6 +350,15 @@
 								aria-label={m.vehiclelist_edit_label({ name: vehicle.name })}
 							>
 								{m.common_edit()}
+							</Button>
+							<Button
+								variant="outline"
+								size="icon"
+								disabled={exportingId !== null}
+								onclick={() => handleExport(vehicle)}
+								aria-label={m.vehiclelist_export_label({ name: vehicle.name })}
+							>
+								{exportingId === vehicle.id ? m.vehiclelist_export_busy() : m.vehiclelist_export()}
 							</Button>
 							<Button
 								variant="outline"

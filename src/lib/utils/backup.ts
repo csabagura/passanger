@@ -50,7 +50,9 @@ export function serializeBackup(data: BackupData, settings: AppSettings): string
 	return JSON.stringify(file, null, 2);
 }
 
-function isObject(value: unknown): value is Record<string, unknown> {
+// Exported so the per-car share parser (utils/vehicleShare.ts, Story 9.3) reuses the SAME structural
+// guard rather than re-declaring one that could drift.
+export function isObject(value: unknown): value is Record<string, unknown> {
 	return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
@@ -70,28 +72,30 @@ function reviveDate(value: unknown): Date | null {
 // the SAME shared validator the repositories use — a hand-edited or foreign backup can no longer
 // seed a row the write boundary would otherwise reject (unpaired units, NaN/Infinity/negative
 // numerics, empty strings). Returns the revived, validated row, or null if invalid.
+// Exported (Story 9.3) so the per-car share parser revives rows through this exact, shared logic —
+// the reminder reviver's optional-lastServiceDate normalization especially must not be re-derived.
 
-function reviveAndValidateVehicle(row: unknown): Vehicle | null {
+export function reviveAndValidateVehicle(row: unknown): Vehicle | null {
 	if (!isObject(row) || !isValidRowId(row.id)) return null;
 	if (validateNewVehicle(row as unknown as NewVehicle)) return null;
 	return row as unknown as Vehicle;
 }
 
-function reviveAndValidateFuelLog(row: unknown): FuelLog | null {
+export function reviveAndValidateFuelLog(row: unknown): FuelLog | null {
 	if (!isObject(row) || !isValidRowId(row.id)) return null;
 	const revived = { ...row, date: reviveDate(row.date) };
 	if (validateNewFuelLog(revived as unknown as NewFuelLog)) return null;
 	return revived as unknown as FuelLog;
 }
 
-function reviveAndValidateExpense(row: unknown): Expense | null {
+export function reviveAndValidateExpense(row: unknown): Expense | null {
 	if (!isObject(row) || !isValidRowId(row.id)) return null;
 	const revived = { ...row, date: reviveDate(row.date) };
 	if (validateNewExpense(revived as unknown as NewExpense)) return null;
 	return revived as unknown as Expense;
 }
 
-function reviveAndValidateServiceReminder(row: unknown): ServiceReminder | null {
+export function reviveAndValidateServiceReminder(row: unknown): ServiceReminder | null {
 	if (!isObject(row) || !isValidRowId(row.id)) return null;
 	// lastServiceDate is optional — normalize an absent/null value to "no key" (matches export's
 	// shape) BEFORE validating, so the validator's optional-field check sees a true absence.

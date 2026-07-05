@@ -53,6 +53,14 @@ export const DB_VERSION = 7;
 export const BACKUP_APP_ID = 'passanger';
 export const BACKUP_FILENAME_PREFIX = 'passanger-backup';
 
+// Per-car share handoff (Story 9.3). A single-vehicle file reuses BACKUP_APP_ID + DB_VERSION but
+// carries a `kind: 'vehicle'` discriminator so a full-restore input and a per-car input reject each
+// other cleanly (a full backup has no `kind`; a per-car file has no `vehicles`/`settings`). Unlike a
+// full backup it deliberately omits the `settings` block — importing a stranger's car must never
+// overwrite the recipient's currency/theme/rates.
+export const VEHICLE_SHARE_KIND = 'vehicle';
+export const VEHICLE_SHARE_FILENAME_PREFIX = 'passanger-car';
+
 export const MAX_VEHICLES = 5;
 
 // Onboarding wizard (Story 9.1): the optional common-reminder presets offered at the last step.
