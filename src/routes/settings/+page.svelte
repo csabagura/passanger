@@ -486,7 +486,10 @@
 			</h2>
 			<p class="text-sm text-muted-foreground">{m.settings_vehicles_desc()}</p>
 		</div>
-		<VehicleListManager bind:this={vehicleListManager} activeVehicleId={vehiclesCtx.activeVehicleId} />
+		<VehicleListManager
+			bind:this={vehicleListManager}
+			activeVehicleId={vehiclesCtx.activeVehicleId}
+		/>
 
 		<div class="space-y-3 border-t border-border pt-5">
 			<div class="space-y-1">
